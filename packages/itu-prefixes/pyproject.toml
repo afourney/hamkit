@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "itu-prefixes"
+dynamic = ["version"]
+description = 'A tool for working with ITU call sign prefixes (e.g., to determine which country likely issued a given call sign).'
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = []
+authors = [
+  { name = "Adam Fourney", email = "adam.fourney@gmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = []
+
+[project.urls]
+Documentation = "https://github.com/afourney/ham-tools/blob/main/packages/itu-prefixes/README.md"
+Issues = "https://github.com/afourney/ham-tools/issues"
+Source = "https://github.com/afourney/ham-tools/blob/main/packages/itu-prefixes/README.md"
+
+[tool.hatch.version]
+path = "src/itu_prefixes/__about__.py"
+
+[tool.hatch.envs.types]
+extra-dependencies = [
+  "mypy>=1.0.0",
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:src/itu_prefixes tests}"
+
+[tool.coverage.run]
+source_pkgs = ["itu_prefixes", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/itu_prefixes/__about__.py",
+]
+
+[tool.coverage.paths]
+itu_prefixes = ["src/itu_prefixes", "*/itu-prefixes/src/itu_prefixes"]
+tests = ["tests", "*/itu-prefixes/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
+
+[tool.hatch.build.targets.sdist]
+only-packages = true
+exclude = [
+  "tests/",
+]
