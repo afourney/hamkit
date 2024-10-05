@@ -30,25 +30,25 @@ Issues = "https://github.com/afourney/ham-tools/issues"
 Source = "https://github.com/afourney/ham-tools/blob/main/packages/itu-prefixes/README.md"
 
 [tool.hatch.version]
-path = "src/itu_prefixes/__about__.py"
+path = "src/ham_tools/itu_prefixes/__about__.py"
 
 [tool.hatch.envs.types]
 extra-dependencies = [
   "mypy>=1.0.0",
 ]
 [tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:src/itu_prefixes tests}"
+check = "mypy --install-types --non-interactive {args:src/ham_tools/itu_prefixes tests}"
 
 [tool.coverage.run]
-source_pkgs = ["itu_prefixes", "tests"]
+source_pkgs = ["ham_tools.itu_prefixes", "tests"]
 branch = true
 parallel = true
 omit = [
-  "src/itu_prefixes/__about__.py",
+  "src/ham_tools/itu_prefixes/__about__.py",
 ]
 
 [tool.coverage.paths]
-itu_prefixes = ["src/itu_prefixes", "*/itu-prefixes/src/itu_prefixes"]
+itu_prefixes = ["src/ham_tools/itu_prefixes", "*/itu-prefixes/src/ham_tools/itu_prefixes"]
 tests = ["tests", "*/itu-prefixes/tests"]
 
 [tool.coverage.report]
@@ -63,3 +63,6 @@ only-packages = true
 exclude = [
   "tests/",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ham_tools"]
