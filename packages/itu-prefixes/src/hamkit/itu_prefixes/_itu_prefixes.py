@@ -797,7 +797,7 @@ def prefix_to_countries(prefix: str) -> List[ITU_Prefix]:
     if len(prefix) < 1 or len(prefix) > 4: 
         raise ValueError("Prefixes sould be 0-4 character.")
     for record in ITU_PREFIXES:
-        if record.prefix.startswith(prefix):
+        if prefix.startswith(record.prefix):
             results.append(record)
     return results
 

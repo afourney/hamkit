@@ -5,6 +5,10 @@
 
 -----
 
+> [!NOTE]  
+> `itu_prefixes` is part of the [`hamkit`](https://pypi.org/project/hamkit/) collection of modules. You can use it standalone (see below) if ITU prefix functionality is all that you need. Alternatively, install the entire collection with `pip install hamkit`.
+
+
 ```console
 pip install itu-prefixes
 ```
