@@ -27,31 +27,31 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/afourney/ham-tools/README.md"
-Issues = "https://github.com/afourney/ham-tools/issues"
-Source = "https://github.com/afourney/ham-tools/"
+Documentation = "https://github.com/afourney/hamkit/README.md"
+Issues = "https://github.com/afourney/hamkit/issues"
+Source = "https://github.com/afourney/hamkit/"
 
 [tool.hatch.version]
-path = "src/ham_tools/cli/__about__.py"
+path = "src/hamkit/cli/__about__.py"
 
 [tool.hatch.envs.types]
 extra-dependencies = [
   "mypy>=1.0.0",
 ]
 [tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:src/ham_tools/cli tests}"
+check = "mypy --install-types --non-interactive {args:src/hamkit/cli tests}"
 
 [tool.coverage.run]
-source_pkgs = ["ham_tools.cli", "tests"]
+source_pkgs = ["hamkit.cli", "tests"]
 branch = true
 parallel = true
 omit = [
-  "src/ham_tools/cli/__about__.py",
+  "src/hamkit/cli/__about__.py",
 ]
 
 [tool.coverage.paths]
-cli = ["src/ham_tools/cli", "*/ham-tools-cli/src/ham_tools/cli"]
-tests = ["tests", "*/ham-tools-cli/tests"]
+cli = ["src/hamkit/cli", "*/hamkit-cli/src/hamkit/cli"]
+tests = ["tests", "*/hamkit-cli/tests"]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -61,13 +61,13 @@ exclude_lines = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ham_tools"]
+packages = ["src/hamkit"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/ham_tools/__main__.py" = "ham_tools/__main__.py"
+"src/hamkit/__main__.py" = "hamkit/__main__.py"
 
 [tool.hatch.build.targets.sdist.force-include]
-"src/ham_tools/__main__.py" = "src/ham_tools/__main__.py"
+"src/hamkit/__main__.py" = "src/hamkit/__main__.py"
 
 [tool.hatch.build.targets.sdist]
 only-packages = true
