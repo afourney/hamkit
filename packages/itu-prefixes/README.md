@@ -15,7 +15,7 @@ A simple library to work with ITU call sign prefixes.
 To determine which country likely issued a call sign, you can do:
 
 ```python
-from ham_tools_import itu_prefixes
+from hamkit import itu_prefixes
 
 print(itu_prefixes.call_sign_to_country("KK7CMT"))
 ```
@@ -30,7 +30,7 @@ ITU_Prefix(prefix='K', country_name='United States', country_code='US')
 Likewise, to determine which prefixes a country may use, you can do:
 
 ```python
-from ham_tools_import itu_prefixes
+from hamkit import itu_prefixes
 
 print(itu_prefixes.country_to_prefixes("US"))
 ```
@@ -61,7 +61,7 @@ which will output:
 Likewise, to determine which countries might correspond to a given prefix, do:
 
 ```python
-from ham_tools_import itu_prefixes
+from hamkit import itu_prefixes
 
 print(itu_prefixes.prefix_to_countries("HB"))
 ```
