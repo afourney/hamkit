@@ -3,11 +3,10 @@
 [![PyPI - Version](https://img.shields.io/pypi/v/itu-prefixes.svg)](https://pypi.org/project/itu-prefixes)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/itu-prefixes.svg)](https://pypi.org/project/itu-prefixes)
 
------
+---
 
 > [!NOTE]  
 > `itu_prefixes` is part of the [`hamkit`](https://pypi.org/project/hamkit/) collection of modules. You can use it standalone (see below) if ITU prefix functionality is all that you need. Alternatively, install the entire collection with `pip install hamkit`.
-
 
 ### A simple library to work with ITU call sign prefixes
 
@@ -15,8 +14,8 @@
 pip install itu-prefixes
 ```
 
+#### call_sign_to_country
 
-#### call\_sign\_to\_country
 To determine which country likely issued a call sign, you can do:
 
 ```python
@@ -31,7 +30,8 @@ which will output:
 ITU_Prefix(prefix='K', country_name='United States', country_code='US')
 ```
 
-#### country\_to\_prefixes
+#### country_to_prefixes
+
 Likewise, to determine which prefixes a country may use, you can do:
 
 ```python
@@ -62,7 +62,8 @@ which will output:
 ]
 ```
 
-#### prefix\_to\_countries
+#### prefix_to_countries
+
 Likewise, to determine which countries might correspond to a given prefix, do:
 
 ```python
@@ -81,7 +82,6 @@ which will produce:
     ITU_Prefix(prefix='HB', country_name='Switzerland', country_code='CH')
 ]
 ```
-
 
 ## License
 
