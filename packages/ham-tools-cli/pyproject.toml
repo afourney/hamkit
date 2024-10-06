@@ -1,0 +1,76 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hamkit"
+dynamic = ["version"]
+description = 'A command-line interface for various ham radio tools.'
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = []
+authors = [
+  { name = "Adam Fourney", email = "adam.fourney@gmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "itu_prefixes"
+]
+
+[project.urls]
+Documentation = "https://github.com/afourney/ham-tools/README.md"
+Issues = "https://github.com/afourney/ham-tools/issues"
+Source = "https://github.com/afourney/ham-tools/"
+
+[tool.hatch.version]
+path = "src/ham_tools/cli/__about__.py"
+
+[tool.hatch.envs.types]
+extra-dependencies = [
+  "mypy>=1.0.0",
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:src/ham_tools/cli tests}"
+
+[tool.coverage.run]
+source_pkgs = ["ham_tools.cli", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/ham_tools/cli/__about__.py",
+]
+
+[tool.coverage.paths]
+cli = ["src/ham_tools/cli", "*/ham-tools-cli/src/ham_tools/cli"]
+tests = ["tests", "*/ham-tools-cli/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ham_tools"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/ham_tools/__main__.py" = "ham_tools/__main__.py"
+
+[tool.hatch.build.targets.sdist.force-include]
+"src/ham_tools/__main__.py" = "src/ham_tools/__main__.py"
+
+[tool.hatch.build.targets.sdist]
+only-packages = true
+exclude = [
+  "tests/",
+]
