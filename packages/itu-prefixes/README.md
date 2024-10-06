@@ -9,11 +9,12 @@
 > `itu_prefixes` is part of the [`hamkit`](https://pypi.org/project/hamkit/) collection of modules. You can use it standalone (see below) if ITU prefix functionality is all that you need. Alternatively, install the entire collection with `pip install hamkit`.
 
 
+### A simple library to work with ITU call sign prefixes
+
 ```console
 pip install itu-prefixes
 ```
 
-A simple library to work with ITU call sign prefixes.
 
 #### call\_sign\_to\_country
 To determine which country likely issued a call sign, you can do:
