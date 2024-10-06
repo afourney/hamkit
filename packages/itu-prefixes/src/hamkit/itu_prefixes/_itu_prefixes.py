@@ -1,13 +1,14 @@
-
 # SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
 #
 # SPDX-License-Identifier: MIT
 from typing import NamedTuple, List
 
+
 class ITU_Prefix(NamedTuple):
     prefix: str
     country_name: str
     country_code: str
+
 
 # Based on https://en.wikipedia.org/wiki/ITU_prefix#Allocation_table
 ITU_PREFIXES = [
@@ -773,9 +774,10 @@ ITU_PREFIXES = [
     ITU_Prefix("2", "United Kingdom", "GB"),
 ]
 
-def call_sign_to_country(call_sign: str) -> ITU_Prefix|None:
+
+def call_sign_to_country(call_sign: str) -> ITU_Prefix | None:
     """
-    Determine which country likely issued a given call sign. 
+    Determine which country likely issued a given call sign.
     Returns an ITU_Prefix record, or None (if no match was found)
     """
     call_sign = call_sign.strip().upper()
@@ -784,34 +786,38 @@ def call_sign_to_country(call_sign: str) -> ITU_Prefix|None:
             return record
     return None
 
+
 def prefix_to_countries(prefix: str) -> List[ITU_Prefix]:
     """
-    Given a prefix, determine which country or countries might issue 
-    call signs starting with that prefix. For "A" could be the 
+    Given a prefix, determine which country or countries might issue
+    call signs starting with that prefix. For "A" could be the
     United States, Spain, Pakistan, etc. Whereas "K" is just the United
     States, and "CF" is Canada.
     Returns a list of ITU_Prefix records.
-    """ 
+    """
     results: List[ITU_Prefix] = []
     prefix = prefix.strip().upper()
-    if len(prefix) < 1 or len(prefix) > 4: 
+    if len(prefix) < 1 or len(prefix) > 4:
         raise ValueError("Prefixes sould be 0-4 character.")
     for record in ITU_PREFIXES:
-        if prefix.startswith(record.prefix):
+        if prefix.startswith(record.prefix) or record.prefix.startswith(prefix):
             results.append(record)
     return results
 
+
 def country_to_prefixes(country_code: str) -> List[ITU_Prefix]:
     """
-    Given an ISO 3166-1 alpha-2 (two letter) country code, determine which 
+    Given an ISO 3166-1 alpha-2 (two letter) country code, determine which
     ITU prefixes that country might use for call signs. For example the "US"
     could issue call signs beginning with "AA-AL", "K", "N", or "W".
     Returns a list of ITU_Prefix records.
-    """ 
+    """
     results: List[ITU_Prefix] = []
     country_code = country_code.strip()
     if len(country_code) != 2:
-        raise ValueError("'{country_code}' sould be a ISO 3166-1 alpha-2 (two letter) country code.")
+        raise ValueError(
+            "'{country_code}' sould be a ISO 3166-1 alpha-2 (two letter) country code."
+        )
     country_code = country_code.upper()
     for record in ITU_PREFIXES:
         if record.country_code == country_code:

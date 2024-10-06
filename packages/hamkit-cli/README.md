@@ -3,7 +3,7 @@
 [![PyPI - Version](https://img.shields.io/pypi/v/hamkit.svg)](https://pypi.org/project/hamkit)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/hamkit.svg)](https://pypi.org/project/hamkit)
 
------
+---
 
 The `hamkit` package installs ALL `HamKit` submodules, and provides a command-line interface to demonstrate HamKit functionality.
 
@@ -13,11 +13,12 @@ pip install hamkit
 
 At present, HamKit includes the following submodules:
 
-| Package | Version | Description |
-| ------- | ------- | ----------- |
+| Package                                                | Version                                                           | Description                                                                        |
+| ------------------------------------------------------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | [itu_prefixes](https://pypi.org/project/itu-prefixes/) | ![PyPI - Version](https://img.shields.io/pypi/v/itu-prefixes.svg) | Tools for working with ITU call sign prefixes (e.g., to look up country of origin) |
 
 ## Command-line Interface
+
 `hamkit` provides a command-line interface to demonstrate HamKit functionality. Invoke it as follows:
 
 ```console

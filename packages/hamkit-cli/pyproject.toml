@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/afourney/hamkit/README.md"
+Documentation = "https://github.com/afourney/hamkit/blob/main/README.md"
 Issues = "https://github.com/afourney/hamkit/issues"
 Source = "https://github.com/afourney/hamkit/"
 
