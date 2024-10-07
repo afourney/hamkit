@@ -8,12 +8,13 @@ import zipfile
 import logging
 import sqlite3
 import shutil
+import errno
 
 from typing import NamedTuple, Any
 from ._common import download_temp_and_process
 
-ULS_AMAT_URL = "https://data.fcc.gov/download/pub/uls/complete/l_amat.zip"
-ULS_GMRS_URL = "https://data.fcc.gov/download/pub/uls/complete/l_gmrs.zip"
+ULS_AMAT_URI = "https://data.fcc.gov/download/pub/uls/complete/l_amat.zip"
+ULS_GMRS_URI = "https://data.fcc.gov/download/pub/uls/complete/l_gmrs.zip"
 
 EN_DATA_FILENAME = "EN.dat"
 AM_DATA_FILENAME = "AM.dat"
@@ -21,27 +22,134 @@ AM_DATA_FILENAME = "AM.dat"
 logger = logging.getLogger(__name__.rsplit(".", 1)[0])
 
 
+class UlsRecord(NamedTuple):
+    service: str
+    unique_id: str
+    uls_file_number: str
+    call_sign: str
+    entity_type: str
+    entity_name: str
+    first_name: str
+    middle_initial: str
+    last_name: str
+    street_address: str
+    city: str
+    state: str
+    zip_code: str
+    status_code: str
+    status_date: str
+    linked_call_sign: str
+    operator_class: str
+    group_code: str
+    region_code: str
+
+
 class ULS(object):
-    def __init__(db_path=None):
-        pass
+    def __init__(self, db_filename: str):
+        if not os.path.isfile(db_filename):
+            raise FileNotFoundError(
+                errno.ENOENT,
+                (
+                    f"The ULS database file '{db_filename}' was not found.\n"
+                    f"To download the database from the FCC, use the static method:\n"
+                    f"    ULS.download('{db_filename}')"
+                ),
+            )
+        self._db_filename = db_filename
+
+    def call_sign_lookup(self, call_sign: str) -> UlsRecord | None:
+        conn = sqlite3.connect(self._db_filename)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """SELECT 
+            Service,
+            Unique_System_Identifier,
+            ULS_File_Number,
+            Call_Sign,
+            Entity_Type,
+            Entity_Name,
+            First_Name,
+            Middle_Initial,
+            Last_Name,
+            Street_Address,
+            City,
+            State,
+            Zip_Code,
+            Status_Code,
+            Status_Date,
+            Linked_Call_Sign,
+            Operator_Class,
+            Group_Code,
+            Region_Code
+            FROM LicenseView WHERE Call_Sign = ?;""",
+            (call_sign.upper().strip(),),
+        )
+        row = cursor.fetchone()
+
+        # Check if a matching row was found return it
+        result = None
+        if row:
+            result = UlsRecord(*row)
+
+        conn.close()
+        return result
 
     # Download and create the database
     @staticmethod
-    def download():
+    def download(
+        db_filename: str,
+        overwrite: bool = False,
+        amat_uri: str = ULS_AMAT_URI,
+        gmrs_uri: str = ULS_GMRS_URI,
+    ) -> None:
+        """
+        Download the amateur and/or GMRS license data from the FCC, and load
+        it into a local sqlite database.
+
+        Parameters:
+            db_filename:  The location of the sqlite database to create.
+            overwrite:    If true, overwrite any existing file (Default: False)
+            amat_uri:     The URI from where to download amateur radio license data.
+                          Set to None to skip downloading amateur radio data.
+                          (Default: ULS_AMAT_URI)
+            gmrs_uri:     The URI from where to download GMRS license data.
+                          Set to None to skip downloading GMRS data.
+                          (Default: ULS_GMRS_URI)
+        """
+
+        # Check if we are overwriting the file
+        if os.path.isfile(db_filename):
+            if overwrite == False:
+                raise FileExistsError(
+                    errno.EEXIST,
+                    (
+                        f"The file '{db_filename}' aleady exists. Operation aborted. "
+                        "Set overwrite=True to overwrite overwrite existing files."
+                    ),
+                )
+            elif not os.access(db_filename, os.W_OK):
+                raise PermissionError(errno.EPERM, "Permission denied", db_filename)
+        else:
+            # Check if we can write to the intended destination
+            with open(db_filename, "wb") as fh:
+                pass
+            os.unlink(db_filename)
+
         # Create it a temp database, then rename it to the final database
         try:
             (fh, tmpfile) = tempfile.mkstemp(suffix=".db")
             os.close(fh)
-            ULS.__download(tmpfile)
+            ULS.__download(tmpfile, amat_uri, gmrs_uri)
             logger.debug(f"Renaming '{tmpfile}' to 'uls.db'")
-            shutil.move(tmpfile, "uls.db")
+            shutil.move(tmpfile, db_filename)
         finally:
             # Clean up any debris
             if os.path.isfile(tmpfile):
                 os.unlink(tmpfile)
 
     @staticmethod
-    def __download(db_filename):
+    def __download(db_filename: str, amat_uri: str, gmrs_uri: str):
         logger.debug(f"Creating ULS database '{db_filename}'")
 
         # Create the database
@@ -151,12 +259,15 @@ FROM EN
         )
 
         # Now populate the tables
-        download_temp_and_process(
-            ULS_AMAT_URL, lambda x: ULS.__process_uls_zip(x, cursor, "AMAT")
-        )
-        download_temp_and_process(
-            ULS_GMRS_URL, lambda x: ULS.__process_uls_zip(x, cursor, "GMRS")
-        )
+        if amat_uri is not None:
+            download_temp_and_process(
+                amat_uri, lambda x: ULS.__process_uls_zip(x, cursor, "AMAT")
+            )
+
+        if gmrs_uri is not None:
+            download_temp_and_process(
+                gmrs_uri, lambda x: ULS.__process_uls_zip(x, cursor, "GMRS")
+            )
 
         # Finalize things
         conn.commit()
@@ -272,9 +383,3 @@ FROM EN
             """,
             record,
         )
-
-
-# class ITU_Prefix(NamedTuple):
-#    prefix: str
-#    country_name: str
-#    country_code: str
