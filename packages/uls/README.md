@@ -1,7 +1,7 @@
-# ITU Prefixes
+# hamkit.uls
 
-[![PyPI - Version](https://img.shields.io/pypi/v/itu-prefixes.svg)](https://pypi.org/project/itu-prefixes)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/itu-prefixes.svg)](https://pypi.org/project/itu-prefixes)
+[![PyPI - Version](https://img.shields.io/pypi/v/hamkit-uls.svg)](https://pypi.org/project/hamkit-uls)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/hamkit-uls.svg)](https://pypi.org/project/hamkit-uls)
 
 ---
 
@@ -65,4 +65,4 @@ Parameters:
 
 ## License
 
-`itu-prefixes` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
+`hamkit-uls` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
