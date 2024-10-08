@@ -6,7 +6,7 @@
 ---
 
 > [!NOTE]  
-> `itu_prefixes` is part of the [`hamkit`](https://pypi.org/project/hamkit/) collection of modules. You can use it standalone (see below) if ITU prefix functionality is all that you need. Alternatively, install the entire collection with `pip install hamkit`.
+> `itu_prefixes` is a _small standalone component_ of [`hamkit`](https://pypi.org/project/hamkit/). You can use it by itself (see below) if ITU prefix functionality is all that you need. Alternatively, install the entire collection of HamKit modules with `pip install hamkit`.
 
 ### A simple library to work with ITU call sign prefixes
 

@@ -1,0 +1,71 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hamkit-repeaterbook"
+dynamic = ["version"]
+description = 'A tool for working with local copies of the RepeaterBook database. Visit https://www.repeaterbook.com/wiki/doku.php?id=api for terms of use. In particular: "Use of the (RepeaterBook) data is for personal use only. The data cannot be fed to a commercial product for sale or otherwise."'
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = []
+authors = [
+  { name = "Adam Fourney", email = "adam.fourney@gmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "requests",
+  "haversine",
+]
+
+[project.urls]
+Documentation = "https://github.com/afourney/hamkit/blob/main/packages/repeaterbook/README.md"
+Issues = "https://github.com/afourney/hamkit/issues"
+Source = "https://github.com/afourney/hamkit/blob/main/packages/repeaterbook/README.md"
+
+[tool.hatch.version]
+path = "src/hamkit/repeaterbook/__about__.py"
+
+[tool.hatch.envs.types]
+extra-dependencies = [
+  "mypy>=1.0.0",
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:src/hamkit/repeaterbook tests}"
+
+[tool.coverage.run]
+source_pkgs = ["hamkit.repeaterbook", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/hamkit/repeaterbook/__about__.py",
+]
+
+[tool.coverage.paths]
+repeaterbook = ["src/hamkit/repeaterbook", "*/repeaterbook/src/hamkit/repeaterbook"]
+tests = ["tests", "*/repeaterbook/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
+
+[tool.hatch.build.targets.sdist]
+only-packages = true
+exclude = [
+  "tests/",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hamkit"]

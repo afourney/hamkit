@@ -141,7 +141,7 @@ class ULS(object):
             (fh, tmpfile) = tempfile.mkstemp(suffix=".db")
             os.close(fh)
             ULS.__download(tmpfile, amat_uri, gmrs_uri)
-            logger.debug(f"Renaming '{tmpfile}' to 'uls.db'")
+            logger.debug(f"Renaming '{tmpfile}' to '{db_filename}'")
             shutil.move(tmpfile, db_filename)
         finally:
             # Clean up any debris
