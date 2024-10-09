@@ -3,8 +3,12 @@
 # SPDX-License-Identifier: MIT
 import sys
 import os
+import requests
+import json
+import urllib
 from hamkit import itu
 from hamkit.uls import ULS
+from hamkit.repeaterbook import RepeaterBook
 
 # from hamkit.repeaterbook import RepeaterBook
 from .__about__ import __version__
@@ -16,7 +20,7 @@ logging.basicConfig(level=logging.INFO)
 
 def main():
     # Right now, only one command is supported
-    if len(sys.argv) < 3 or sys.argv[1].lower() not in ["itu", "uls"]:
+    if len(sys.argv) < 2 or sys.argv[1].lower() not in ["itu", "uls", "repeaterbook"]:
         sys.stderr.write(
             f"""HAMKIT CLI (v{__version__}):
 A command-line interface to the python hamkit modules.
@@ -32,6 +36,8 @@ Available commands, and their arguments:
                            country code (e.g., itu_prefixes KK7CMT) 
 
     uls [CALLSIGN],        where CALLSIGN is the callsign to look up
+
+    repeateroook           return a list of nearby repeaters
 """
         )
         return
@@ -80,12 +86,70 @@ Available commands, and their arguments:
         )
         print(_format_uls_record(uls.call_sign_lookup(callsign)))
 
+    elif sys.argv[1].lower() == "repeaterbook":
+        # We need the user's location
+        geo = _ip_geolocate()
+        if geo is None:
+            sys.stderr.write("Unable to geolocate. Exiting.")
+            sys.exit(1)
+
+        # Download the database, if not already present
+        db_file = "repeaterbook.db"
+        if not os.path.isfile(db_file):
+            if geo["country_code"] not in ["US", "CA"]:
+                sys.stderr.write("RepeaterBook downloads work only for US and Canada")
+                sys.exit(1)
+            url = "https://www.repeaterbook.com/api/export.php?"
+            params = {}
+            if geo["country_code"] == "US":
+                params["state"] = geo["region"]
+            elif geo["country_code"] == "CA":
+                params["country"] = geo["country"]
+            RepeaterBook.download(
+                "repeaterbook.db", sources=[url + urllib.parse.urlencode(params)]
+            )
+        rb = RepeaterBook(db_file)
+
+        print(
+            f"SUBROUTINE: find_nearest(lat={geo['latitude']}, lon={geo['longitude']}):\nThe nearest repeaters are:\n"
+        )
+        count = 0
+        for r in rb.find_nearest(
+            lat=geo["latitude"], lon=geo["longitude"], max_distance=30
+        ):
+            print(_format_repeater(r))
+            count += 1
+            if count == 10:
+                break
+
+
+def _ip_geolocate():
+    perm = input(
+        "This method requires your geolocation. Would you like to proceed by estimating your location via your external IP address? [yes|no]: "
+    )
+    if perm.lower() not in ["yes", "y"]:
+        return None
+
+    response = requests.get("https://ipwho.is/")
+    response.raise_for_status()
+    return json.loads(response.text)
+
 
 def _format_prefix_record(r):
     return f"""  ITU Prefix: {r.prefix}
   Country Name: {r.country_name}
   Country Code: {r.country_code}
 """
+
+
+def _format_repeater(r):
+    repeater = r._asdict()
+    result = ""
+    for k in repeater:
+        if repeater[k] in [0, ""]:
+            continue
+        result += "  " + k.replace("_", " ") + ": " + str(repeater[k]) + "\n"
+    return result
 
 
 def _format_uls_record(r):
