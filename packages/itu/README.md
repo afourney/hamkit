@@ -1,17 +1,17 @@
-# ITU Prefixes
+# hamkit.itu
 
-[![PyPI - Version](https://img.shields.io/pypi/v/itu-prefixes.svg)](https://pypi.org/project/itu-prefixes)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/itu-prefixes.svg)](https://pypi.org/project/itu-prefixes)
+[![PyPI - Version](https://img.shields.io/pypi/v/hamkit-itu.svg)](https://pypi.org/project/hamkit-itu)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/hamkit-itu.svg)](https://pypi.org/project/hamkit-itu)
 
 ---
 
 > [!NOTE]  
-> `itu_prefixes` is a _small standalone component_ of [`hamkit`](https://pypi.org/project/hamkit/). You can use it by itself (see below) if ITU prefix functionality is all that you need. Alternatively, install the entire collection of HamKit modules with `pip install hamkit`.
+> `hamkit.itu` is a _small standalone component_ of [`hamkit`](https://pypi.org/project/hamkit/). You can use it by itself (see below) if ITU prefix functionality is all that you need. Alternatively, install the entire collection of HamKit modules with `pip install hamkit`.
 
 ### A simple library to work with ITU call sign prefixes
 
 ```console
-pip install itu-prefixes
+pip install hamkit-itu
 ```
 
 #### call_sign_to_country
@@ -19,9 +19,9 @@ pip install itu-prefixes
 To determine which country likely issued a call sign, you can do:
 
 ```python
-from hamkit import itu_prefixes
+from hamkit.itu import call_sign_to_country
 
-print(itu_prefixes.call_sign_to_country("KK7CMT"))
+print(call_sign_to_country("KK7CMT"))
 ```
 
 which will output:
@@ -35,9 +35,9 @@ ITU_Prefix(prefix='K', country_name='United States', country_code='US')
 Likewise, to determine which prefixes a country may use, you can do:
 
 ```python
-from hamkit import itu_prefixes
+from hamkit.itu import country_to_prefixes
 
-print(itu_prefixes.country_to_prefixes("US"))
+print(country_to_prefixes("US"))
 ```
 
 which will output:
@@ -67,9 +67,9 @@ which will output:
 Likewise, to determine which countries might correspond to a given prefix, do:
 
 ```python
-from hamkit import itu_prefixes
+from hamkit.itu import prefix_to_countries
 
-print(itu_prefixes.prefix_to_countries("HB"))
+print(prefix_to_countries("HB"))
 ```
 
 which will produce:
@@ -85,4 +85,4 @@ which will produce:
 
 ## License
 
-`itu-prefixes` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
+`hamkit-itu` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.

@@ -23,7 +23,9 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
-  "itu_prefixes"
+  "hamkit-itu",
+  "hamkit-uls",
+  "hamkit-repeaterbook",
 ]
 
 [project.urls]

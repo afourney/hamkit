@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "itu-prefixes"
+name = "hamkit-itu"
 dynamic = ["version"]
 description = 'A tool for working with ITU call sign prefixes (e.g., to determine which country likely issued a given call sign).'
 readme = "README.md"
@@ -25,31 +25,31 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Documentation = "https://github.com/afourney/hamkit/blob/main/packages/itu-prefixes/README.md"
+Documentation = "https://github.com/afourney/hamkit/blob/main/packages/itu/README.md"
 Issues = "https://github.com/afourney/hamkit/issues"
-Source = "https://github.com/afourney/hamkit/blob/main/packages/itu-prefixes/README.md"
+Source = "https://github.com/afourney/hamkit/blob/main/packages/itu/README.md"
 
 [tool.hatch.version]
-path = "src/hamkit/itu_prefixes/__about__.py"
+path = "src/hamkit/itu/__about__.py"
 
 [tool.hatch.envs.types]
 extra-dependencies = [
   "mypy>=1.0.0",
 ]
 [tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:src/hamkit/itu_prefixes tests}"
+check = "mypy --install-types --non-interactive {args:src/hamkit/itu tests}"
 
 [tool.coverage.run]
-source_pkgs = ["hamkit.itu_prefixes", "tests"]
+source_pkgs = ["hamkit.itu", "tests"]
 branch = true
 parallel = true
 omit = [
-  "src/hamkit/itu_prefixes/__about__.py",
+  "src/hamkit/itu/__about__.py",
 ]
 
 [tool.coverage.paths]
-itu_prefixes = ["src/hamkit/itu_prefixes", "*/itu-prefixes/src/hamkit/itu_prefixes"]
-tests = ["tests", "*/itu-prefixes/tests"]
+itu = ["src/hamkit/itu", "*/itu/src/hamkit/itu"]
+tests = ["tests", "*/itu/tests"]
 
 [tool.coverage.report]
 exclude_lines = [
