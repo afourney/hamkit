@@ -27,7 +27,7 @@ print(call_sign_to_country("KK7CMT"))
 which will output:
 
 ```
-ITU_Prefix(prefix='K', country_name='United States', country_code='US')
+ItuPrefix(prefix='K', country_name='United States', country_code='US')
 ```
 
 #### country_to_prefixes
@@ -44,21 +44,21 @@ which will output:
 
 ```
 [
-    ITU_Prefix(prefix='AA', country_name='United States', country_code='US'),
-    ITU_Prefix(prefix='AB', country_name='United States', country_code='US'),
-    ITU_Prefix(prefix='AC', country_name='United States', country_code='US'),
-    ITU_Prefix(prefix='AD', country_name='United States', country_code='US'),
-    ITU_Prefix(prefix='AE', country_name='United States', country_code='US'),
-    ITU_Prefix(prefix='AF', country_name='United States', country_code='US'),
-    ITU_Prefix(prefix='AG', country_name='United States', country_code='US'),
-    ITU_Prefix(prefix='AH', country_name='United States', country_code='US'),
-    ITU_Prefix(prefix='AI', country_name='United States', country_code='US'),
-    ITU_Prefix(prefix='AJ', country_name='United States', country_code='US'),
-    ITU_Prefix(prefix='AK', country_name='United States', country_code='US'),
-    ITU_Prefix(prefix='AL', country_name='United States', country_code='US'),
-    ITU_Prefix(prefix='K', country_name='United States', country_code='US'),
-    ITU_Prefix(prefix='N', country_name='United States', country_code='US'),
-    ITU_Prefix(prefix='W', country_name='United States', country_code='US')
+    ItuPrefix(prefix='AA', country_name='United States', country_code='US'),
+    ItuPrefix(prefix='AB', country_name='United States', country_code='US'),
+    ItuPrefix(prefix='AC', country_name='United States', country_code='US'),
+    ItuPrefix(prefix='AD', country_name='United States', country_code='US'),
+    ItuPrefix(prefix='AE', country_name='United States', country_code='US'),
+    ItuPrefix(prefix='AF', country_name='United States', country_code='US'),
+    ItuPrefix(prefix='AG', country_name='United States', country_code='US'),
+    ItuPrefix(prefix='AH', country_name='United States', country_code='US'),
+    ItuPrefix(prefix='AI', country_name='United States', country_code='US'),
+    ItuPrefix(prefix='AJ', country_name='United States', country_code='US'),
+    ItuPrefix(prefix='AK', country_name='United States', country_code='US'),
+    ItuPrefix(prefix='AL', country_name='United States', country_code='US'),
+    ItuPrefix(prefix='K', country_name='United States', country_code='US'),
+    ItuPrefix(prefix='N', country_name='United States', country_code='US'),
+    ItuPrefix(prefix='W', country_name='United States', country_code='US')
 ]
 ```
 
@@ -76,10 +76,10 @@ which will produce:
 
 ```
 [
-    ITU_Prefix(prefix='HB3Y', country_name='Liechtenstein', country_code='LI'),
-    ITU_Prefix(prefix='HB0', country_name='Liechtenstein', country_code='LI'),
-    ITU_Prefix(prefix='HBL', country_name='Liechtenstein', country_code='LI'),
-    ITU_Prefix(prefix='HB', country_name='Switzerland', country_code='CH')
+    ItuPrefix(prefix='HB3Y', country_name='Liechtenstein', country_code='LI'),
+    ItuPrefix(prefix='HB0', country_name='Liechtenstein', country_code='LI'),
+    ItuPrefix(prefix='HBL', country_name='Liechtenstein', country_code='LI'),
+    ItuPrefix(prefix='HB', country_name='Switzerland', country_code='CH')
 ]
 ```
 
