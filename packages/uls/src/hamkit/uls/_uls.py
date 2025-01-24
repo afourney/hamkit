@@ -82,7 +82,8 @@ class ULS(object):
             Operator_Class,
             Group_Code,
             Region_Code
-            FROM LicenseView WHERE Call_Sign = ?;""",
+            FROM LicenseView WHERE Call_Sign = ?
+            ORDER BY Unique_System_Identifier DESC;""",
             (call_sign.upper().strip(),),
         )
         row = cursor.fetchone()
