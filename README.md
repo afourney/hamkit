@@ -9,6 +9,11 @@ A collection of useful submodules for HAM Radio. At present, HamKit includes the
 | [hamkit-uls](https://pypi.org/project/hamkit-uls/)                   | ![PyPI - Version](https://img.shields.io/pypi/v/hamkit-uls.svg)          | Tools for working with local copies of the FCC Universal Licensing System database, (e.g., to look up call signs, etc.) |
 | [hamkit-repeaterbook](https://pypi.org/project/hamkit-repeaterbook/) | ![PyPI - Version](https://img.shields.io/pypi/v/hamkit-repeaterbook.svg) | Tools for working with data exported from RepeaterBook (e.g., to save a database of local repeaters, etc.)              |
 
+## In development
+
+- [hamkit-aprs](packages/aprs/README.md): package scaffold for future APRS packet
+  parsing and composition; no packet functionality is implemented yet.
+
 ## License
 
 `hamkit` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
