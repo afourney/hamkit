@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "hamkit-aprs"
 dynamic = ["version"]
-description = 'Scaffolding for future APRS packet parsing and composition.'
+description = 'Typed APRS packet parsing and composition foundation.'
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -14,7 +14,7 @@ authors = [
   { name = "Adam Fourney", email = "adam.fourney@gmail.com" },
 ]
 classifiers = [
-  "Development Status :: 1 - Planning",
+  "Development Status :: 3 - Alpha",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -66,3 +66,8 @@ exclude = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hamkit"]
+
+[tool.mypy]
+python_version = "3.10"
+mypy_path = ["$MYPY_CONFIG_FILE_DIR/src", "$MYPY_CONFIG_FILE_DIR/tests"]
+explicit_package_bases = true

@@ -11,8 +11,8 @@ A collection of useful submodules for HAM Radio. At present, HamKit includes the
 
 ## In development
 
-- [hamkit-aprs](packages/aprs/README.md): package scaffold for future APRS packet
-  parsing and composition; no packet functionality is implemented yet.
+- [hamkit-aprs](packages/aprs/README.md): typed APRS parsing and composition
+  foundation, with byte-preserving handling of unsupported payloads.
 
 ## License
 
