@@ -39,19 +39,19 @@ Every packet is fully expanded. JSON strings preserve padding, backslashes, embe
 
 `APRS101 p.N` always means the **printed page number**, not a PDF viewer page index. The supplied PDF has ten front-matter pages before printed page 1. Its cover identifies document version 1.0.1, dated 29 August 2000, describing protocol version 1.0.
 
-| Label | Source and use |
-| --- | --- |
-| APRS101 | User-supplied `APRS101.pdf`; [public reference copy](https://www.aprs.org/doc/APRS101.PDF). Packet grammar, field widths, encodings, and application behavior. |
-| A11 | [Live APRS 1.1 addendum](https://www.aprs.org/aprs11.html), consulted 2026-10-15. Corrections take precedence over conflicting APRS101 wording in the modern profile. |
-| A11 DF | [Direction-finding notes](https://www.aprs.org/APRS-docs/DF.TXT), linked from the addendum; consulted 2026-10-15. |
-| A11 AREA | [Area-object corrections](https://www.aprs.org/aprs11/areaobjects.txt), linked from the addendum; consulted 2026-10-15. |
-| A11 WX | [Weather clarifications](https://www.aprs.org/aprs11/spec-wx.txt), linked from the addendum; consulted 2026-10-15. |
-| A11 REPLY-ACK | [Reply acknowledgment algorithm](https://www.aprs.org/aprs11/replyacks.txt), linked from the addendum; consulted 2026-10-15. |
-| A11 names | [Names and spaces](https://www.aprs.org/aprs11/aprs-names-and-spaces.txt), linked from the addendum; consulted 2026-10-15. |
-| A11 Objects | [Object ownership and lifecycle](https://www.aprs.org/aprs11/Objects.txt), linked from the addendum; consulted 2026-10-15. |
-| A11 PHG | [PHG range presentation](https://www.aprs.org/symbols/PHGmobile.txt), linked from the addendum; consulted 2026-10-15. |
-| A11 SSIDs | [SSID conventions](https://www.aprs.org/aprs11/SSIDs.txt), linked from the addendum; consulted 2026-10-15. |
-| FAP | [Repository at the captured commit](https://github.com/hessu/go-aprs-fap/tree/94c7118ca94d251990382b9210112ddd5b260efa). Each compatibility case links to its exact source file and line. |
+| Label         | Source and use                                                                                                                                                                            |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| APRS101       | User-supplied `APRS101.pdf`; [public reference copy](https://www.aprs.org/doc/APRS101.PDF). Packet grammar, field widths, encodings, and application behavior.                            |
+| A11           | [Live APRS 1.1 addendum](https://www.aprs.org/aprs11.html), consulted 2026-10-15. Corrections take precedence over conflicting APRS101 wording in the modern profile.                     |
+| A11 DF        | [Direction-finding notes](https://www.aprs.org/APRS-docs/DF.TXT), linked from the addendum; consulted 2026-10-15.                                                                         |
+| A11 AREA      | [Area-object corrections](https://www.aprs.org/aprs11/areaobjects.txt), linked from the addendum; consulted 2026-10-15.                                                                   |
+| A11 WX        | [Weather clarifications](https://www.aprs.org/aprs11/spec-wx.txt), linked from the addendum; consulted 2026-10-15.                                                                        |
+| A11 REPLY-ACK | [Reply acknowledgment algorithm](https://www.aprs.org/aprs11/replyacks.txt), linked from the addendum; consulted 2026-10-15.                                                              |
+| A11 names     | [Names and spaces](https://www.aprs.org/aprs11/aprs-names-and-spaces.txt), linked from the addendum; consulted 2026-10-15.                                                                |
+| A11 Objects   | [Object ownership and lifecycle](https://www.aprs.org/aprs11/Objects.txt), linked from the addendum; consulted 2026-10-15.                                                                |
+| A11 PHG       | [PHG range presentation](https://www.aprs.org/symbols/PHGmobile.txt), linked from the addendum; consulted 2026-10-15.                                                                     |
+| A11 SSIDs     | [SSID conventions](https://www.aprs.org/aprs11/SSIDs.txt), linked from the addendum; consulted 2026-10-15.                                                                                |
+| FAP           | [Repository at the captured commit](https://github.com/hessu/go-aprs-fap/tree/94c7118ca94d251990382b9210112ddd5b260efa). Each compatibility case links to its exact source file and line. |
 
 The supplied PDF SHA-256 is `78a72618c788b8b7f8369004884018f9b02f990069ff67915bb1e30738b1da01`. The FAP commit is **`94c7118ca94d251990382b9210112ddd5b260efa`**, dated 2026-10-13T22:45:03Z. The web addendum is a live page: its text includes updates later than the nominal July 2004 freeze. Here, `core-1.1` means the retrieved addendum applied to APRS101, not a reconstruction of the site as it existed in 2004. The web pages are identified by URL and consultation date; no immutable revision identifier was available.
 
@@ -80,25 +80,25 @@ if "packet_hex" in case:
 
 ### Semantic field contract
 
-| Field or convention | Meaning |
-| --- | --- |
-| `header.source`, `header.destination` | Raw outer address text, preserving explicit SSIDs and case. This is separate from a library's address normalization. |
-| `header.path` | Ordered path components. `repeated_marker` records an actual trailing `*`; it does not infer earlier hops' H bits. APRS-IS q tokens are not RF AX.25 callsigns. |
-| `kind` / `format` | Semantic packet category / position encoding. A weather-bearing object retains `kind: object` and contains weather fields. Query, bulletin, and telemetry-definition categories are useful refinements of the APRS message container. |
-| Position | Signed decimal degrees, north/east positive, using WGS-84 unless explicitly noted. Compressed expected coordinates are the decoded, quantized values. |
-| Ambiguity | `ambiguity_digits` is 0–4. `cell_bounds_deg` carries the transmitted area; the scalar coordinate is its center by corpus convention. Bounds are ascending numeric endpoints, including west/south cases. They do not imply an exact station fix. |
-| Symbols | Retain `table_id_raw`, normalized primary/alternate table, symbol `code`, and overlay. In compressed positions, `a`–`j` mean numeric overlays 0–9. The corpus tests encoding, not current icon artwork or the entire live symbol registry. |
-| Timestamps | Preserve raw bytes and transmitted components. UTC/local-zone labels do not supply missing year, month, day, local offset, or a receiver clock. Never invent a complete instant from a partial timestamp. |
-| Motion | Unit-suffixed names are explicit. Preserve course code 360 if transmitted; it is equivalent in direction to north but need not be normalized to 0. Uncompressed course code 000 can mean unavailable. |
-| Altitude | `/A=` uses feet; compressed altitude uses logarithmically encoded feet; Mic-E altitude uses meters with a 10,000 m bias. GGA altitude is MSL and geoid separation is a separate field. No unsupported datum conversion is assumed. |
-| Weather | Keep raw encoded measurements as well as named conversions. `null` means unavailable, not a measured zero. `p`, `P`, and `r` have distinct accumulation windows. Software/device strings do not create sensor readings. |
-| Objects and items | Keep both padded `name_raw` and the identity name with right-padding removed. Preserve case. A kill packet is a valid lifecycle update, not malformed position data. |
-| Messages | Preserve the nine-byte `addressee_raw`, unpadded addressee, text, ID, and acknowledgment semantics. Message IDs are strings; leading zeros matter. Group addressing, bulletins, and NWS references have different acknowledgment rules. |
-| Telemetry | Analog samples are raw channel values, ordered A1–A5. Digital characters are B1–B8 left to right. A missing channel is null, not zero. Calibration and bit-label sense require station-specific definition state. |
-| `comment`, `status_text`, raw payloads | Byte-preserving values after the recognized fields shown in the case are consumed. Removing parsed extension bytes can leave adjacent spaces; preserve those spaces. A parser may also expose the original unsliced comment. |
-| Missing keys and `null` | An absent optional semantic field means this packet supplies no assertion for that feature; do not manufacture an observation from absence. Explicit null asserts an unavailable value. Diagnostic metadata and additional correctly decoded fields are permitted. Sequence `expected` maps are partial state assertions. |
-| `error_class` | A corpus-level diagnostic category, not a required exception message or exact parser API. Keep the envelope or other recoverable fields when appropriate. |
-| `policy`, `position_usable` | Application behavior assertions. A syntactically decodable but invalid NMEA fix must not become a trusted position update; network retention/routing flags belong to the policy layer. |
+| Field or convention                    | Meaning                                                                                                                                                                                                                                                                                                                   |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `header.source`, `header.destination`  | Raw outer address text, preserving explicit SSIDs and case. This is separate from a library's address normalization.                                                                                                                                                                                                      |
+| `header.path`                          | Ordered path components. `repeated_marker` records an actual trailing `*`; it does not infer earlier hops' H bits. APRS-IS q tokens are not RF AX.25 callsigns.                                                                                                                                                           |
+| `kind` / `format`                      | Semantic packet category / position encoding. A weather-bearing object retains `kind: object` and contains weather fields. Query, bulletin, and telemetry-definition categories are useful refinements of the APRS message container.                                                                                     |
+| Position                               | Signed decimal degrees, north/east positive, using WGS-84 unless explicitly noted. Compressed expected coordinates are the decoded, quantized values.                                                                                                                                                                     |
+| Ambiguity                              | `ambiguity_digits` is 0–4. `cell_bounds_deg` carries the transmitted area; the scalar coordinate is its center by corpus convention. Bounds are ascending numeric endpoints, including west/south cases. They do not imply an exact station fix.                                                                          |
+| Symbols                                | Retain `table_id_raw`, normalized primary/alternate table, symbol `code`, and overlay. In compressed positions, `a`–`j` mean numeric overlays 0–9. The corpus tests encoding, not current icon artwork or the entire live symbol registry.                                                                                |
+| Timestamps                             | Preserve raw bytes and transmitted components. UTC/local-zone labels do not supply missing year, month, day, local offset, or a receiver clock. Never invent a complete instant from a partial timestamp.                                                                                                                 |
+| Motion                                 | Unit-suffixed names are explicit. Preserve course code 360 if transmitted; it is equivalent in direction to north but need not be normalized to 0. Uncompressed course code 000 can mean unavailable.                                                                                                                     |
+| Altitude                               | `/A=` uses feet; compressed altitude uses logarithmically encoded feet; Mic-E altitude uses meters with a 10,000 m bias. GGA altitude is MSL and geoid separation is a separate field. No unsupported datum conversion is assumed.                                                                                        |
+| Weather                                | Keep raw encoded measurements as well as named conversions. `null` means unavailable, not a measured zero. `p`, `P`, and `r` have distinct accumulation windows. Software/device strings do not create sensor readings.                                                                                                   |
+| Objects and items                      | Keep both padded `name_raw` and the identity name with right-padding removed. Preserve case. A kill packet is a valid lifecycle update, not malformed position data.                                                                                                                                                      |
+| Messages                               | Preserve the nine-byte `addressee_raw`, unpadded addressee, text, ID, and acknowledgment semantics. Message IDs are strings; leading zeros matter. Group addressing, bulletins, and NWS references have different acknowledgment rules.                                                                                   |
+| Telemetry                              | Analog samples are raw channel values, ordered A1–A5. Digital characters are B1–B8 left to right. A missing channel is null, not zero. Calibration and bit-label sense require station-specific definition state.                                                                                                         |
+| `comment`, `status_text`, raw payloads | Byte-preserving values after the recognized fields shown in the case are consumed. Removing parsed extension bytes can leave adjacent spaces; preserve those spaces. A parser may also expose the original unsliced comment.                                                                                              |
+| Missing keys and `null`                | An absent optional semantic field means this packet supplies no assertion for that feature; do not manufacture an observation from absence. Explicit null asserts an unavailable value. Diagnostic metadata and additional correctly decoded fields are permitted. Sequence `expected` maps are partial state assertions. |
+| `error_class`                          | A corpus-level diagnostic category, not a required exception message or exact parser API. Keep the envelope or other recoverable fields when appropriate.                                                                                                                                                                 |
+| `policy`, `position_usable`            | Application behavior assertions. A syntactically decodable but invalid NMEA fix must not become a trusted position update; network retention/routing flags belong to the policy layer.                                                                                                                                    |
 
 Strings, raw codes, integer measurements, flags, and identifiers compare exactly. For converted floating-point values, use absolute tolerance `1e-8` degrees for coordinates and `1e-6` in the named physical unit, or relative tolerance `1e-9` where the magnitude warrants it. These tolerances cover decimal serialization and arithmetic differences; they do not excuse a wrong unit, an incorrect ambiguity cell, or comparing the encoder input against its quantized output. Negative zero and zero are numerically equivalent.
 
@@ -108,31 +108,31 @@ Exact conversions used: 1 knot = 1.852 km/h = 1852/3600 m/s; 1 mph = 0.44704 m/s
 
 ## Profiles and outcomes
 
-| Profile | Cases | Purpose |
-| --- | ---: | --- |
-| `core-1.1` | 801 | APRS101 plus explicit live-addendum corrections; field decoding and selected application semantics. |
-| `historical-1.0` | 41 | Legacy behavior retained for deliberate backward compatibility; not a modern transmission recommendation. |
-| `strict-envelope` | 14 | RF/TNC2 transmitter and envelope constraints. Do not apply RF address restrictions indiscriminately to APRS-IS. |
-| `strict-validation` | 112 | Malformed fields, width/range limits, or a stated conservative extension-extraction policy. Valid surrounding data may survive. |
-| `disputed-units` | 12 | Uncompressed complete-weather wind has conflicting units in APRS101 and FAP. Choose a named interpretation. |
-| `disputed-zero` | 1 | All-zero complete-weather wind can represent unavailable data or measured calm, depending on the chosen policy. |
-| `nmea-supported` | 20 | Optional NMEA parsing capability. Raw fields and interpreted values are given; this is not a full NMEA standard suite. |
-| `linked-weather-extension` | 4 | Later water-gauge fields described in the addendum's linked weather notes. |
-| `network-policy` | 5 | No-gate and no-archive application behavior, separate from syntactic packet validity. |
-| `aprs-is` | 6 | Preserve Internet path tokens and case. Does not implement full q-construct server rules. |
-| `aea-transport` | 1 | Historical monitor-format adapter; normalize to TNC2 before ordinary packet parsing. |
-| `opaque-vendor` | 4 | Recognize vendor/raw-weather family and retain payload; supplied protocol sources do not fully define measurements. |
-| `stateful` | 7 | Ordered packets plus initial conditions and partial expected state after each step. |
-| `compatibility-fap` | 517 | Captured results of a pinned implementation, including extensions, permissive behavior, and known discrepancies. |
+| Profile                    | Cases | Purpose                                                                                                                         |
+| -------------------------- | ----: | ------------------------------------------------------------------------------------------------------------------------------- |
+| `core-1.1`                 |   801 | APRS101 plus explicit live-addendum corrections; field decoding and selected application semantics.                             |
+| `historical-1.0`           |    41 | Legacy behavior retained for deliberate backward compatibility; not a modern transmission recommendation.                       |
+| `strict-envelope`          |    14 | RF/TNC2 transmitter and envelope constraints. Do not apply RF address restrictions indiscriminately to APRS-IS.                 |
+| `strict-validation`        |   112 | Malformed fields, width/range limits, or a stated conservative extension-extraction policy. Valid surrounding data may survive. |
+| `disputed-units`           |    12 | Uncompressed complete-weather wind has conflicting units in APRS101 and FAP. Choose a named interpretation.                     |
+| `disputed-zero`            |     1 | All-zero complete-weather wind can represent unavailable data or measured calm, depending on the chosen policy.                 |
+| `nmea-supported`           |    20 | Optional NMEA parsing capability. Raw fields and interpreted values are given; this is not a full NMEA standard suite.          |
+| `linked-weather-extension` |     4 | Later water-gauge fields described in the addendum's linked weather notes.                                                      |
+| `network-policy`           |     5 | No-gate and no-archive application behavior, separate from syntactic packet validity.                                           |
+| `aprs-is`                  |     6 | Preserve Internet path tokens and case. Does not implement full q-construct server rules.                                       |
+| `aea-transport`            |     1 | Historical monitor-format adapter; normalize to TNC2 before ordinary packet parsing.                                            |
+| `opaque-vendor`            |     4 | Recognize vendor/raw-weather family and retain payload; supplied protocol sources do not fully define measurements.             |
+| `stateful`                 |     7 | Ordered packets plus initial conditions and partial expected state after each step.                                             |
+| `compatibility-fap`        |   517 | Captured results of a pinned implementation, including extensions, permissive behavior, and known discrepancies.                |
 
-| Outcome | Assertion |
-| --- | --- |
-| `accept` | The fields described by this profile decode. This alone does not authorize forwarding or transmission. |
-| `reject-envelope` | No valid outer RF/TNC2 envelope under the selected strict profile. |
-| `reject-field` | A specified field is invalid; do not produce a trusted value for it. Whole-packet discard is not required. |
-| `reject-fix` | Do not use this NMEA report as a position fix. Raw diagnostic fields may remain available. |
-| `opaque` | Classify and preserve without inventing a detailed decoder. Ignoring an unsupported payload safely is acceptable. |
-| `reject` | FAP returned an error in the captured compatibility run. This is not a normative APRS verdict. |
+| Outcome           | Assertion                                                                                                         |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `accept`          | The fields described by this profile decode. This alone does not authorize forwarding or transmission.            |
+| `reject-envelope` | No valid outer RF/TNC2 envelope under the selected strict profile.                                                |
+| `reject-field`    | A specified field is invalid; do not produce a trusted value for it. Whole-packet discard is not required.        |
+| `reject-fix`      | Do not use this NMEA report as a position fix. Raw diagnostic fields may remain available.                        |
+| `opaque`          | Classify and preserve without inventing a detailed decoder. Ignoring an unsupported payload safely is acceptable. |
+| `reject`          | FAP returned an error in the captured compatibility run. This is not a normative APRS verdict.                    |
 
 Stateful records have `steps` instead of a single `packet` and `outcome`. Reset state before each sequence, apply the stated initial condition, and evaluate the listed state assertions in order. The sequence vectors do not simulate RF transmission, timers, retransmission queues, or an interactive operator.
 
@@ -140,26 +140,26 @@ Stateful records have `steps` instead of a single `packet` and `outcome`. Reset 
 
 ## Coverage and verification
 
-| Family | Cases | Coverage |
-| --- | ---: | --- |
-| [HDR](#family-hdr) | 51 | Envelope splitting; repeated markers; eight-hop boundary; destination dispatch; historical destination-SSID routing. |
-| [POS](#family-pos) | 68 | Four position DTIs; hemispheres and poles; null convention; all ambiguity levels; comments and overlays. |
-| [TIM](#family-tim) | 20 | DHM UTC/local, HMS, weather MDHM, component boundaries, invalid timestamps, status timestamp restrictions. |
-| [EXT](#family-ext) | 50 | Course/speed; altitude placement; PHG height/gain/directivity; explicit range; DFS and every DF quality code. |
-| [CMP](#family-cmp) | 122 | Coordinate quantization; table/overlay encoding; motion/range/altitude precedence; all 64 six-bit compression types. |
-| [MIC](#family-mic) | 265 | All longitude degrees 0–179; minute/hundredth boundaries; message-bit combinations; speed/course encodings; ambiguity; type markers; altitude and legacy telemetry. |
-| [OBJ](#family-obj) | 53 | Object/item live and killed forms; name boundaries; compressed and moving forms; ten area shapes; sixteen colors; signposts. |
-| [WX](#family-wx) | 66 | Positionless/uncompressed/compressed weather; missing and zero values; temperatures; humidity/pressure; rain windows; luminosity; snowfall; water level; storms. |
-| [TLM](#family-tlm) | 18 | Numeric/MIC sequence fields; five analog/eight digital channels; definition messages; partial/empty definitions. |
-| [MSG](#family-msg) | 45 | Text/ID/address limits; groups; ack/rej; reply-ack; automatic answers; bulletins/announcements/NWS; NTS record types. |
-| [QRY](#family-qry) | 20 | General and directed queries; geographic footprints; response payloads; capability tokens. |
-| [STA](#family-sta) | 29 | Empty/padded/timed status; Maidenhead cells; beam heading/ERP; suffix anchoring. |
-| [NME](#family-nme) | 36 | GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; historical SSID symbols; symbol precedence. |
-| [NET](#family-net) | 15 | Third-party nested envelopes; no-gate/no-archive; q-token preservation; AEA adapter. |
-| [OTH](#family-oth) | 38 | Opaque vendor formats; user-defined binary data; explicit invalid/test; obsolete grids/beacons; reserved DTIs; old/new X1J behavior. |
-| [BAD](#family-bad) | 125 | Envelope, field width, coordinate range, truncation, symbol, compression, message, telemetry, weather, and nested-packet failures. |
-| [SEQ](#family-seq) | 7 | Object ownership/lifecycle; case/name identity; duplicate messages/reply-ack; telemetry calibration; bulletins; status precedence; weather association. |
-| [FAP](#family-fap) | 517 | Every captured root-parser invocation plus eligible full-packet/encoder/CLI supplements from the pinned tests. |
+| Family             | Cases | Coverage                                                                                                                                                            |
+| ------------------ | ----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [HDR](#family-hdr) |    51 | Envelope splitting; repeated markers; eight-hop boundary; destination dispatch; historical destination-SSID routing.                                                |
+| [POS](#family-pos) |    68 | Four position DTIs; hemispheres and poles; null convention; all ambiguity levels; comments and overlays.                                                            |
+| [TIM](#family-tim) |    20 | DHM UTC/local, HMS, weather MDHM, component boundaries, invalid timestamps, status timestamp restrictions.                                                          |
+| [EXT](#family-ext) |    50 | Course/speed; altitude placement; PHG height/gain/directivity; explicit range; DFS and every DF quality code.                                                       |
+| [CMP](#family-cmp) |   122 | Coordinate quantization; table/overlay encoding; motion/range/altitude precedence; all 64 six-bit compression types.                                                |
+| [MIC](#family-mic) |   265 | All longitude degrees 0–179; minute/hundredth boundaries; message-bit combinations; speed/course encodings; ambiguity; type markers; altitude and legacy telemetry. |
+| [OBJ](#family-obj) |    53 | Object/item live and killed forms; name boundaries; compressed and moving forms; ten area shapes; sixteen colors; signposts.                                        |
+| [WX](#family-wx)   |    66 | Positionless/uncompressed/compressed weather; missing and zero values; temperatures; humidity/pressure; rain windows; luminosity; snowfall; water level; storms.    |
+| [TLM](#family-tlm) |    18 | Numeric/MIC sequence fields; five analog/eight digital channels; definition messages; partial/empty definitions.                                                    |
+| [MSG](#family-msg) |    45 | Text/ID/address limits; groups; ack/rej; reply-ack; automatic answers; bulletins/announcements/NWS; NTS record types.                                               |
+| [QRY](#family-qry) |    20 | General and directed queries; geographic footprints; response payloads; capability tokens.                                                                          |
+| [STA](#family-sta) |    29 | Empty/padded/timed status; Maidenhead cells; beam heading/ERP; suffix anchoring.                                                                                    |
+| [NME](#family-nme) |    36 | GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; historical SSID symbols; symbol precedence.                                                |
+| [NET](#family-net) |    15 | Third-party nested envelopes; no-gate/no-archive; q-token preservation; AEA adapter.                                                                                |
+| [OTH](#family-oth) |    38 | Opaque vendor formats; user-defined binary data; explicit invalid/test; obsolete grids/beacons; reserved DTIs; old/new X1J behavior.                                |
+| [BAD](#family-bad) |   125 | Envelope, field width, coordinate range, truncation, symbol, compression, message, telemetry, weather, and nested-packet failures.                                  |
+| [SEQ](#family-seq) |     7 | Object ownership/lifecycle; case/name identity; duplicate messages/reply-ack; telemetry calibration; bulletins; status precedence; weather association.             |
+| [FAP](#family-fap) |   517 | Every captured root-parser invocation plus eligible full-packet/encoder/CLI supplements from the pinned tests.                                                      |
 
 Verification performed while building this edition:
 
@@ -2174,14 +2174,8 @@ Four position DTIs; hemispheres and poles; null convention; all ambiguity levels
       "longitude_deg": -72.029166666667,
       "ambiguity_digits": 1,
       "cell_bounds_deg": {
-        "latitude": [
-          49.058333333333,
-          49.06
-        ],
-        "longitude": [
-          -72.03,
-          -72.028333333333
-        ]
+        "latitude": [49.058333333333, 49.06],
+        "longitude": [-72.03, -72.028333333333]
       },
       "representative": "cell-center"
     },
@@ -2224,14 +2218,8 @@ Four position DTIs; hemispheres and poles; null convention; all ambiguity levels
       "longitude_deg": 72.029166666667,
       "ambiguity_digits": 1,
       "cell_bounds_deg": {
-        "latitude": [
-          -49.06,
-          -49.058333333333
-        ],
-        "longitude": [
-          72.028333333333,
-          72.03
-        ]
+        "latitude": [-49.06, -49.058333333333],
+        "longitude": [72.028333333333, 72.03]
       },
       "representative": "cell-center"
     },
@@ -2274,14 +2262,8 @@ Four position DTIs; hemispheres and poles; null convention; all ambiguity levels
       "longitude_deg": -72.029166666667,
       "ambiguity_digits": 1,
       "cell_bounds_deg": {
-        "latitude": [
-          49.058333333333,
-          49.06
-        ],
-        "longitude": [
-          -72.03,
-          -72.028333333333
-        ]
+        "latitude": [49.058333333333, 49.06],
+        "longitude": [-72.03, -72.028333333333]
       },
       "representative": "cell-center"
     },
@@ -2323,14 +2305,8 @@ Four position DTIs; hemispheres and poles; null convention; all ambiguity levels
       "longitude_deg": -72.025,
       "ambiguity_digits": 2,
       "cell_bounds_deg": {
-        "latitude": [
-          49.05,
-          49.066666666667
-        ],
-        "longitude": [
-          -72.033333333333,
-          -72.016666666667
-        ]
+        "latitude": [49.05, 49.066666666667],
+        "longitude": [-72.033333333333, -72.016666666667]
       },
       "representative": "cell-center"
     },
@@ -2373,14 +2349,8 @@ Four position DTIs; hemispheres and poles; null convention; all ambiguity levels
       "longitude_deg": 72.025,
       "ambiguity_digits": 2,
       "cell_bounds_deg": {
-        "latitude": [
-          -49.066666666667,
-          -49.05
-        ],
-        "longitude": [
-          72.016666666667,
-          72.033333333333
-        ]
+        "latitude": [-49.066666666667, -49.05],
+        "longitude": [72.016666666667, 72.033333333333]
       },
       "representative": "cell-center"
     },
@@ -2423,14 +2393,8 @@ Four position DTIs; hemispheres and poles; null convention; all ambiguity levels
       "longitude_deg": -72.025,
       "ambiguity_digits": 2,
       "cell_bounds_deg": {
-        "latitude": [
-          49.05,
-          49.066666666667
-        ],
-        "longitude": [
-          -72.033333333333,
-          -72.016666666667
-        ]
+        "latitude": [49.05, 49.066666666667],
+        "longitude": [-72.033333333333, -72.016666666667]
       },
       "representative": "cell-center"
     },
@@ -2472,14 +2436,8 @@ Four position DTIs; hemispheres and poles; null convention; all ambiguity levels
       "longitude_deg": -72.083333333333,
       "ambiguity_digits": 3,
       "cell_bounds_deg": {
-        "latitude": [
-          49.0,
-          49.166666666667
-        ],
-        "longitude": [
-          -72.166666666667,
-          -72.0
-        ]
+        "latitude": [49.0, 49.166666666667],
+        "longitude": [-72.166666666667, -72.0]
       },
       "representative": "cell-center"
     },
@@ -2522,14 +2480,8 @@ Four position DTIs; hemispheres and poles; null convention; all ambiguity levels
       "longitude_deg": 72.083333333333,
       "ambiguity_digits": 3,
       "cell_bounds_deg": {
-        "latitude": [
-          -49.166666666667,
-          -49.0
-        ],
-        "longitude": [
-          72.0,
-          72.166666666667
-        ]
+        "latitude": [-49.166666666667, -49.0],
+        "longitude": [72.0, 72.166666666667]
       },
       "representative": "cell-center"
     },
@@ -2572,14 +2524,8 @@ Four position DTIs; hemispheres and poles; null convention; all ambiguity levels
       "longitude_deg": -72.083333333333,
       "ambiguity_digits": 3,
       "cell_bounds_deg": {
-        "latitude": [
-          49.0,
-          49.166666666667
-        ],
-        "longitude": [
-          -72.166666666667,
-          -72.0
-        ]
+        "latitude": [49.0, 49.166666666667],
+        "longitude": [-72.166666666667, -72.0]
       },
       "representative": "cell-center"
     },
@@ -2621,14 +2567,8 @@ Four position DTIs; hemispheres and poles; null convention; all ambiguity levels
       "longitude_deg": -72.5,
       "ambiguity_digits": 4,
       "cell_bounds_deg": {
-        "latitude": [
-          49.0,
-          50.0
-        ],
-        "longitude": [
-          -73.0,
-          -72.0
-        ]
+        "latitude": [49.0, 50.0],
+        "longitude": [-73.0, -72.0]
       },
       "representative": "cell-center"
     },
@@ -2671,14 +2611,8 @@ Four position DTIs; hemispheres and poles; null convention; all ambiguity levels
       "longitude_deg": 72.5,
       "ambiguity_digits": 4,
       "cell_bounds_deg": {
-        "latitude": [
-          -50.0,
-          -49.0
-        ],
-        "longitude": [
-          72.0,
-          73.0
-        ]
+        "latitude": [-50.0, -49.0],
+        "longitude": [72.0, 73.0]
       },
       "representative": "cell-center"
     },
@@ -2721,14 +2655,8 @@ Four position DTIs; hemispheres and poles; null convention; all ambiguity levels
       "longitude_deg": -72.5,
       "ambiguity_digits": 4,
       "cell_bounds_deg": {
-        "latitude": [
-          49.0,
-          50.0
-        ],
-        "longitude": [
-          -73.0,
-          -72.0
-        ]
+        "latitude": [49.0, 50.0],
+        "longitude": [-73.0, -72.0]
       },
       "representative": "cell-center"
     },
@@ -5412,7 +5340,7 @@ Course/speed; altitude placement; PHG height/gain/directivity; explicit range; D
 
 <a id="ext-007"></a>
 
-### EXT-007 — Unknown movement '   /   '
+### EXT-007 — Unknown movement ' / '
 
 ```json
 {
@@ -25510,14 +25438,8 @@ All longitude degrees 0–179; minute/hundredth boundaries; message-bit combinat
       "longitude_deg": -112.129166666667,
       "ambiguity_digits": 1,
       "cell_bounds_deg": {
-        "latitude": [
-          33.426666666667,
-          33.428333333333
-        ],
-        "longitude": [
-          -112.13,
-          -112.128333333333
-        ]
+        "latitude": [33.426666666667, 33.428333333333],
+        "longitude": [-112.13, -112.128333333333]
       },
       "representative": "cell-center"
     },
@@ -25572,14 +25494,8 @@ All longitude degrees 0–179; minute/hundredth boundaries; message-bit combinat
       "longitude_deg": -112.125,
       "ambiguity_digits": 2,
       "cell_bounds_deg": {
-        "latitude": [
-          33.416666666667,
-          33.433333333333
-        ],
-        "longitude": [
-          -112.133333333333,
-          -112.116666666667
-        ]
+        "latitude": [33.416666666667, 33.433333333333],
+        "longitude": [-112.133333333333, -112.116666666667]
       },
       "representative": "cell-center"
     },
@@ -25634,14 +25550,8 @@ All longitude degrees 0–179; minute/hundredth boundaries; message-bit combinat
       "longitude_deg": -112.083333333333,
       "ambiguity_digits": 3,
       "cell_bounds_deg": {
-        "latitude": [
-          33.333333333333,
-          33.5
-        ],
-        "longitude": [
-          -112.166666666667,
-          -112.0
-        ]
+        "latitude": [33.333333333333, 33.5],
+        "longitude": [-112.166666666667, -112.0]
       },
       "representative": "cell-center"
     },
@@ -25696,14 +25606,8 @@ All longitude degrees 0–179; minute/hundredth boundaries; message-bit combinat
       "longitude_deg": -112.5,
       "ambiguity_digits": 4,
       "cell_bounds_deg": {
-        "latitude": [
-          33.0,
-          34.0
-        ],
-        "longitude": [
-          -113.0,
-          -112.0
-        ]
+        "latitude": [33.0, 34.0],
+        "longitude": [-113.0, -112.0]
       },
       "representative": "cell-center"
     },
@@ -26931,13 +26835,7 @@ All longitude degrees 0–179; minute/hundredth boundaries; message-bit combinat
     },
     "comment": "",
     "telemetry": {
-      "analog_raw": [
-        16,
-        null,
-        32,
-        null,
-        null
-      ],
+      "analog_raw": [16, null, 32, null, null],
       "encoding": "mic-e-hex"
     }
   },
@@ -26993,13 +26891,7 @@ All longitude degrees 0–179; minute/hundredth boundaries; message-bit combinat
     },
     "comment": "",
     "telemetry": {
-      "analog_raw": [
-        16,
-        32,
-        48,
-        255,
-        255
-      ],
+      "analog_raw": [16, 32, 48, 255, 255],
       "encoding": "mic-e-hex"
     }
   },
@@ -27055,13 +26947,7 @@ All longitude degrees 0–179; minute/hundredth boundaries; message-bit combinat
     },
     "comment": "",
     "telemetry": {
-      "analog_raw": [
-        0,
-        1,
-        127,
-        128,
-        255
-      ],
+      "analog_raw": [0, 1, 127, 128, 255],
       "encoding": "mic-e-binary"
     }
   },
@@ -29869,7 +29755,7 @@ Object/item live and killed forms; name boundaries; compressed and moving forms;
 
 <a id="obj-052"></a>
 
-### OBJ-052 — Object name boundary 'STATION  '
+### OBJ-052 — Object name boundary 'STATION '
 
 ```json
 {
@@ -30680,7 +30566,7 @@ Positionless/uncompressed/compressed weather; missing and zero values; temperatu
 
 <a id="wx-016"></a>
 
-### WX-016 — Humidity '  '
+### WX-016 — Humidity ' '
 
 ```json
 {
@@ -32223,7 +32109,7 @@ Positionless/uncompressed/compressed weather; missing and zero values; temperatu
 
 <a id="wx-047"></a>
 
-### WX-047 — Weather symbol /_
+### WX-047 — Weather symbol /\_
 
 ```json
 {
@@ -33110,7 +32996,7 @@ Positionless/uncompressed/compressed weather; missing and zero values; temperatu
 
 <a id="wx-062"></a>
 
-### WX-062 — Unavailable complete-weather wind '   /   '
+### WX-062 — Unavailable complete-weather wind ' / '
 
 ```json
 {
@@ -33386,24 +33272,9 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry": {
       "sequence": 0,
       "sequence_raw": "000",
-      "analog_raw": [
-        199,
-        0,
-        255,
-        73,
-        123
-      ],
+      "analog_raw": [199, 0, 255, 73, 123],
       "digital_bits": "01101001",
-      "digital_channels_B1_to_B8": [
-        0,
-        1,
-        1,
-        0,
-        1,
-        0,
-        0,
-        1
-      ]
+      "digital_channels_B1_to_B8": [0, 1, 1, 0, 1, 0, 0, 1]
     },
     "comment": ""
   },
@@ -33433,24 +33304,9 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry": {
       "sequence": 5,
       "sequence_raw": "005",
-      "analog_raw": [
-        199,
-        0,
-        255,
-        73,
-        123
-      ],
+      "analog_raw": [199, 0, 255, 73, 123],
       "digital_bits": "01101001",
-      "digital_channels_B1_to_B8": [
-        0,
-        1,
-        1,
-        0,
-        1,
-        0,
-        0,
-        1
-      ]
+      "digital_channels_B1_to_B8": [0, 1, 1, 0, 1, 0, 0, 1]
     },
     "comment": ""
   },
@@ -33480,24 +33336,9 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry": {
       "sequence": 999,
       "sequence_raw": "999",
-      "analog_raw": [
-        199,
-        0,
-        255,
-        73,
-        123
-      ],
+      "analog_raw": [199, 0, 255, 73, 123],
       "digital_bits": "01101001",
-      "digital_channels_B1_to_B8": [
-        0,
-        1,
-        1,
-        0,
-        1,
-        0,
-        0,
-        1
-      ]
+      "digital_channels_B1_to_B8": [0, 1, 1, 0, 1, 0, 0, 1]
     },
     "comment": ""
   },
@@ -33527,24 +33368,9 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry": {
       "sequence": null,
       "sequence_raw": "MIC",
-      "analog_raw": [
-        199,
-        0,
-        255,
-        73,
-        123
-      ],
+      "analog_raw": [199, 0, 255, 73, 123],
       "digital_bits": "01101001",
-      "digital_channels_B1_to_B8": [
-        0,
-        1,
-        1,
-        0,
-        1,
-        0,
-        0,
-        1
-      ]
+      "digital_channels_B1_to_B8": [0, 1, 1, 0, 1, 0, 0, 1]
     },
     "comment": ""
   },
@@ -33574,24 +33400,9 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry": {
       "sequence": null,
       "sequence_raw": "MIC",
-      "analog_raw": [
-        199,
-        0,
-        255,
-        73,
-        123
-      ],
+      "analog_raw": [199, 0, 255, 73, 123],
       "digital_bits": "01101001",
-      "digital_channels_B1_to_B8": [
-        0,
-        1,
-        1,
-        0,
-        1,
-        0,
-        0,
-        1
-      ]
+      "digital_channels_B1_to_B8": [0, 1, 1, 0, 1, 0, 0, 1]
     },
     "comment": ""
   },
@@ -33621,24 +33432,9 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry": {
       "sequence": 123,
       "sequence_raw": "123",
-      "analog_raw": [
-        0,
-        0,
-        0,
-        0,
-        0
-      ],
+      "analog_raw": [0, 0, 0, 0, 0],
       "digital_bits": "00000000",
-      "digital_channels_B1_to_B8": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ]
+      "digital_channels_B1_to_B8": [0, 0, 0, 0, 0, 0, 0, 0]
     },
     "comment": "Payload"
   },
@@ -33668,24 +33464,9 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry": {
       "sequence": 123,
       "sequence_raw": "123",
-      "analog_raw": [
-        255,
-        255,
-        255,
-        255,
-        255
-      ],
+      "analog_raw": [255, 255, 255, 255, 255],
       "digital_bits": "11111111",
-      "digital_channels_B1_to_B8": [
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1
-      ]
+      "digital_channels_B1_to_B8": [1, 1, 1, 1, 1, 1, 1, 1]
     },
     "comment": "Payload"
   },
@@ -33715,24 +33496,9 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry": {
       "sequence": 123,
       "sequence_raw": "123",
-      "analog_raw": [
-        1,
-        2,
-        3,
-        4,
-        5
-      ],
+      "analog_raw": [1, 2, 3, 4, 5],
       "digital_bits": "10000000",
-      "digital_channels_B1_to_B8": [
-        1,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ]
+      "digital_channels_B1_to_B8": [1, 0, 0, 0, 0, 0, 0, 0]
     },
     "comment": "Payload"
   },
@@ -33762,24 +33528,9 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry": {
       "sequence": 123,
       "sequence_raw": "123",
-      "analog_raw": [
-        1,
-        2,
-        3,
-        4,
-        5
-      ],
+      "analog_raw": [1, 2, 3, 4, 5],
       "digital_bits": "00000001",
-      "digital_channels_B1_to_B8": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        1
-      ]
+      "digital_channels_B1_to_B8": [0, 0, 0, 0, 0, 0, 0, 1]
     },
     "comment": "Payload"
   },
@@ -33960,31 +33711,11 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
         "3"
       ],
       "coefficients_abc": [
-        [
-          0.0,
-          5.2,
-          0.0
-        ],
-        [
-          0.0,
-          0.53,
-          -32.0
-        ],
-        [
-          3.0,
-          4.39,
-          49.0
-        ],
-        [
-          -32.0,
-          3.0,
-          18.0
-        ],
-        [
-          1.0,
-          2.0,
-          3.0
-        ]
+        [0.0, 5.2, 0.0],
+        [0.0, 0.53, -32.0],
+        [3.0, 4.39, 49.0],
+        [-32.0, 3.0, 18.0],
+        [1.0, 2.0, 3.0]
       ]
     }
   },
@@ -34022,10 +33753,7 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry_definition": {
       "target": "N0CALL-11",
       "type": "BITS",
-      "values_raw": [
-        "10110000",
-        "Balloon project"
-      ],
+      "values_raw": ["10110000", "Balloon project"],
       "sense_bits": "10110000",
       "project_title": "Balloon project"
     }
@@ -34064,9 +33792,7 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry_definition": {
       "target": "N0CALL",
       "type": "PARM",
-      "values_raw": [
-        "Temp"
-      ]
+      "values_raw": ["Temp"]
     }
   },
   "note": "Preserve empty slots and incomplete definitions; do not shift later channels left.",
@@ -34103,11 +33829,7 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry_definition": {
       "target": "N0CALL",
       "type": "PARM",
-      "values_raw": [
-        "Temp",
-        "",
-        "Volt"
-      ]
+      "values_raw": ["Temp", "", "Volt"]
     }
   },
   "note": "Preserve empty slots and incomplete definitions; do not shift later channels left.",
@@ -34144,11 +33866,7 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry_definition": {
       "target": "N0CALL",
       "type": "UNIT",
-      "values_raw": [
-        "deg.C",
-        "",
-        "V"
-      ]
+      "values_raw": ["deg.C", "", "V"]
     }
   },
   "note": "Preserve empty slots and incomplete definitions; do not shift later channels left.",
@@ -34185,11 +33903,7 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry_definition": {
       "target": "N0CALL",
       "type": "EQNS",
-      "values_raw": [
-        "0",
-        "1",
-        "0"
-      ]
+      "values_raw": ["0", "1", "0"]
     }
   },
   "note": "Preserve empty slots and incomplete definitions; do not shift later channels left.",
@@ -34226,10 +33940,7 @@ Numeric/MIC sequence fields; five analog/eight digital channels; definition mess
     "telemetry_definition": {
       "target": "N0CALL",
       "type": "BITS",
-      "values_raw": [
-        "11111111",
-        ""
-      ]
+      "values_raw": ["11111111", ""]
     }
   },
   "note": "Preserve empty slots and incomplete definitions; do not shift later channels left.",
@@ -35405,12 +35116,7 @@ Text/ID/address limits; groups; ack/rej; reply-ack; automatic answers; bulletins
     },
     "nts": {
       "record_type": "NA",
-      "fields": [
-        "ADAM",
-        "123 MAIN ST",
-        "REDMOND WA",
-        "98052"
-      ]
+      "fields": ["ADAM", "123 MAIN ST", "REDMOND WA", "98052"]
     }
   },
   "note": "Generic APRS implementations may leave NTS as message text. Structured NTS decoding is an optional capability.",
@@ -35446,9 +35152,7 @@ Text/ID/address limits; groups; ack/rej; reply-ack; automatic answers; bulletins
     },
     "nts": {
       "record_type": "NP",
-      "fields": [
-        "5550100"
-      ]
+      "fields": ["5550100"]
     }
   },
   "note": "Generic APRS implementations may leave NTS as message text. Structured NTS decoding is an optional capability.",
@@ -35484,9 +35188,7 @@ Text/ID/address limits; groups; ack/rej; reply-ack; automatic answers; bulletins
     },
     "nts": {
       "record_type": "N1",
-      "fields": [
-        "LINE 1 TEXT"
-      ]
+      "fields": ["LINE 1 TEXT"]
     }
   },
   "note": "Generic APRS implementations may leave NTS as message text. Structured NTS decoding is an optional capability.",
@@ -35522,9 +35224,7 @@ Text/ID/address limits; groups; ack/rej; reply-ack; automatic answers; bulletins
     },
     "nts": {
       "record_type": "N2",
-      "fields": [
-        "LINE 2 TEXT"
-      ]
+      "fields": ["LINE 2 TEXT"]
     }
   },
   "note": "Generic APRS implementations may leave NTS as message text. Structured NTS decoding is an optional capability.",
@@ -35560,9 +35260,7 @@ Text/ID/address limits; groups; ack/rej; reply-ack; automatic answers; bulletins
     },
     "nts": {
       "record_type": "N3",
-      "fields": [
-        "LINE 3 TEXT"
-      ]
+      "fields": ["LINE 3 TEXT"]
     }
   },
   "note": "Generic APRS implementations may leave NTS as message text. Structured NTS decoding is an optional capability.",
@@ -35598,9 +35296,7 @@ Text/ID/address limits; groups; ack/rej; reply-ack; automatic answers; bulletins
     },
     "nts": {
       "record_type": "N4",
-      "fields": [
-        "LINE 4 TEXT"
-      ]
+      "fields": ["LINE 4 TEXT"]
     }
   },
   "note": "Generic APRS implementations may leave NTS as message text. Structured NTS decoding is an optional capability.",
@@ -35636,9 +35332,7 @@ Text/ID/address limits; groups; ack/rej; reply-ack; automatic answers; bulletins
     },
     "nts": {
       "record_type": "N5",
-      "fields": [
-        "LINE 5 TEXT"
-      ]
+      "fields": ["LINE 5 TEXT"]
     }
   },
   "note": "Generic APRS implementations may leave NTS as message text. Structured NTS decoding is an optional capability.",
@@ -35674,9 +35368,7 @@ Text/ID/address limits; groups; ack/rej; reply-ack; automatic answers; bulletins
     },
     "nts": {
       "record_type": "N6",
-      "fields": [
-        "LINE 6 TEXT"
-      ]
+      "fields": ["LINE 6 TEXT"]
     }
   },
   "note": "Generic APRS implementations may leave NTS as message text. Structured NTS decoding is an optional capability.",
@@ -35712,9 +35404,7 @@ Text/ID/address limits; groups; ack/rej; reply-ack; automatic answers; bulletins
     },
     "nts": {
       "record_type": "NS",
-      "fields": [
-        "TEST SENDER"
-      ]
+      "fields": ["TEST SENDER"]
     }
   },
   "note": "Generic APRS implementations may leave NTS as message text. Structured NTS decoding is an optional capability.",
@@ -35750,12 +35440,7 @@ Text/ID/address limits; groups; ack/rej; reply-ack; automatic answers; bulletins
     },
     "nts": {
       "record_type": "NR",
-      "fields": [
-        "W1AW",
-        "151800Z",
-        "N0CALL",
-        "151805Z"
-      ]
+      "fields": ["W1AW", "151800Z", "N0CALL", "151805Z"]
     }
   },
   "note": "Generic APRS implementations may leave NTS as message text. Structured NTS decoding is an optional capability.",
@@ -35895,7 +35580,7 @@ General and directed queries; geographic footprints; response payloads; capabili
 
 <a id="qry-005"></a>
 
-### QRY-005 — Target footprint  34.02,-117.15
+### QRY-005 — Target footprint 34.02,-117.15
 
 ```json
 {
@@ -35997,7 +35682,7 @@ General and directed queries; geographic footprints; response payloads; capabili
 
 <a id="qry-008"></a>
 
-### QRY-008 — Directed APRSH N0CALL   
+### QRY-008 — Directed APRSH N0CALL
 
 ```json
 {
@@ -36314,7 +35999,7 @@ General and directed queries; geographic footprints; response payloads; capabili
 
 <a id="qry-017"></a>
 
-### QRY-017 — Query response N0CALL>APRS,DIGI1,WIDE*:
+### QRY-017 — Query response N0CALL>APRS,DIGI1,WIDE\*:
 
 ```json
 {
@@ -36668,19 +36353,10 @@ Empty/padded/timed status; Maidenhead cells; beam heading/ERP; suffix anchoring.
     "grid": {
       "locator": "IO91",
       "bounds_deg": {
-        "latitude": [
-          51,
-          52
-        ],
-        "longitude": [
-          -2,
-          0
-        ]
+        "latitude": [51, 52],
+        "longitude": [-2, 0]
       },
-      "center_deg": [
-        51.5,
-        -1.0
-      ]
+      "center_deg": [51.5, -1.0]
     },
     "symbol": {
       "table_id_raw": "/",
@@ -36717,19 +36393,10 @@ Empty/padded/timed status; Maidenhead cells; beam heading/ERP; suffix anchoring.
     "grid": {
       "locator": "IO91SX",
       "bounds_deg": {
-        "latitude": [
-          51.958333333333,
-          52.0
-        ],
-        "longitude": [
-          -0.5,
-          -0.416666666667
-        ]
+        "latitude": [51.958333333333, 52.0],
+        "longitude": [-0.5, -0.416666666667]
       },
-      "center_deg": [
-        51.979166666667,
-        -0.458333333333
-      ]
+      "center_deg": [51.979166666667, -0.458333333333]
     },
     "symbol": {
       "table_id_raw": "/",
@@ -36766,19 +36433,10 @@ Empty/padded/timed status; Maidenhead cells; beam heading/ERP; suffix anchoring.
     "grid": {
       "locator": "IO91SX",
       "bounds_deg": {
-        "latitude": [
-          51.958333333333,
-          52.0
-        ],
-        "longitude": [
-          -0.5,
-          -0.416666666667
-        ]
+        "latitude": [51.958333333333, 52.0],
+        "longitude": [-0.5, -0.416666666667]
       },
-      "center_deg": [
-        51.979166666667,
-        -0.458333333333
-      ]
+      "center_deg": [51.979166666667, -0.458333333333]
     },
     "symbol": {
       "table_id_raw": "/",
@@ -36815,19 +36473,10 @@ Empty/padded/timed status; Maidenhead cells; beam heading/ERP; suffix anchoring.
     "grid": {
       "locator": "AA00AA",
       "bounds_deg": {
-        "latitude": [
-          -90.0,
-          -89.958333333333
-        ],
-        "longitude": [
-          -180.0,
-          -179.916666666667
-        ]
+        "latitude": [-90.0, -89.958333333333],
+        "longitude": [-180.0, -179.916666666667]
       },
-      "center_deg": [
-        -89.979166666667,
-        -179.958333333333
-      ]
+      "center_deg": [-89.979166666667, -179.958333333333]
     },
     "symbol": {
       "table_id_raw": "/",
@@ -36864,19 +36513,10 @@ Empty/padded/timed status; Maidenhead cells; beam heading/ERP; suffix anchoring.
     "grid": {
       "locator": "RR99XX",
       "bounds_deg": {
-        "latitude": [
-          89.958333333333,
-          90.0
-        ],
-        "longitude": [
-          179.916666666667,
-          180.0
-        ]
+        "latitude": [89.958333333333, 90.0],
+        "longitude": [179.916666666667, 180.0]
       },
-      "center_deg": [
-        89.979166666667,
-        179.958333333333
-      ]
+      "center_deg": [89.979166666667, 179.958333333333]
     },
     "symbol": {
       "table_id_raw": "/",
@@ -37333,19 +36973,10 @@ Empty/padded/timed status; Maidenhead cells; beam heading/ERP; suffix anchoring.
     "grid": {
       "locator": "IO91SX",
       "bounds_deg": {
-        "latitude": [
-          51.958333333333,
-          52.0
-        ],
-        "longitude": [
-          -0.5,
-          -0.416666666667
-        ]
+        "latitude": [51.958333333333, 52.0],
+        "longitude": [-0.5, -0.416666666667]
       },
-      "center_deg": [
-        51.979166666667,
-        -0.458333333333
-      ]
+      "center_deg": [51.979166666667, -0.458333333333]
     },
     "symbol": {
       "table_id_raw": "/",
@@ -37476,14 +37107,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "2554.459",
-        "N",
-        "08020.187",
-        "W",
-        "154027.281",
-        "A"
-      ],
+      "fields_raw": ["2554.459", "N", "08020.187", "W", "154027.281", "A"],
       "checksum_supplied": "22",
       "checksum_valid": true,
       "time_utc_raw": "154027.281",
@@ -37579,16 +37203,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPVTG",
-      "fields_raw": [
-        "318.7",
-        "T",
-        "",
-        "M",
-        "35.1",
-        "N",
-        "65.0",
-        "K"
-      ],
+      "fields_raw": ["318.7", "T", "", "M", "35.1", "N", "65.0", "K"],
       "checksum_supplied": "69",
       "checksum_valid": true
     },
@@ -37626,13 +37241,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPWPL",
-      "fields_raw": [
-        "4903.50",
-        "N",
-        "07201.75",
-        "W",
-        "AID2"
-      ],
+      "fields_raw": ["4903.50", "N", "07201.75", "W", "AID2"],
       "checksum_supplied": "2A",
       "checksum_valid": true
     },
@@ -37731,14 +37340,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -37834,14 +37436,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": null,
       "checksum_valid": null,
       "time_utc_raw": "225444",
@@ -37928,19 +37523,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPRMC",
-      "fields_raw": [
-        "041518",
-        "V",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "230309",
-        "",
-        ""
-      ],
+      "fields_raw": ["041518", "V", "", "", "", "", "", "", "230309", "", ""],
       "checksum_supplied": "33",
       "checksum_valid": true,
       "time_utc_raw": "041518",
@@ -37978,14 +37561,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "V"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "V"],
       "checksum_supplied": "26",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38087,14 +37663,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38137,14 +37706,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38187,14 +37749,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38237,14 +37792,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38287,14 +37835,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38337,14 +37878,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38425,14 +37959,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38476,14 +38003,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38527,14 +38047,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38578,14 +38091,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38629,14 +38135,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38680,14 +38179,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38731,14 +38223,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38782,14 +38267,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38833,14 +38311,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38884,14 +38355,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38935,14 +38399,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -38986,14 +38443,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -39037,14 +38487,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -39088,14 +38531,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -39139,14 +38575,7 @@ GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; histori
     "format": "nmea",
     "nmea": {
       "sentence": "GPGLL",
-      "fields_raw": [
-        "4916.45",
-        "N",
-        "12311.12",
-        "W",
-        "225444",
-        "A"
-      ],
+      "fields_raw": ["4916.45", "N", "12311.12", "W", "225444", "A"],
       "checksum_supplied": "31",
       "checksum_valid": true,
       "time_utc_raw": "225444",
@@ -39501,9 +38930,7 @@ Third-party nested envelopes; no-gate/no-archive; q-token preservation; AEA adap
     "status_text": "Ready",
     "aprs_is": {
       "q_construct_raw": "qAR",
-      "following_path": [
-        "IGATE"
-      ]
+      "following_path": ["IGATE"]
     }
   },
   "note": "q token case is significant. This case asserts preservation, not server-side q validation or RF address validity.",
@@ -39546,9 +38973,7 @@ Third-party nested envelopes; no-gate/no-archive; q-token preservation; AEA adap
     "status_text": "Ready",
     "aprs_is": {
       "q_construct_raw": "qAO",
-      "following_path": [
-        "IGATE"
-      ]
+      "following_path": ["IGATE"]
     }
   },
   "note": "q token case is significant. This case asserts preservation, not server-side q validation or RF address validity.",
@@ -39591,9 +39016,7 @@ Third-party nested envelopes; no-gate/no-archive; q-token preservation; AEA adap
     "status_text": "Ready",
     "aprs_is": {
       "q_construct_raw": "qAC",
-      "following_path": [
-        "IGATE"
-      ]
+      "following_path": ["IGATE"]
     }
   },
   "note": "q token case is significant. This case asserts preservation, not server-side q validation or RF address validity.",
@@ -39636,9 +39059,7 @@ Third-party nested envelopes; no-gate/no-archive; q-token preservation; AEA adap
     "status_text": "Ready",
     "aprs_is": {
       "q_construct_raw": "qAI",
-      "following_path": [
-        "IGATE"
-      ]
+      "following_path": ["IGATE"]
     }
   },
   "note": "q token case is significant. This case asserts preservation, not server-side q validation or RF address validity.",
@@ -39681,9 +39102,7 @@ Third-party nested envelopes; no-gate/no-archive; q-token preservation; AEA adap
     "status_text": "Ready",
     "aprs_is": {
       "q_construct_raw": "qAS",
-      "following_path": [
-        "IGATE"
-      ]
+      "following_path": ["IGATE"]
     }
   },
   "note": "q token case is significant. This case asserts preservation, not server-side q validation or RF address validity.",
@@ -39726,9 +39145,7 @@ Third-party nested envelopes; no-gate/no-archive; q-token preservation; AEA adap
     "status_text": "Ready",
     "aprs_is": {
       "q_construct_raw": "qAo",
-      "following_path": [
-        "IGATE"
-      ]
+      "following_path": ["IGATE"]
     }
   },
   "note": "q token case is significant. This case asserts preservation, not server-side q validation or RF address validity.",
@@ -39900,7 +39317,7 @@ Opaque vendor formats; user-defined binary data; explicit invalid/test; obsolete
 
 <a id="oth-004"></a>
 
-### OTH-004 — Raw weather Peet Bros U-II *7007
+### OTH-004 — Raw weather Peet Bros U-II \*7007
 
 ```json
 {
@@ -40065,7 +39482,7 @@ Opaque vendor formats; user-defined binary data; explicit invalid/test; obsolete
 
 <a id="oth-010"></a>
 
-### OTH-010 — Non-APRS / obsolete LEADER   *09
+### OTH-010 — Non-APRS / obsolete LEADER \*09
 
 ```json
 {
@@ -40091,7 +39508,7 @@ Opaque vendor formats; user-defined binary data; explicit invalid/test; obsolete
 
 <a id="oth-011"></a>
 
-### OTH-011 — Non-APRS / obsolete BLN1     :Ol
+### OTH-011 — Non-APRS / obsolete BLN1 :Ol
 
 ```json
 {
@@ -40137,19 +39554,10 @@ Opaque vendor formats; user-defined binary data; explicit invalid/test; obsolete
     "grid": {
       "locator": "IO91",
       "bounds_deg": {
-        "latitude": [
-          51,
-          52
-        ],
-        "longitude": [
-          -2,
-          0
-        ]
+        "latitude": [51, 52],
+        "longitude": [-2, 0]
       },
-      "center_deg": [
-        51.5,
-        -1.0
-      ]
+      "center_deg": [51.5, -1.0]
     }
   },
   "packet_length_bytes": 18
@@ -40178,19 +39586,10 @@ Opaque vendor formats; user-defined binary data; explicit invalid/test; obsolete
     "grid": {
       "locator": "IO91SX",
       "bounds_deg": {
-        "latitude": [
-          51.958333333333,
-          52.0
-        ],
-        "longitude": [
-          -0.5,
-          -0.416666666667
-        ]
+        "latitude": [51.958333333333, 52.0],
+        "longitude": [-0.5, -0.416666666667]
       },
-      "center_deg": [
-        51.979166666667,
-        -0.458333333333
-      ]
+      "center_deg": [51.979166666667, -0.458333333333]
     }
   },
   "packet_length_bytes": 20
@@ -40916,19 +40315,10 @@ Opaque vendor formats; user-defined binary data; explicit invalid/test; obsolete
     "destination_grid": {
       "locator": "IO91SX",
       "bounds_deg": {
-        "latitude": [
-          51.958333333333,
-          52.0
-        ],
-        "longitude": [
-          -0.5,
-          -0.416666666667
-        ]
+        "latitude": [51.958333333333, 52.0],
+        "longitude": [-0.5, -0.416666666667]
       },
-      "center_deg": [
-        51.979166666667,
-        -0.458333333333
-      ]
+      "center_deg": [51.979166666667, -0.458333333333]
     }
   },
   "note": "The six-character destination is a Maidenhead locator in this historical convention. Preserve its area independently of status text; do not treat its center as an exact position fix.",
@@ -44310,16 +43700,8 @@ Object ownership/lifecycle; case/name identity; duplicate messages/reply-ack; te
     {
       "packet": "N0CALL>APRS::N0CALL   :EQNS.0,5.2,0,0,.53,-32",
       "expected": {
-        "A1_coefficients": [
-          0,
-          5.2,
-          0
-        ],
-        "A2_coefficients": [
-          0,
-          0.53,
-          -32
-        ]
+        "A1_coefficients": [0, 5.2, 0],
+        "A2_coefficients": [0, 0.53, -32]
       },
       "step": 3,
       "packet_length_bytes": 45
@@ -44336,13 +43718,7 @@ Object ownership/lifecycle; case/name identity; duplicate messages/reply-ack; te
     {
       "packet": "N0CALL>APRS:T#005,199,100,255,073,123,10110000",
       "expected": {
-        "raw_analog": [
-          199,
-          100,
-          255,
-          73,
-          123
-        ],
+        "raw_analog": [199, 100, 255, 73, 123],
         "A1_calibrated": 1034.8,
         "A1_volts": 10.348,
         "A2_fahrenheit": 21,
@@ -44537,36 +43913,36 @@ FAP units: `Latitude`/`Longitude` degrees; `PosResolution` meters; `Speed` km/h;
 
 Every root `Parse` invocation captured during the test run is represented, including repeated inputs with different options and all 227 binary-message cases. This is a complete capture of those exercised parser invocations, not every helper-only input, benchmark iteration, encoder source coordinate, or fuzzer-generated possibility. Encoder expected bodies appear with a documented synthetic envelope so they can serve as full decoding fixtures.
 
-| Upstream file | Cases |
-| --- | ---: |
-| [aprsis_paths_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/aprsis_paths_test.go) | 2 |
-| [aprsis_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/aprsis_test.go) | 3 |
-| [ax25_option_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/ax25_option_test.go) | 12 |
-| [badpacket_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/badpacket_test.go) | 5 |
-| [beacon_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/beacon_test.go) | 6 |
-| [cmd/aprs-decode-single/main_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/cmd/aprs-decode-single/main_test.go) | 5 |
-| [cmd/parse-speed-test/main_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/cmd/parse-speed-test/main_test.go) | 1 |
-| [compressed_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/compressed_test.go) | 5 |
-| [dao_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/dao_test.go) | 3 |
-| [fap_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/fap_test.go) | 17 |
-| [item_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/item_test.go) | 9 |
-| [message_binary_clean_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/message_binary_clean_test.go) | 227 |
-| [message_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/message_test.go) | 56 |
-| [mice_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/mice_test.go) | 12 |
-| [nmea_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/nmea_test.go) | 42 |
-| [object_inv_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/object_inv_test.go) | 1 |
-| [object_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/object_test.go) | 5 |
-| [position_encode_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/position_encode_test.go) | 16 |
-| [position_fallback_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/position_fallback_test.go) | 8 |
-| [status_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/status_test.go) | 2 |
-| [telemetry_comment_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/telemetry_comment_test.go) | 13 |
-| [telemetry_mice_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/telemetry_mice_test.go) | 4 |
-| [telemetry_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/telemetry_test.go) | 14 |
-| [timestamp_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/timestamp_test.go) | 11 |
-| [uncompressed_moving_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/uncompressed_moving_test.go) | 1 |
-| [uncompressed_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/uncompressed_test.go) | 16 |
-| [wx_basic_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/wx_basic_test.go) | 17 |
-| [wx_ultw_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/wx_ultw_test.go) | 4 |
+| Upstream file                                                                                                                                                 | Cases |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----: |
+| [aprsis_paths_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/aprsis_paths_test.go)                               |     2 |
+| [aprsis_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/aprsis_test.go)                                           |     3 |
+| [ax25_option_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/ax25_option_test.go)                                 |    12 |
+| [badpacket_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/badpacket_test.go)                                     |     5 |
+| [beacon_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/beacon_test.go)                                           |     6 |
+| [cmd/aprs-decode-single/main_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/cmd/aprs-decode-single/main_test.go) |     5 |
+| [cmd/parse-speed-test/main_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/cmd/parse-speed-test/main_test.go)     |     1 |
+| [compressed_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/compressed_test.go)                                   |     5 |
+| [dao_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/dao_test.go)                                                 |     3 |
+| [fap_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/fap_test.go)                                                 |    17 |
+| [item_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/item_test.go)                                               |     9 |
+| [message_binary_clean_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/message_binary_clean_test.go)               |   227 |
+| [message_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/message_test.go)                                         |    56 |
+| [mice_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/mice_test.go)                                               |    12 |
+| [nmea_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/nmea_test.go)                                               |    42 |
+| [object_inv_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/object_inv_test.go)                                   |     1 |
+| [object_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/object_test.go)                                           |     5 |
+| [position_encode_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/position_encode_test.go)                         |    16 |
+| [position_fallback_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/position_fallback_test.go)                     |     8 |
+| [status_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/status_test.go)                                           |     2 |
+| [telemetry_comment_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/telemetry_comment_test.go)                     |    13 |
+| [telemetry_mice_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/telemetry_mice_test.go)                           |     4 |
+| [telemetry_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/telemetry_test.go)                                     |    14 |
+| [timestamp_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/timestamp_test.go)                                     |    11 |
+| [uncompressed_moving_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/uncompressed_moving_test.go)                 |     1 |
+| [uncompressed_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/uncompressed_test.go)                               |    16 |
+| [wx_basic_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/wx_basic_test.go)                                       |    17 |
+| [wx_ultw_test.go](https://github.com/hessu/go-aprs-fap/blob/94c7118ca94d251990382b9210112ddd5b260efa/wx_ultw_test.go)                                         |     4 |
 
 <a id="fap-001"></a>
 
@@ -45727,22 +45103,14 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Messaging": false,
       "TelemetryData": {
         "Seq": 0,
-        "Vals": [
-          0,
-          0,
-          0,
-          0,
-          0
-        ],
+        "Vals": [0, 0, 0, 0, 0],
         "Bits": "00000000"
       },
       "GPSFixStatus": 1,
       "Comment": "Tero, Green Volvo 960, GGL-880"
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 99
 }
 ```
@@ -46003,9 +45371,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
     }
   },
   "note": "The wall-clock-derived Timestamp is deliberately not asserted. Use the raw packet time and a caller-supplied clock/date policy; all other captured fields retain their original values.",
-  "extension_tags": [
-    "DAO"
-  ],
+  "extension_tags": ["DAO"],
   "packet_length_bytes": 100
 }
 ```
@@ -46061,9 +45427,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Comment": "http://aprs.fi/"
     }
   },
-  "extension_tags": [
-    "DAO"
-  ],
+  "extension_tags": ["DAO"],
   "packet_length_bytes": 70
 }
 ```
@@ -46121,9 +45485,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Comment": "]Foo Bar"
     }
   },
-  "extension_tags": [
-    "DAO"
-  ],
+  "extension_tags": ["DAO"],
   "packet_length_bytes": 64
 }
 ```
@@ -46282,7 +45644,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
 
 <a id="fap-042"></a>
 
-### FAP-042 — TestParseErrors/no_>_in_header
+### FAP-042 — TestParseErrors/no\_>_in_header
 
 ```json
 {
@@ -62510,13 +61872,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Course": 35,
       "TelemetryData": {
         "Seq": 0,
-        "Vals": [
-          16,
-          32,
-          48,
-          255,
-          255
-        ],
+        "Vals": [16, 32, 48, 255, 255],
         "Bits": ""
       },
       "MBits": "010",
@@ -62576,11 +61932,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Course": 35,
       "TelemetryData": {
         "Seq": 0,
-        "Vals": [
-          16,
-          0,
-          32
-        ],
+        "Vals": [16, 0, 32],
         "Bits": ""
       },
       "MBits": "010",
@@ -63217,7 +62569,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
 
 <a id="fap-363"></a>
 
-### FAP-363 — TestParseNMEAErrors/not_starting_with_$GP
+### FAP-363 — TestParseNMEAErrors/not*starting_with*$GP
 
 ```json
 {
@@ -65257,21 +64609,13 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "PHG": "26303",
       "TelemetryData": {
         "Seq": 170,
-        "Vals": [
-          415,
-          559,
-          5894,
-          6348,
-          null
-        ],
+        "Vals": [415, 559, 5894, 6348, null],
         "Bits": ""
       },
       "Comment": "Siilinjarvi"
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 74
 }
 ```
@@ -65321,22 +64665,14 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Messaging": false,
       "TelemetryData": {
         "Seq": 170,
-        "Vals": [
-          415,
-          559,
-          5894,
-          null,
-          null
-        ],
+        "Vals": [415, 559, 5894, null, null],
         "Bits": ""
       },
       "GPSFixStatus": 1,
       "Comment": "http://aprs.fi/"
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 61
 }
 ```
@@ -65387,21 +64723,13 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Messaging": false,
       "TelemetryData": {
         "Seq": 659,
-        "Vals": [
-          3174,
-          2748,
-          2458,
-          null,
-          null
-        ],
+        "Vals": [3174, 2748, 2458, null, null],
         "Bits": ""
       },
       "Comment": "test"
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 67
 }
 ```
@@ -65461,20 +64789,12 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Messaging": false,
       "TelemetryData": {
         "Seq": 0,
-        "Vals": [
-          0,
-          0,
-          0,
-          0,
-          0
-        ],
+        "Vals": [0, 0, 0, 0, 0],
         "Bits": "00000000"
       }
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 94
 }
 ```
@@ -65528,22 +64848,14 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Messaging": false,
       "TelemetryData": {
         "Seq": 0,
-        "Vals": [
-          0,
-          0,
-          0,
-          0,
-          0
-        ],
+        "Vals": [0, 0, 0, 0, 0],
         "Bits": "00000000"
       },
       "GPSFixStatus": 1,
       "Comment": "Tero, Green Volvo 960, GGL-880"
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 99
 }
 ```
@@ -65592,20 +64904,12 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Messaging": false,
       "TelemetryData": {
         "Seq": 7544,
-        "Vals": [
-          1472,
-          1564,
-          1656,
-          1748,
-          1840
-        ],
+        "Vals": [1472, 1564, 1656, 1748, 1840],
         "Bits": "10000000"
       }
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 58
 }
 ```
@@ -65654,21 +64958,13 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Messaging": false,
       "TelemetryData": {
         "Seq": 0,
-        "Vals": [
-          0,
-          null,
-          null,
-          null,
-          null
-        ],
+        "Vals": [0, null, null, null, null],
         "Bits": ""
       },
       "Comment": "a|b"
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 52
 }
 ```
@@ -65717,23 +65013,14 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Messaging": false,
       "TelemetryData": {
         "Seq": 170,
-        "Vals": [
-          415,
-          null,
-          null,
-          null,
-          null
-        ],
+        "Vals": [415, null, null, null, null],
         "Bits": ""
       },
       "DaoDatumByte": "W",
       "Comment": "comment"
     }
   },
-  "extension_tags": [
-    "DAO",
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["DAO", "base91-comment-telemetry"],
   "packet_length_bytes": 60
 }
 ```
@@ -65783,9 +65070,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Comment": "c |!!!!!!!!!!!!!!!!|"
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 62
 }
 ```
@@ -65835,9 +65120,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Comment": "c |!!|"
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 48
 }
 ```
@@ -65887,9 +65170,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Comment": "c |!!!!!|"
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 51
 }
 ```
@@ -65939,9 +65220,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Comment": "c |!!!}|"
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 50
 }
 ```
@@ -65991,9 +65270,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Comment": "c |!!!!"
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 49
 }
 ```
@@ -66047,22 +65324,14 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Course": 0,
       "TelemetryData": {
         "Seq": 0,
-        "Vals": [
-          0,
-          0,
-          0,
-          0,
-          0
-        ],
+        "Vals": [0, 0, 0, 0, 0],
         "Bits": "00000000"
       },
       "MBits": "110",
       "Comment": "comment"
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 69,
   "packet_hex": "4f48374c5a422d31333e5358313553362c54435049502a2c7141432c464f555254483a2749272c6c201c3e2f20636f6d6d656e74207c21212121212121212121212121217c"
 }
@@ -66117,22 +65386,14 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Course": 0,
       "TelemetryData": {
         "Seq": 0,
-        "Vals": [
-          0,
-          null,
-          null,
-          null,
-          null
-        ],
+        "Vals": [0, null, null, null, null],
         "Bits": ""
       },
       "MBits": "110",
       "Comment": "comment"
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 59,
   "packet_hex": "4f48374c5a422d31333e5358313553362c54435049502a2c7141432c464f555254483a2749272c6c201c3e2f20636f6d6d656e74207c212121217c"
 }
@@ -66175,13 +65436,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Altitude": 736,
       "TelemetryData": {
         "Seq": 7544,
-        "Vals": [
-          1472,
-          1564,
-          1656,
-          1748,
-          5980
-        ],
+        "Vals": [1472, 1564, 1656, 1748, 5980],
         "Bits": "10000000"
       },
       "MBits": "101",
@@ -66189,10 +65444,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Comment": "'||3"
     }
   },
-  "extension_tags": [
-    "DAO",
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["DAO", "base91-comment-telemetry"],
   "packet_length_bytes": 52
 }
 ```
@@ -66246,23 +65498,14 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Course": 0,
       "TelemetryData": {
         "Seq": 86,
-        "Vals": [
-          3328,
-          0,
-          5328,
-          null,
-          null
-        ],
+        "Vals": [3328, 0, 5328, null, null],
         "Bits": ""
       },
       "MBits": "110",
       "Comment": "comment"
     }
   },
-  "extension_tags": [
-    "DAO",
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["DAO", "base91-comment-telemetry"],
   "packet_length_bytes": 63,
   "packet_hex": "4f48374c5a422d31333e5358313553362c54435049502a2c7141432c464f555254483a2749272c6c201c3e2f20636f6d6d656e74207c2177455521215b537c"
 }
@@ -66295,13 +65538,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Type": "telemetry",
       "TelemetryData": {
         "Seq": 324,
-        "Vals": [
-          0,
-          38,
-          255,
-          0.12,
-          50.12
-        ],
+        "Vals": [0, 38, 255, 0.12, 50.12],
         "Bits": "01000001"
       }
     }
@@ -66337,20 +65574,12 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Type": "telemetry",
       "TelemetryData": {
         "Seq": 1,
-        "Vals": [
-          -1,
-          2147483647,
-          -2147483648,
-          1e-06,
-          -1e-07
-        ],
+        "Vals": [-1, 2147483647, -2147483648, 1e-6, -1e-7],
         "Bits": "01000001"
       }
     }
   },
-  "extension_tags": [
-    "relaxed-telemetry"
-  ],
+  "extension_tags": ["relaxed-telemetry"],
   "packet_length_bytes": 79
 }
 ```
@@ -66382,20 +65611,12 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Type": "telemetry",
       "TelemetryData": {
         "Seq": 1,
-        "Vals": [
-          42,
-          null,
-          null,
-          null,
-          null
-        ],
+        "Vals": [42, null, null, null, null],
         "Bits": ""
       }
     }
   },
-  "extension_tags": [
-    "relaxed-telemetry"
-  ],
+  "extension_tags": ["relaxed-telemetry"],
   "packet_length_bytes": 21
 }
 ```
@@ -66427,20 +65648,12 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Type": "telemetry",
       "TelemetryData": {
         "Seq": 1,
-        "Vals": [
-          1,
-          null,
-          3,
-          null,
-          5
-        ],
+        "Vals": [1, null, 3, null, 5],
         "Bits": ""
       }
     }
   },
-  "extension_tags": [
-    "relaxed-telemetry"
-  ],
+  "extension_tags": ["relaxed-telemetry"],
   "packet_length_bytes": 24
 }
 ```
@@ -66472,20 +65685,12 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Type": "telemetry",
       "TelemetryData": {
         "Seq": 1,
-        "Vals": [
-          1,
-          null,
-          null,
-          null,
-          null
-        ],
+        "Vals": [1, null, null, null, null],
         "Bits": ""
       }
     }
   },
-  "extension_tags": [
-    "relaxed-telemetry"
-  ],
+  "extension_tags": ["relaxed-telemetry"],
   "packet_length_bytes": 22
 }
 ```
@@ -67000,9 +66205,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Comment": "14.3V 27C HDOP01.0 SATS09"
     }
   },
-  "extension_tags": [
-    "DAO"
-  ],
+  "extension_tags": ["DAO"],
   "packet_length_bytes": 117
 }
 ```
@@ -67065,9 +66268,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
     }
   },
   "note": "The wall-clock-derived Timestamp is deliberately not asserted. Use the raw packet time and a caller-supplied clock/date policy; all other captured fields retain their original values.",
-  "extension_tags": [
-    "DAO"
-  ],
+  "extension_tags": ["DAO"],
   "packet_length_bytes": 117
 }
 ```
@@ -67130,9 +66331,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Comment": "14.3V 27C HDOP01.0 SATS09"
     }
   },
-  "extension_tags": [
-    "DAO"
-  ],
+  "extension_tags": ["DAO"],
   "packet_length_bytes": 117
 }
 ```
@@ -67195,9 +66394,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
     }
   },
   "note": "The wall-clock-derived Timestamp is deliberately not asserted. Use the raw packet time and a caller-supplied clock/date policy; all other captured fields retain their original values.",
-  "extension_tags": [
-    "DAO"
-  ],
+  "extension_tags": ["DAO"],
   "packet_length_bytes": 117
 }
 ```
@@ -67265,7 +66462,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
 
 <a id="fap-453"></a>
 
-### FAP-453 — TestTimestampFutureRollback/DDHHMM/_local
+### FAP-453 — TestTimestampFutureRollback/DDHHMM/\_local
 
 ```json
 {
@@ -67321,9 +66518,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
     }
   },
   "note": "The wall-clock-derived Timestamp is deliberately not asserted. Use the raw packet time and a caller-supplied clock/date policy; all other captured fields retain their original values.",
-  "extension_tags": [
-    "DAO"
-  ],
+  "extension_tags": ["DAO"],
   "packet_length_bytes": 117
 }
 ```
@@ -67544,20 +66739,12 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Messaging": false,
       "TelemetryData": {
         "Seq": 0,
-        "Vals": [
-          0,
-          0,
-          0,
-          0,
-          0
-        ],
+        "Vals": [0, 0, 0, 0, 0],
         "Bits": "00000000"
       }
     }
   },
-  "extension_tags": [
-    "base91-comment-telemetry"
-  ],
+  "extension_tags": ["base91-comment-telemetry"],
   "packet_length_bytes": 94
 }
 ```
@@ -69756,13 +68943,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
       "Type": "telemetry",
       "TelemetryData": {
         "Seq": 324,
-        "Vals": [
-          0,
-          38,
-          255,
-          0.12,
-          50.12
-        ],
+        "Vals": [0, 38, 255, 0.12, 50.12],
         "Bits": "01000001"
       }
     }
@@ -70435,9 +69616,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
     }
   },
   "note": "synthetic TNC2 header on expected encoder body. Encoder input coordinates are not asserted as the decoded coordinate; quantization and ambiguity change them.",
-  "extension_tags": [
-    "DAO"
-  ],
+  "extension_tags": ["DAO"],
   "packet_length_bytes": 37
 }
 ```
@@ -70479,9 +69658,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
     }
   },
   "note": "synthetic TNC2 header on expected encoder body. Encoder input coordinates are not asserted as the decoded coordinate; quantization and ambiguity change them.",
-  "extension_tags": [
-    "DAO"
-  ],
+  "extension_tags": ["DAO"],
   "packet_length_bytes": 37
 }
 ```
@@ -70527,9 +69704,7 @@ Every root `Parse` invocation captured during the test run is represented, inclu
     }
   },
   "note": "synthetic TNC2 header on expected encoder body. Encoder input coordinates are not asserted as the decoded coordinate; quantization and ambiguity change them.",
-  "extension_tags": [
-    "DAO"
-  ],
+  "extension_tags": ["DAO"],
   "packet_length_bytes": 65
 }
 ```
