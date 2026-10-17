@@ -94,7 +94,7 @@ class ReadmeTests(unittest.TestCase):
     ) -> None:
         # 29 construction pairs, 5 parsing inputs with 5 JSON displays, then one
         # each of unsupported encoding, repair and refusal to send.
-        self.assertEqual(len(self.examples), 71)
+        self.assertEqual(len(self.examples), 72)
         namespace: dict[str, Any] | None = None
         for index, example in enumerate(self.examples):
             with self.subTest(example=index + 1):
@@ -184,7 +184,12 @@ class ReadmeTests(unittest.TestCase):
                 dataclasses.asdict(python_packet), dataclasses.asdict(json_packet)
             )
             families.add(type(json_packet.payload))
-            wire = a.serialize_packet(json_packet)
+            wire = a.serialize_packet(
+                json_packet,
+                policy=a.APRS_IS(
+                    legacy_positions=isinstance(json_packet.payload, a.LegacyPosition)
+                ),
+            )
             # Construction examples print the model name; wire examples print
             # the encoded line. Both must be valid compositions now.
             if self.examples[index][3] != type(json_packet.payload).__name__ + "\n":

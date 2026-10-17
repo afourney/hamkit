@@ -14,6 +14,7 @@ def field_examples() -> tuple[object, ...]:
     grid = a.Grid("IO91SX")
     measurement = a.Measurement(None, "mph", raw=b"...")
     return (
+        a.APRS_IS(),
         measurement,
         a.Timestamp.mdhm(10, 17, 12, 30),
         coordinates,

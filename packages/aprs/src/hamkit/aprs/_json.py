@@ -13,7 +13,7 @@ import json
 import math
 import types
 from collections.abc import Mapping
-from dataclasses import MISSING, dataclass, fields
+from dataclasses import MISSING, asdict, dataclass, fields
 from typing import (
     Any,
     Literal,
@@ -31,6 +31,7 @@ from . import _data as d
 from . import _models as m
 from . import _nmea as n
 from ._errors import APRSError, ModelError
+from ._policy import EnvelopePolicy
 from ._validation import json_data, validate_tree
 
 JSONValue: TypeAlias = (
@@ -38,7 +39,8 @@ JSONValue: TypeAlias = (
 )
 JSONObject: TypeAlias = dict[str, JSONValue]
 JSONModel: TypeAlias = (
-    d.Measurement
+    EnvelopePolicy
+    | d.Measurement
     | d.Timestamp
     | d.Coordinates
     | d.Symbol
@@ -142,6 +144,7 @@ class _Schema:
 
 # Explicit wire-independent identifiers: renaming a Python class does not change JSON.
 _SCHEMAS = (
+    _Schema(EnvelopePolicy, "policy"),
     _Schema(d.Measurement, "measurement"),
     _Schema(d.Timestamp, "timestamp"),
     _Schema(d.Coordinates, "coordinates"),
@@ -427,6 +430,10 @@ def to_json_dict(
     _check_limit(max_depth)
     if type(include_defaults) is not bool:
         raise ValueError("include_defaults must be bool")
+    if isinstance(value, EnvelopePolicy):
+        policy_data = asdict(value)
+        policy_data["extensions"] = list(value.extensions)
+        return cast(JSONObject, {"type": "policy", **policy_data})
     if type(value) not in _BY_MODEL:
         raise JSONModelError("expected a supported APRS packet, payload or field model")
     try:
@@ -465,6 +472,25 @@ def from_json_dict(
     """
     _check_limit(max_depth)
     raw = _object(value, "$")
+    if expected_type is EnvelopePolicy or raw.get("type") == "policy":
+        if (
+            expected_type not in (None, EnvelopePolicy)
+            or raw.get("type", "policy") != "policy"
+        ):
+            raise JSONModelError("conflicting policy type")
+        data = dict(raw)
+        data.pop("type", None)
+        if set(data) != {f.name for f in fields(EnvelopePolicy)}:
+            raise JSONModelError(
+                "policy requires all resolved fields and no unknown fields"
+            )
+        if not isinstance(data["extensions"], list):
+            raise JSONModelError("policy extensions must be an array")
+        data["extensions"] = tuple(data["extensions"])
+        try:
+            return EnvelopePolicy(**cast(dict[str, Any], data))
+        except (TypeError, ValueError) as exc:
+            raise JSONModelError(str(exc)) from exc
     if expected_type is not None and expected_type not in _BY_MODEL:
         raise JSONModelError("expected_type must be a supported concrete APRS model")
     model = expected_type or _tagged_model(raw, tuple(_BY_MODEL), "$")

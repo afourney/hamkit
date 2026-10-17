@@ -4,7 +4,7 @@ This is the canonical JSON format for `hamkit-aprs`. Examples are
 pretty-printed, executable data, with nested values expanded. They illustrate
 values, not legal ranges or complete APRS wire support. The field tables are the
 shape contract: every field, requiredness, default, allowed enum, unit and nested
-model is listed. All 75 serializable models and all 29 payload families appear.
+model is listed. All 76 serializable models and all 29 payload families appear.
 
 ## Contents
 
@@ -22,7 +22,9 @@ model is listed. All 75 serializable models and all 29 payload families appear.
 dictionary. `from_json(text)` and `from_json_dict(mapping)` return typed models.
 Pass `expected_type=Weather` to check the class; typed overloads preserve the
 concrete return annotation. `include_defaults=True` prints all fields, as in this
-catalog. Compact output omits fields equal to their defaults. Object property
+catalog. Compact output omits fields equal to their defaults, except policies,
+which always contain every resolved field. Policy JSON loading requires all
+fields; see [packet policies](ENVELOPE_POLICIES.md). Object property
 order is not meaningful. JSON field names match Python attributes.
 
 ## Tags
@@ -89,6 +91,7 @@ their own fully expanded examples in the field table.
 
 | Model                                       | Stable type            | Role              |
 | ------------------------------------------- | ---------------------- | ----------------- |
+| [EnvelopePolicy](#envelopepolicy)           | `policy`               | field / container |
 | [Measurement](#measurement)                 | `measurement`          | field / container |
 | [Timestamp](#timestamp)                     | `timestamp`            | field / container |
 | [Coordinates](#coordinates)                 | `coordinates`          | field / container |
@@ -164,6 +167,45 @@ their own fully expanded examples in the field table.
 | [Opaque](#opaque)                           | `opaque`               | payload           |
 | [Packet](#packet)                           | `packet`               | field / container |
 | [Malformed](#malformed)                     | `malformed`            | field / container |
+
+### EnvelopePolicy
+
+Standalone tag: `policy`. [Back to type map](#type-map-and-object-catalog).
+
+```json
+{
+  "type": "policy",
+  "source_pattern": "(?=.{1,9}\\Z)[A-Za-z0-9]{3,9}(?:-(?!0\\Z)[A-Za-z0-9]{1,2})?",
+  "destination_pattern": "(?=.{1,9}\\Z)[A-Za-z0-9]{1,9}(?:-(?!0\\Z)[A-Za-z0-9]{1,2})?",
+  "path_address_pattern": "(?=.{1,9}\\Z)[A-Za-z0-9]{1,9}(?:-(?!0\\Z)[A-Za-z0-9]{1,2})?",
+  "max_path_entries": null,
+  "max_information_bytes": null,
+  "max_tnc2_line_bytes": 512,
+  "extensions": [
+    "utf8_text",
+    "dao",
+    "base91_telemetry",
+    "expanded_telemetry",
+    "phg_rate",
+    "weather_extensions"
+  ],
+  "legacy_positions": false,
+  "byte_fallback": "latin-1"
+}
+```
+
+| Field                   | JSON value / allowed values                                                                                                              | Presence / default   |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `type`                  | `"policy"`                                                                                                                               | see [Tags](#tags)    |
+| `source_pattern`        | string                                                                                                                                   | **required in JSON** |
+| `destination_pattern`   | string                                                                                                                                   | **required in JSON** |
+| `path_address_pattern`  | string                                                                                                                                   | **required in JSON** |
+| `max_path_entries`      | integer or null                                                                                                                          | **required in JSON** |
+| `max_information_bytes` | integer or null                                                                                                                          | **required in JSON** |
+| `max_tnc2_line_bytes`   | integer or null                                                                                                                          | **required in JSON** |
+| `extensions`            | array of `'utf8_text'`, `'dao'`, `'base91_telemetry'`, `'mice_device_ids'`, `'expanded_telemetry'`, `'phg_rate'`, `'weather_extensions'` | **required in JSON** |
+| `legacy_positions`      | boolean                                                                                                                                  | **required in JSON** |
+| `byte_fallback`         | `'latin-1'`, `'reject'`                                                                                                                  | **required in JSON** |
 
 ### Measurement
 

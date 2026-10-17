@@ -28,13 +28,18 @@ class ModelContractTests(unittest.TestCase):
                     ),
                     payload,
                 )
+                policy = a.APRS_IS(
+                    legacy_positions=isinstance(payload, a.LegacyPosition)
+                )
                 self.assertIs(packet.payload, payload)
-                self.assertEqual(a.check_packet(packet), ())
+                self.assertEqual(a.check_packet(packet, policy=policy), ())
                 if a.codec_support_for(payload).encode == "unimplemented":
                     with self.assertRaises(a.CodecNotImplementedError):
-                        a.serialize_packet(packet)
+                        a.serialize_packet(packet, policy=policy)
                 else:
-                    self.assertIsInstance(a.serialize_packet(packet), bytes)
+                    self.assertIsInstance(
+                        a.serialize_packet(packet, policy=policy), bytes
+                    )
 
     def test_every_public_dataclass_has_an_example(self) -> None:
         public = {
@@ -45,7 +50,7 @@ class ModelContractTests(unittest.TestCase):
         }
         self.assertEqual(
             # EnvelopePolicy is configuration data, not a packet JSON model.
-            {type(v) for v in (*field_examples(), *payload_examples(), a.RF)},
+            {type(v) for v in (*field_examples(), *payload_examples(), a.RF())},
             public,
         )
 

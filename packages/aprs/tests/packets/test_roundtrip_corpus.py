@@ -19,9 +19,8 @@ EXCEPTIONS = json.loads(
 )
 
 # This suite tests representation, including deliberately invalid addresses.
-# Transport conformance is covered separately; this explicit policy preserves
-# the former monitor envelope behavior without changing any vector content.
-CORPUS_POLICY = a.EnvelopePolicy(".*", ".*", ".*")
+# Transport conformance is covered separately. Each row retains its interpretation
+# when the test relaxes envelope constraints for representational round trips.
 APRS_IS_ADDRESS_REFUSALS = {
     "BAD-013",
     "FAP-001",
@@ -115,7 +114,19 @@ def same_semantics(x: Any, y: Any, path="$") -> None:
 
 @pytest.mark.parametrize("row", load())
 def test_vector_roundtrip(row):
-    policy = a.EnvelopePolicy(**row["policy"])
+    policy = a.from_json_dict(row["policy"], expected_type=a.EnvelopePolicy)
+    corpus_policy = dataclasses.replace(
+        policy,
+        source_pattern=".*",
+        destination_pattern=".*",
+        path_address_pattern=".*",
+        max_path_entries=None,
+        max_information_bytes=None,
+        max_tnc2_line_bytes=None,
+    )
+    internet_policy = a.APRS_IS(
+        extensions=policy.extensions, legacy_positions=policy.legacy_positions
+    )
     packet = parse_row(row, row["packet"].encode("latin1"))
     # JSON is lossless even for malformed or nonconforming received packets.
     assert a.to_json_dict(a.from_json(a.to_json(packet))) == a.to_json_dict(packet)
@@ -134,13 +145,13 @@ def test_vector_roundtrip(row):
         # until the caller clears checksum_valid as an explicit repair.
         for send in (a.serialize_packet, a.validate_packet, a.serialize_tnc2_line):
             with pytest.raises(a.ConformanceError) as caught:
-                send(clean, policy=CORPUS_POLICY)
+                send(clean, policy=corpus_policy)
             assert [d.path for d in caught.value.diagnostics] == [CHECKSUM_FINDING]
         clean, repaired = repair_checksum(clean), True
     if exception:
         assert exception["kind"] == "conformance"
         with pytest.raises(a.ConformanceError) as caught:
-            a.serialize_packet(clean, policy=CORPUS_POLICY)
+            a.serialize_packet(clean, policy=corpus_policy)
         assert [d.message for d in caught.value.diagnostics] == exception["reasons"]
         return
     # Check the stored envelope policy separately from the permissive round trip.
@@ -153,11 +164,11 @@ def test_vector_roundtrip(row):
     # Keep the independent APRS-IS default-policy coverage as well.
     if row["id"] in APRS_IS_ADDRESS_REFUSALS:
         with pytest.raises(a.ConformanceError) as caught:
-            a.serialize_packet(clean)
+            a.serialize_packet(clean, policy=internet_policy)
         assert all(d.path.startswith("$.header.") for d in caught.value.diagnostics)
     else:
-        a.validate_packet(clean)
-    wire = a.serialize_packet(clean, policy=CORPUS_POLICY)
+        a.validate_packet(clean, policy=internet_policy)
+    wire = a.serialize_packet(clean, policy=corpus_policy)
     decoded = parse_row(row, wire)
     assert isinstance(decoded, a.Packet)
     if isinstance(clean.payload, a.NMEA):
@@ -186,7 +197,7 @@ def test_vector_roundtrip(row):
                 )
     same_semantics(clean, decoded)
     # Canonical bytes stabilize after one pass, including checksum and rounding.
-    assert a.serialize_packet(without_evidence(decoded), policy=CORPUS_POLICY) == wire
+    assert a.serialize_packet(without_evidence(decoded), policy=corpus_policy) == wire
 
 
 def test_no_stale_exception_ids():

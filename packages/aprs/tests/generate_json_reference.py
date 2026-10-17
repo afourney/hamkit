@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import types
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, Union, cast, get_args, get_origin
 
@@ -69,6 +69,8 @@ def annotation_text(annotation: Any) -> str:
     origin, args = get_origin(annotation), get_args(annotation)
     if origin in (Union, types.UnionType):
         return " or ".join(annotation_text(v) for v in args)
+    if origin is Iterable:
+        return f"array of {annotation_text(args[0])}"
     if origin is tuple:
         if len(args) == 2 and args[1] is Ellipsis:
             return f"array of {annotation_text(args[0])}"
@@ -138,7 +140,9 @@ model is listed. All {len(_SCHEMAS)} serializable models and all \
 dictionary. `from_json(text)` and `from_json_dict(mapping)` return typed models.
 Pass `expected_type=Weather` to check the class; typed overloads preserve the
 concrete return annotation. `include_defaults=True` prints all fields, as in this
-catalog. Compact output omits fields equal to their defaults. Object property
+catalog. Compact output omits fields equal to their defaults, except policies,
+which always contain every resolved field. Policy JSON loading requires all
+fields; see [packet policies](ENVELOPE_POLICIES.md). Object property
 order is not meaningful. JSON field names match Python attributes.
 
 ## Tags
@@ -224,7 +228,10 @@ their own fully expanded examples in the field table.
         doc += f'| `type` | `"{schema.tag}"` | see [Tags](#tags) |\n'
         entries = [(f, schema.model) for f in dataclasses.fields(schema.model)]
         for f, owner in entries:
-            doc += f"| `{f.name}` | {annotation_text(_HINTS[owner][f.name])} | {default_text(f)} |\n"
+            presence = (
+                "**required in JSON**" if owner is a.EnvelopePolicy else default_text(f)
+            )
+            doc += f"| `{f.name}` | {annotation_text(_HINTS[owner][f.name])} | {presence} |\n"
     doc += "\n## Nested union examples\n\nEach allowed member is shown in its actual container, where it carries its tag.\n"
     for value in samples[len(_SCHEMAS) : -1]:
         members = [

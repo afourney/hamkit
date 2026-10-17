@@ -60,7 +60,7 @@ class LenientDecodingTests(unittest.TestCase):
 
     def test_rf_policy_reports_instead_of_rejecting(self) -> None:
         raw = b"n0call>APRS,A,B,C,D,E,F,G,H,I:>" + b"x" * 10
-        packet = a.parse_packet(raw, policy=a.RF)
+        packet = a.parse_packet(raw, policy=a.RF())
         assert isinstance(packet, a.Packet)
         self.assertEqual(
             codes(packet),
@@ -115,7 +115,7 @@ class LenientDecodingTests(unittest.TestCase):
         self.assertEqual(packet.payload.extensions.motion, a.Motion(88, 36))
         self.assertIsNone(packet.payload.extensions.bearing)
         self.assertEqual(codes(packet), {("nonconforming", "$.payload.comment")})
-        for policy in (a.APRS_IS, a.RF):
+        for policy in (a.APRS_IS(), a.RF()):
             self.assertTrue(a.check_packet(packet, policy=policy))
             with self.assertRaises(a.ConformanceError):
                 a.serialize_packet(packet, policy=policy)

@@ -13,7 +13,8 @@ HEADER = a.Header("N0CALL", "APRS")
 SYMBOL = a.Symbol("/", "-")
 
 
-def findings(payload: Any, policy: a.EnvelopePolicy = a.APRS_IS) -> set[str]:
+def findings(payload: Any, policy: a.EnvelopePolicy | None = None) -> set[str]:
+    policy = a.APRS_IS() if policy is None else policy
     return {d.path for d in a.check_packet(a.Packet(HEADER, payload), policy=policy)}
 
 
@@ -49,7 +50,7 @@ class SendingTests(unittest.TestCase):
             a.Status("bad|status" + "x" * 60),
         )
         self.assertEqual(
-            {d.path for d in a.check_packet(packet, policy=a.RF)},
+            {d.path for d in a.check_packet(packet, policy=a.RF())},
             {"$.header.source", "$.header.path", "$.payload.text"},
         )
         self.assertEqual({d.path for d in a.check_packet(packet)}, {"$.payload.text"})
@@ -59,30 +60,30 @@ class SendingTests(unittest.TestCase):
             packet = a.Packet(a.Header(source, "APRS"), a.Status(""))
             self.assertIsInstance(a.serialize_packet(packet), bytes)
             with self.subTest(source=source), self.assertRaises(a.ConformanceError):
-                a.serialize_packet(packet, policy=a.RF)
+                a.serialize_packet(packet, policy=a.RF())
         hops = tuple(a.Hop("D1") for _ in range(8))
         a.validate_packet(
-            a.Packet(a.Header("N0CALL", "APRS", hops), a.Status("")), policy=a.RF
+            a.Packet(a.Header("N0CALL", "APRS", hops), a.Status("")), policy=a.RF()
         )
         with self.assertRaises(a.ConformanceError):
             a.validate_packet(
                 a.Packet(a.Header("N0CALL", "APRS", hops * 2), a.Status("")),
-                policy=a.RF,
+                policy=a.RF(),
             )
         large = a.Packet(HEADER, a.UserDefined(b"A", b"B", b"x" * 260))
         self.assertEqual(
-            [d.path for d in a.check_packet(large, policy=a.RF)], ["$.payload"]
+            [d.path for d in a.check_packet(large, policy=a.RF())], ["$.payload"]
         )
         self.assertEqual(a.check_packet(large), ())
         with self.assertRaises(a.ConformanceError):
-            a.serialize_packet(a.Packet(HEADER, a.Opaque(b"~" * 257)), policy=a.RF)
+            a.serialize_packet(a.Packet(HEADER, a.Opaque(b"~" * 257)), policy=a.RF())
 
     def test_rf_header_rules_skip_third_party_inner_headers(self) -> None:
         inner = a.Packet(
             a.Header("w1aw", "APRS", (a.Hop("TCPIP", True),)), a.Status("")
         )
         packet = a.Packet(HEADER, a.ThirdParty(inner))
-        self.assertEqual(a.check_packet(packet, policy=a.RF), ())
+        self.assertEqual(a.check_packet(packet, policy=a.RF()), ())
 
     def test_control_characters_are_never_sent(self) -> None:
         for payload in (a.Status("bell\x07"), a.Message("W1AW", "line\nbreak")):
@@ -311,7 +312,7 @@ class PlaceTests(unittest.TestCase):
                 with self.assertRaises(a.CodecNotImplementedError):
                     a.serialize_payload(value)
                 with self.assertRaises(a.CodecNotImplementedError):
-                    a.serialize_packet(a.Packet(HEADER, value), policy=a.RF)
+                    a.serialize_packet(a.Packet(HEADER, value), policy=a.RF())
 
     def test_extension_symbols_and_slots(self) -> None:
         storm = a.Storm(
@@ -471,7 +472,7 @@ class WeatherAndTelemetryTests(unittest.TestCase):
             (a.Telemetry((1, 2, 3)), "$.payload.analog"),
             (a.Telemetry((1,) * 5, (True,) * 8, sequence=1000), "$.payload.sequence"),
             (a.Telemetry((1,) * 5, (True,) * 8), "$.payload.sequence"),
-            (a.Telemetry((256,) * 5, (True,) * 8, sequence=1), "$.payload.analog[0]"),
+            (a.Telemetry((1000,) * 5, (True,) * 8, sequence=1), "$.payload.analog[0]"),
             (a.Telemetry((1, 2), encoding="mic_e_hex"), "$.payload.encoding"),
         ):
             with self.subTest(telemetry=telemetry):

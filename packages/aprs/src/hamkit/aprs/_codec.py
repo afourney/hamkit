@@ -50,7 +50,7 @@ from ._models import (
     UnsupportedPolicy,
     UserDefined,
 )
-from ._policy import APRS_IS, EnvelopePolicy
+from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 from ._recovery import payload_data
 from ._text import free_text, token
 from ._validation import validate_tree
@@ -77,7 +77,6 @@ class _Options:
     unsupported: UnsupportedPolicy
     malformed: MalformedPolicy
     max_depth: int
-    legacy_positions: bool = False
 
 
 def _options(
@@ -85,7 +84,7 @@ def _options(
     unsupported: str,
     malformed: str,
     max_depth: object,
-    legacy_positions: object = False,
+    legacy_positions: object = None,
 ) -> _Options:
     if not isinstance(policy, EnvelopePolicy):
         raise TypeError("policy must be an EnvelopePolicy")
@@ -95,11 +94,11 @@ def _options(
         raise ValueError("malformed must be 'return' or 'raise'")
     if type(max_depth) is not int or not 0 <= max_depth <= 32:
         raise ValueError("max_third_party_depth must be an integer in 0..32")
-    if type(legacy_positions) is not bool:
+    if legacy_positions is not None and type(legacy_positions) is not bool:
         raise TypeError("legacy_positions must be a bool")
-    return _Options(
-        policy, unsupported, malformed, max_depth, legacy_positions  # type: ignore[arg-type]
-    )
+    if legacy_positions is not None:
+        policy = replace(policy, legacy_positions=legacy_positions)
+    return _Options(policy, unsupported, malformed, max_depth)  # type: ignore[arg-type]
 
 
 def _special_message(address: str, body: bytes) -> bool:
@@ -147,13 +146,14 @@ def _decode_payload(
     """Decode supported families; raise for unsupported or undecodable data."""
     if not information:
         raise ModelError("$", "information field is empty")
+    policy = options.policy
     dti, body = information[:1], information[1:]
     if dti in (b"`", b"'", b"\x1c", b"\x1d"):
         if header is None:
             raise ContextRequiredError("Mic-E decoding requires header=Header(...)")
         from . import _mic_e
 
-        return _mic_e.read(information, header, diagnostics)
+        return _mic_e.read(information, header, diagnostics, policy)
     if dti == b"}":
         if depth >= options.max_depth:
             raise ResourceLimitError("third-party nesting limit reached")
@@ -181,9 +181,9 @@ def _decode_payload(
             weather=_weather.vendor(information),
         )
     if dti in (b"!", b"=", b"/", b"@"):
-        return _decode_position(dti, body, diagnostics)
+        return _decode_position(dti, body, diagnostics, policy)
     if dti == b">":
-        return _messages.status(body, diagnostics)
+        return _messages.status(body, diagnostics, policy)
     if dti == b"?":
         return _messages.query(information)
     if dti == b"<":
@@ -193,16 +193,16 @@ def _decode_payload(
             tokens.append(d.Capability(name, value if sep else None))
         return m.Capabilities(tuple(tokens))
     if information.startswith(b"T#"):
-        return _messages.telemetry(information, diagnostics)
+        return _messages.telemetry(information, diagnostics, policy)
     if dti == b"_":
         from . import _weather
 
-        return _weather.read(body, diagnostics=diagnostics)[0]
+        return _weather.read(body, diagnostics=diagnostics, policy=policy)[0]
     if dti == b";":
         if len(body) < 17 or body[9:10] not in (b"*", b"_"):
             raise FieldError("invalid object name or alive marker")
         name = token(body[:9], "$.name").rstrip()
-        position = _decode_position(b"/", body[10:], diagnostics)
+        position = _decode_position(b"/", body[10:], diagnostics, policy)
         assert position.timestamp is not None
         return m.Object(
             name,
@@ -220,7 +220,7 @@ def _decode_payload(
         match = re.match(rb"([^!_]{1,9})([!_])(.*)", body, re.DOTALL)
         if not match:
             raise FieldError("invalid item name or marker")
-        position = _decode_position(b"!", match[3], diagnostics)
+        position = _decode_position(b"!", match[3], diagnostics, policy)
         return m.Item(
             token(match[1], "$.name"),
             position.latitude_deg,
@@ -235,28 +235,28 @@ def _decode_payload(
     if dti == b"$":
         from . import _nmea_codec
 
-        return _nmea_codec.read(information, header, diagnostics)
+        return _nmea_codec.read(information, header, diagnostics, policy)
     if dti == b"[":
         match = re.match(rb"([A-Ra-r]{2}\d{2}(?:[A-Xa-x]{2})?)(.*)", body, re.DOTALL)
         if not match:
             raise FieldError("invalid Maidenhead locator")
         return m.Maidenhead(
             d.Grid(match[1].decode().upper()),
-            comment=free_text(match[2], "$.comment", diagnostics),
+            comment=free_text(match[2], "$.comment", diagnostics, policy),
         )
     if dti == b"%":
         match = re.fullmatch(rb"%(\d{3})/(\d)", information)
         if match:
             return m.Agrelo(int(match[1]), int(match[2]), raw=information)
     if dti == b":":
-        return _decode_message(body, diagnostics)
+        return _decode_message(body, diagnostics, policy)
     # APRS101 p.18 lets a position start within the first 40 bytes of other
     # text (X1J); the APRS 1.1 addendum deprecates that search, so it is opt-in.
-    offset = information.find(b"!") if options.legacy_positions else -1
+    offset = information.find(b"!") if options.policy.legacy_positions else -1
     if 0 < offset < 40:
         return m.LegacyPosition(
             information[:offset],
-            _decode_position(b"!", information[offset + 1 :], diagnostics),
+            _decode_position(b"!", information[offset + 1 :], diagnostics, policy),
         )
     if (
         header is not None
@@ -265,12 +265,12 @@ def _decode_payload(
         and information[:1].isalpha()
         and b" " in information
     ):
-        return m.Beacon(free_text(information, "$.text", diagnostics))
+        return m.Beacon(free_text(information, "$.text", diagnostics, policy))
     raise CodecNotImplementedError("unsupported information field family")
 
 
 def _decode_position(
-    dti: bytes, body: bytes, diagnostics: list[Diagnostic]
+    dti: bytes, body: bytes, diagnostics: list[Diagnostic], policy: EnvelopePolicy
 ) -> Position:
     timestamp = None
     if dti in (b"/", b"@"):
@@ -292,7 +292,7 @@ def _decode_position(
                     "nonconforming", "reserved compression type bit", "$.compression"
                 )
             )
-        extensions, rest = _extensions.read(rest, symbol)
+        extensions, rest = _extensions.read(rest, symbol, policy)
         for name in ("motion", "altitude", "range"):
             value = getattr(primary, name)
             if value is not None:
@@ -313,7 +313,7 @@ def _decode_position(
             extensions=extensions,
             timestamp=timestamp,
             messaging=dti in (b"=", b"@"),
-            comment=free_text(rest, "$.comment", diagnostics),
+            comment=free_text(rest, "$.comment", diagnostics, policy),
         )
     if len(body) < 19:
         raise ModelError("$", "truncated uncompressed position")
@@ -322,12 +322,12 @@ def _decode_position(
         symbol = Symbol(chr(body[8]), chr(body[18]))
     except ModelError as exc:
         raise ModelError("$.symbol" + exc.path[1:], exc.message) from exc
-    extensions, rest = _extensions.read(body[19:], symbol)
+    extensions, rest = _extensions.read(body[19:], symbol, policy)
     return Position(
         pc.dao_offset(latitude, extensions.dao, "latitude"),
         pc.dao_offset(longitude, extensions.dao, "longitude"),
         symbol,
-        comment=free_text(rest, "$.comment", diagnostics),
+        comment=free_text(rest, "$.comment", diagnostics, policy),
         messaging=dti in (b"=", b"@"),
         timestamp=timestamp,
         extensions=extensions,
@@ -335,7 +335,9 @@ def _decode_position(
     )
 
 
-def _decode_message(body: bytes, diagnostics: list[Diagnostic]) -> Payload:
+def _decode_message(
+    body: bytes, diagnostics: list[Diagnostic], policy: EnvelopePolicy
+) -> Payload:
     if len(body) < 10 or body[9:10] != b":":
         raise ModelError(
             "$.addressee", "message requires a nine-byte addressee and colon"
@@ -343,7 +345,7 @@ def _decode_message(body: bytes, diagnostics: list[Diagnostic]) -> Payload:
     address = token(body[:9], "$.addressee").rstrip(" ")
     body = body[10:]
     if _special_message(address, body):
-        special = _messages.specialized(address, body, diagnostics)
+        special = _messages.specialized(address, body, diagnostics, policy)
         if special is not None:
             return special
     ack = _ACK.fullmatch(body)
@@ -366,7 +368,7 @@ def _decode_message(body: bytes, diagnostics: list[Diagnostic]) -> Payload:
             return response
     return Message(
         address,
-        free_text(text, "$.text", diagnostics),
+        free_text(text, "$.text", diagnostics, policy),
         message_id=message_id,
         reply_ack=reply_ack,
     )
@@ -492,18 +494,22 @@ def _parse(
         found.extend(_envelope_sizes(policy, len(information), len(raw) + 2))
     packet = Packet(header, payload, original_wire=raw)
     # Findings are computed from the finished packet; set them once, in place.
-    object.__setattr__(packet, "diagnostics", (*found, *check(packet, policy)))
+    object.__setattr__(
+        packet,
+        "diagnostics",
+        (*found, *check(packet, options.policy, check_envelope=depth == 0)),
+    )
     return packet, found
 
 
 def parse_packet(
     wire: bytes,
     *,
-    policy: EnvelopePolicy = APRS_IS,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
     unsupported: UnsupportedPolicy = "opaque",
     malformed: MalformedPolicy = "return",
     max_third_party_depth: int = 4,
-    legacy_positions: bool = False,
+    legacy_positions: bool | None = None,
 ) -> Packet | Malformed:
     """Parse one unframed TNC2 packet, such as ``b"N0CALL>APRS:>Ready"``.
 
@@ -511,7 +517,7 @@ def parse_packet(
     are listed in Packet.diagnostics as "nonconforming". Fields that cannot be
     decoded yield a Malformed with recovered values (or raise with
     malformed="raise"). Families without a decoder become Opaque (or raise with
-    unsupported="raise"). The envelope policy defaults to APRS_IS; pass RF for
+    unsupported="raise"). The policy defaults to APRS_IS(); pass RF() for
     AX.25 address and size constraints, or supply a custom EnvelopePolicy.
     CR/LF is never stripped; use parse_tnc2_line for line-oriented input.
     legacy_positions=True restores the deprecated APRS101 search for a "!"
@@ -531,10 +537,11 @@ def parse_payload(
     information: bytes,
     *,
     header: Header | None = None,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
     unsupported: UnsupportedPolicy = "opaque",
     malformed: MalformedPolicy = "return",
     max_third_party_depth: int = 4,
-    legacy_positions: bool = False,
+    legacy_positions: bool | None = None,
 ) -> Payload | Malformed:
     """Decode an information field alone. Mic-E always requires header.
 
@@ -543,7 +550,7 @@ def parse_payload(
     if not isinstance(information, bytes):
         raise TypeError("parse_payload requires bytes")
     options = _options(
-        APRS_IS, unsupported, malformed, max_third_party_depth, legacy_positions
+        policy, unsupported, malformed, max_third_party_depth, legacy_positions
     )
     if header is not None:
         validate_tree(header)
@@ -559,7 +566,11 @@ def _require_codecs(payload: Payload) -> None:
 
 
 def _encode_payload(
-    payload: Payload, header: Header | None, max_depth: int, depth: int
+    payload: Payload,
+    header: Header | None,
+    max_depth: int,
+    depth: int,
+    policy: EnvelopePolicy,
 ) -> bytes:
     """Construct an information field from validated, conforming values."""
     application = _messages.write(payload)
@@ -568,7 +579,7 @@ def _encode_payload(
     if isinstance(payload, m.Weather):
         from . import _weather
 
-        return _weather.write(payload)
+        return _weather.write(payload, policy=policy)
     if isinstance(payload, (m.Object, m.Item)):
         p = payload
         position = Position(
@@ -580,7 +591,7 @@ def _encode_payload(
             compression=p.compression,
             extensions=p.extensions,
         )
-        raw = _encode_payload(position, header, max_depth, depth)[1:]
+        raw = _encode_payload(position, header, max_depth, depth, policy)[1:]
         if isinstance(p, m.Object):
             return (
                 b";"
@@ -617,18 +628,18 @@ def _encode_payload(
         return payload.text.encode()
     if isinstance(payload, m.LegacyPosition):
         return payload.prefix + _encode_payload(
-            payload.position, header, max_depth, depth
+            payload.position, header, max_depth, depth, policy
         )
     if isinstance(payload, MicE):
         if header is None:
             raise ContextRequiredError("Mic-E encoding needs the packet header")
         from . import _mic_e
 
-        return _mic_e.write(payload, header)
+        return _mic_e.write(payload, header, policy)
     if isinstance(payload, ThirdParty):
         if depth >= max_depth:
             raise ResourceLimitError("third-party nesting limit reached")
-        return b"}" + _serialize(payload.packet, max_depth, depth + 1)
+        return b"}" + _serialize(payload.packet, max_depth, depth + 1, policy)
     if isinstance(payload, UserDefined):
         return b"{" + payload.user_id + payload.user_type + payload.data
     if isinstance(payload, Invalid):
@@ -672,7 +683,9 @@ def _encode_payload(
         return (
             raw
             + position_wire
-            + _extensions.write(extensions, symbol, payload.comment.encode("utf-8"))
+            + _extensions.write(
+                extensions, symbol, payload.comment.encode("utf-8"), policy
+            )
             + payload.comment.encode("utf-8")
         )
     if isinstance(payload, (Message, Acknowledgment)):
@@ -701,8 +714,12 @@ def _encode_payload(
     raise TypeError("unsupported payload model")
 
 
-def _serialize(packet: Packet, max_depth: int, depth: int) -> bytes:
-    information = _encode_payload(packet.payload, packet.header, max_depth, depth)
+def _serialize(
+    packet: Packet, max_depth: int, depth: int, policy: EnvelopePolicy
+) -> bytes:
+    information = _encode_payload(
+        packet.payload, packet.header, max_depth, depth, policy
+    )
     return str(packet.header).encode("ascii") + b":" + information
 
 
@@ -757,7 +774,9 @@ def _findings(
         or policy.max_tnc2_line_bytes is not None
     ):
         try:
-            information = _encode_payload(value.payload, value.header, max_depth, 0)
+            information = _encode_payload(
+                value.payload, value.header, max_depth, 0, policy
+            )
         except (CodecNotImplementedError, ContextRequiredError, FieldError):
             return findings  # Reported elsewhere; there are no bytes to measure.
         line_bytes = len(str(value.header).encode("ascii")) + 1 + len(information) + 2
@@ -792,7 +811,7 @@ def _ready_to_send(
 def serialize_packet(
     packet: Packet,
     *,
-    policy: EnvelopePolicy = APRS_IS,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
     max_third_party_depth: int = 4,
 ) -> bytes:
     """Encode a packet for sending. Never replays original_wire.
@@ -801,31 +820,36 @@ def serialize_packet(
     third-party nesting, ModelError for invalid fields, CodecNotImplementedError
     for families without an encoder, and ConformanceError (with every finding)
     for anything outside APRS rules or the selected envelope policy. The default
-    policy is APRS_IS; pass RF or a custom EnvelopePolicy as needed.
+    policy is APRS_IS(); pass RF() or a custom EnvelopePolicy as needed.
     """
     if not isinstance(packet, Packet):
         raise TypeError("serialize_packet requires a Packet; repair a Malformed first")
     options = _options(policy, "raise", "raise", max_third_party_depth)
     _ready_to_send(packet, options.policy, options.max_depth)
-    return _serialize(packet, options.max_depth, 0)
+    return _serialize(packet, options.max_depth, 0, options.policy)
 
 
-def serialize_payload(payload: Payload, *, max_third_party_depth: int = 4) -> bytes:
+def serialize_payload(
+    payload: Payload,
+    *,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
+    max_third_party_depth: int = 4,
+) -> bytes:
     """Encode an information field alone, with the same payload validation as packets.
 
     Mic-E and NMEA with an explicit symbol need header context; use serialize_packet.
     """
     if isinstance(payload, (Packet, Malformed)):
         raise TypeError("serialize_payload requires a payload model")
-    options = _options(APRS_IS, "raise", "raise", max_third_party_depth)
+    options = _options(policy, "raise", "raise", max_third_party_depth)
     _ready_to_send(payload, options.policy, options.max_depth)
-    return _encode_payload(payload, None, options.max_depth, 0)
+    return _encode_payload(payload, None, options.max_depth, 0, options.policy)
 
 
 def check_packet(
     packet: Packet,
     *,
-    policy: EnvelopePolicy = APRS_IS,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
     max_third_party_depth: int = 4,
 ) -> tuple[Diagnostic, ...]:
     """Every conformance finding serialize_packet would raise, without raising.
@@ -843,7 +867,7 @@ def check_packet(
 def validate_packet(
     packet: Packet,
     *,
-    policy: EnvelopePolicy = APRS_IS,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
     max_third_party_depth: int = 4,
 ) -> None:
     """Raise exactly as serialize_packet would; return None when it can be sent."""

@@ -72,7 +72,7 @@ def assert_conformance(
 )
 def test_source_formats(address: str, rf_ok: bool, internet_ok: bool) -> None:
     raw = address.encode() + b">APRS:>Ready"
-    for policy, valid in ((a.RF, rf_ok), (a.APRS_IS, internet_ok)):
+    for policy, valid in ((a.RF(), rf_ok), (a.APRS_IS(), internet_ok)):
         assert_conformance(raw, policy, set() if valid else {"$.header.source"})
 
 
@@ -82,20 +82,22 @@ def test_internet_rejects_ssid_zero_everywhere() -> None:
         (b"N0CALL>APRS-0:>Ready", "$.header.destination"),
         (b"N0CALL>APRS,WIDE1-0:>Ready", "$.header.path[0].address"),
     ):
-        assert_conformance(raw, a.APRS_IS, {path})
-        assert_conformance(raw, a.RF, set())
+        assert_conformance(raw, a.APRS_IS(), {path})
+        assert_conformance(raw, a.RF(), set())
 
 
 @pytest.mark.parametrize("address", ["A", "AB", "A-1", "qAR", "AE5PL-JS"])
 def test_internet_destination_and_path_allow_short_addresses(address: str) -> None:
-    assert_conformance(f"N0CALL>{address},{address}*:>Ready".encode(), a.APRS_IS, set())
+    assert_conformance(
+        f"N0CALL>{address},{address}*:>Ready".encode(), a.APRS_IS(), set()
+    )
 
 
 def test_path_entries_preserve_q_and_repeated_marker() -> None:
     raw = b"N0CALL>APRS,WIDE1-1,W1AW*,qAR,AE5PL-JS:>Ready"
-    internet = assert_conformance(raw, a.APRS_IS, set())
+    internet = assert_conformance(raw, a.APRS_IS(), set())
     rf = assert_conformance(
-        raw, a.RF, {"$.header.path[2].address", "$.header.path[3].address"}
+        raw, a.RF(), {"$.header.path[2].address", "$.header.path[3].address"}
     )
     assert internet.header == rf.header
     assert internet.payload == rf.payload
@@ -120,12 +122,12 @@ def test_custom_patterns_are_independent_and_use_fullmatch() -> None:
 def test_path_entry_limit_is_optional_and_counts_entries_not_hops() -> None:
     eight = b"N0CALL>APRS" + b",WIDE2-2" * 8 + b":>Ready"
     nine = b"N0CALL>APRS" + b",WIDE2-2" * 9 + b":>Ready"
-    assert_conformance(eight, a.RF, set())
-    assert_conformance(nine, a.RF, {"$.header.path"})
-    assert_conformance(nine, replace(a.RF, max_path_entries=None), set())
+    assert_conformance(eight, a.RF(), set())
+    assert_conformance(nine, a.RF(), {"$.header.path"})
+    assert_conformance(nine, replace(a.RF(), max_path_entries=None), set())
     # More than eight entries are also valid under the default internet policy.
-    assert_conformance(nine, a.APRS_IS, set())
-    no_path = replace(a.APRS_IS, max_path_entries=0)
+    assert_conformance(nine, a.APRS_IS(), set())
+    no_path = replace(a.APRS_IS(), max_path_entries=0)
     assert_conformance(b"N0CALL>APRS:>Ready", no_path, set())
     assert_conformance(b"N0CALL>APRS,WIDE2-2:>Ready", no_path, {"$.header.path"})
 
@@ -134,22 +136,22 @@ def test_path_entry_limit_is_optional_and_counts_entries_not_hops() -> None:
 def test_rf_information_boundary(length: int) -> None:
     raw = b"N0CALL>APRS:~" + b"x" * (length - 1)
     paths = {"$.payload"} if length > 256 else set()
-    assert_conformance(raw, a.RF, paths)
-    assert_conformance(raw, a.APRS_IS, set())
-    assert_conformance(raw, replace(a.RF, max_information_bytes=None), set())
+    assert_conformance(raw, a.RF(), paths)
+    assert_conformance(raw, a.APRS_IS(), set())
+    assert_conformance(raw, replace(a.RF(), max_information_bytes=None), set())
 
 
 @pytest.mark.parametrize("length", [511, 512, 513])
 def test_internet_line_boundary_includes_header_and_crlf(length: int) -> None:
     prefix = b"N0CALL>APRS,TCPIP*,qAC,AE5PL-JS:~"
     raw = prefix + b"x" * (length - len(prefix) - 2)
-    assert_conformance(raw, a.APRS_IS, {"$"} if length > 512 else set())
-    assert_conformance(raw, replace(a.APRS_IS, max_tnc2_line_bytes=None), set())
+    assert_conformance(raw, a.APRS_IS(), {"$"} if length > 512 else set())
+    assert_conformance(raw, replace(a.APRS_IS(), max_tnc2_line_bytes=None), set())
 
 
 def test_sizes_count_encoded_bytes_and_recompute_after_edits() -> None:
     raw = "N0CALL>APRS:>é".encode()
-    policy = replace(a.RF, max_information_bytes=2, max_tnc2_line_bytes=len(raw) + 1)
+    policy = replace(a.RF(), max_information_bytes=2, max_tnc2_line_bytes=len(raw) + 1)
     packet = assert_conformance(raw, policy, {"$.payload", "$"})
     # Stored diagnostics and original_wire do not control serialization.
     changed = replace(packet, payload=a.Status("e"))
@@ -163,7 +165,7 @@ def test_sizes_count_encoded_bytes_and_recompute_after_edits() -> None:
 
 def test_parse_measures_received_bytes_check_measures_encoded_bytes() -> None:
     raw = b"N0CALL>APRS:>\xe9"
-    policy = replace(a.RF, max_information_bytes=2)
+    policy = replace(a.RF(), max_information_bytes=2)
     packet = parse(raw, policy)
     assert [d.path for d in packet.diagnostics] == ["$.payload.text"]
     # Latin-1 fallback becomes two UTF-8 bytes plus the status identifier.
@@ -171,7 +173,7 @@ def test_parse_measures_received_bytes_check_measures_encoded_bytes() -> None:
 
 
 def test_zero_size_limits_are_limits_not_unlimited() -> None:
-    policy = replace(a.RF, max_information_bytes=0, max_tnc2_line_bytes=0)
+    policy = replace(a.RF(), max_information_bytes=0, max_tnc2_line_bytes=0)
     assert_conformance(b"N0CALL>APRS:>Ready", policy, {"$.payload", "$"})
 
 
@@ -183,7 +185,7 @@ def test_envelope_limits_do_not_replace_payload_rules() -> None:
     )
 
 
-@pytest.mark.parametrize("policy", [a.RF, a.APRS_IS])
+@pytest.mark.parametrize("policy", [a.RF(), a.APRS_IS()])
 def test_third_party_envelope_policy_applies_only_to_outer_packet(
     policy: a.EnvelopePolicy,
 ) -> None:
@@ -205,7 +207,7 @@ def test_third_party_envelope_policy_applies_only_to_outer_packet(
 
 def test_third_party_payload_diagnostics_keep_nested_paths() -> None:
     raw = b"W1AW>APRS:}n0call-JS>APRS,TCPIP,W1AW*:>bad|text"
-    packet = assert_conformance(raw, a.RF, {"$.payload.packet.payload.text"})
+    packet = assert_conformance(raw, a.RF(), {"$.payload.packet.payload.text"})
     assert isinstance(packet.payload, a.ThirdParty)
     assert {d.path for d in packet.payload.packet.diagnostics} == {"$.payload.text"}
 
@@ -216,7 +218,7 @@ def test_aprs_is_is_the_default_everywhere() -> None:
     assert isinstance(packet, a.Packet)
     assert {d.path for d in packet.diagnostics} == {"$.header.source", "$"}
     assert a.parse_tnc2_line(raw + b"\r\n").diagnostics == packet.diagnostics
-    assert a.check_packet(packet) == a.check_packet(packet, policy=a.APRS_IS)
+    assert a.check_packet(packet) == a.check_packet(packet, policy=a.APRS_IS())
     for operation in (a.serialize_packet, a.serialize_tnc2_line, a.validate_packet):
         with pytest.raises(a.ConformanceError):
             operation(packet)
@@ -227,9 +229,9 @@ def test_aprs_is_is_the_default_everywhere() -> None:
 )
 def test_invalid_patterns_fail_when_policy_is_constructed(field: str) -> None:
     with pytest.raises(ValueError, match=field):
-        replace(a.RF, **cast(Any, {field: "["}))
+        replace(a.RF(), **cast(Any, {field: "["}))
     with pytest.raises(TypeError, match=field):
-        replace(a.RF, **cast(Any, {field: b".*"}))
+        replace(a.RF(), **cast(Any, {field: b".*"}))
 
 
 @pytest.mark.parametrize(
@@ -237,18 +239,23 @@ def test_invalid_patterns_fail_when_policy_is_constructed(field: str) -> None:
 )
 def test_invalid_limits_fail_when_policy_is_constructed(field: str) -> None:
     with pytest.raises(ValueError, match=field):
-        replace(a.RF, **cast(Any, {field: -1}))
+        replace(a.RF(), **cast(Any, {field: -1}))
     for value in (True, 1.5, "8"):
         with pytest.raises(TypeError, match=field):
-            replace(a.RF, **cast(Any, {field: value}))
+            replace(a.RF(), **cast(Any, {field: value}))
 
 
 def test_policies_are_immutable_data() -> None:
     with pytest.raises(FrozenInstanceError):
-        cast(Any, a.RF).max_path_entries = 9
-    assert a.EnvelopePolicy(**json.loads(json.dumps(asdict(a.APRS_IS)))) == a.APRS_IS
-    assert replace(a.RF, max_path_entries=None).max_path_entries is None
-    assert a.RF.max_path_entries == 8
+        cast(Any, a.RF()).max_path_entries = 9
+    assert (
+        a.from_json_dict(
+            json.loads(json.dumps(asdict(a.APRS_IS()))), expected_type=a.EnvelopePolicy
+        )
+        == a.APRS_IS()
+    )
+    assert replace(a.RF(), max_path_entries=None).max_path_entries is None
+    assert a.RF().max_path_entries == 8
 
 
 @pytest.mark.parametrize("bad", [None, "rf", "monitor", "aprs_is", {}, 42])

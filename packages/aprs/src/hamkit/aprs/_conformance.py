@@ -45,6 +45,7 @@ from ._models import (
     Header,
     HeardStation,
     Item,
+    LegacyPosition,
     Message,
     MicE,
     NWSBulletin,
@@ -55,7 +56,7 @@ from ._models import (
     Status,
     Trace,
 )
-from ._policy import EnvelopePolicy
+from ._policy import APRS_IS, EnvelopePolicy
 from ._validation import _fields, walk
 
 Finding = tuple[str, str]
@@ -85,8 +86,11 @@ def _plan(model: type) -> tuple[tuple[str, ...], tuple[_Rule, ...]]:
     return plan
 
 
-def check(value: Any, policy: EnvelopePolicy | None = None) -> tuple[Diagnostic, ...]:
+def check(
+    value: Any, policy: EnvelopePolicy | None = None, *, check_envelope: bool = True
+) -> tuple[Diagnostic, ...]:
     """Every conformance finding in a model graph, with JSON-style paths."""
+    policy = policy or APRS_IS()
     result: list[Diagnostic] = []
     if isinstance(value, Weather):
         result.extend(
@@ -95,9 +99,36 @@ def check(value: Any, policy: EnvelopePolicy | None = None) -> tuple[Diagnostic,
         )
     for node, path in walk(value):
         # Envelope policies apply to the outer header, not encapsulated text.
-        node_policy = policy if path in ("$", "$.header") else None
+        node_policy: EnvelopePolicy | None = policy
+        if isinstance(node, Header) and (
+            not check_envelope or path not in ("$", "$.header")
+        ):
+            node_policy = None
         free, rules = _plan(type(node))
         for name in free:
+            text = getattr(node, name)
+            utf8 = "utf8_text" in policy.extensions and isinstance(
+                node,
+                (
+                    Status,
+                    Message,
+                    AutoAnswer,
+                    Bulletin,
+                    NWSBulletin,
+                    Position,
+                    Object,
+                    Item,
+                    MicE,
+                ),
+            )
+            if not text.isascii() and not utf8:
+                result.append(
+                    Diagnostic(
+                        "nonconforming",
+                        "non-ASCII text requires utf8_text in an eligible free-text field",
+                        f"{path}.{name}",
+                    )
+                )
             if _has_control(getattr(node, name)):
                 result.append(
                     Diagnostic(
@@ -416,7 +447,9 @@ def _position(v: Position, policy: EnvelopePolicy | None) -> Iterator[Finding]:
             from ._position_codec import compressed_bytes
 
             _, extensions = compressed_bytes(v)
-        prefix = _extensions.write(extensions, v.symbol, v.comment.encode("utf-8"))
+        prefix = _extensions.write(
+            extensions, v.symbol, v.comment.encode("utf-8"), policy or APRS_IS()
+        )
     except CodecNotImplementedError:
         return
     except _extensions.Unrepresentable as exc:
@@ -433,8 +466,8 @@ def _position(v: Position, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if len(prefix) - _weather_exempt_bytes(extensions) + len(comment) > 43:
         yield "$.comment", "extensions and comment exceed 43 bytes"
     try:
-        expected, _ = _extensions.read(prefix, v.symbol)
-        actual, rest = _extensions.read(prefix + comment, v.symbol)
+        expected, _ = _extensions.read(prefix, v.symbol, policy or APRS_IS())
+        actual, rest = _extensions.read(prefix + comment, v.symbol, policy or APRS_IS())
     except (CodecNotImplementedError, FieldError):
         yield "$.comment", "contains extension syntax this version cannot decode"
         return
@@ -446,7 +479,16 @@ def _position(v: Position, policy: EnvelopePolicy | None) -> Iterator[Finding]:
 
 @_conformance(Position, Object, Item, MicE)
 def _located(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    policy = policy or APRS_IS()
     e = v.extensions
+    if e.dao is not None and "dao" not in policy.extensions:
+        yield "$.extensions.dao", "requires dao extension"
+    if (
+        e.phg is not None
+        and e.phg.rate_per_hour is not None
+        and "phg_rate" not in policy.extensions
+    ):
+        yield "$.extensions.phg.rate_per_hour", "requires phg_rate extension"
     symbol = (v.symbol.table_id, v.symbol.code)
     primary = [
         name
@@ -487,25 +529,27 @@ def _located(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if isinstance(v, MicE):
         if e.motion is None:
             yield "$.extensions.motion", "Mic-E always carries course and speed"
-        yield from _mic_e_status(v)
+        yield from _mic_e_status(v, policy)
         return
     if v.compression is not None:
         yield from _compressed(v)
 
 
-def _mic_e_status(v: MicE) -> Iterator[Finding]:
+def _mic_e_status(v: MicE, policy: EnvelopePolicy) -> Iterator[Finding]:
     """The type code and status text must read back as composed."""
     from . import _mic_e
 
     try:
-        _mic_e.device_parts(v.device_code)
+        _mic_e.device_parts(v.device_code, policy)
     except APRSError:
         yield "$.device_code", "not a declared Mic-E type code"
         return
-    if v.extensions.telemetry and any(_telemetry(v.extensions.telemetry, None)):
+    if v.extensions.telemetry and any(_telemetry(v.extensions.telemetry, policy)):
         return  # Channel findings are reported when walking the telemetry model.
     try:
-        device, _, comment = _mic_e.read_status(_mic_e.write_status(v), v.symbol)
+        device, _, comment = _mic_e.read_status(
+            _mic_e.write_status(v, policy), v.symbol, policy
+        )
     except APRSError as error:
         yield "$.device_code", str(error)
         return
@@ -552,6 +596,13 @@ def _weather_report(w: Weather, path: str, positioned: bool) -> Iterator[Finding
 
 @_conformance(Weather)
 def _weather(v: Weather, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    policy = policy or APRS_IS()
+    if "weather_extensions" not in policy.extensions:
+        for name in ("radiation", "battery_voltage"):
+            if getattr(v, name) is not None:
+                yield f"$.{name}", "requires weather_extensions"
+        if v.water_height and v.water_height.measurement.value is None:
+            yield "$.water_height", "unavailable height requires weather_extensions"
     problem = _weather_comment(v, v.comment)
     if problem:
         yield "$.comment", problem
@@ -559,7 +610,7 @@ def _weather(v: Weather, policy: EnvelopePolicy | None) -> Iterator[Finding]:
         from . import _weather as codec
 
         try:
-            back, _ = codec.read(codec.write(v)[1:])
+            back, _ = codec.read(codec.write(v, policy=policy)[1:], policy=policy)
         except APRSError:
             pass  # Missing slots and unencodable values are reported separately.
         else:
@@ -606,6 +657,8 @@ def _weather(v: Weather, policy: EnvelopePolicy | None) -> Iterator[Finding]:
 
 @_conformance(Telemetry)
 def _telemetry(v: Telemetry, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    policy = policy or APRS_IS()
+
     def analog(low: int, high: int, missing: tuple[int, ...] = ()) -> Iterator[Finding]:
         for i, value in enumerate(v.analog):
             if i in missing and value is None:
@@ -622,12 +675,14 @@ def _telemetry(v: Telemetry, policy: EnvelopePolicy | None) -> Iterator[Finding]
             yield "$.analog", "classic telemetry has five analog channels"
         if len(v.digital) != 8 or None in v.digital:
             yield "$.digital", "classic telemetry has eight binary channels"
-        yield from analog(0, 255)
+        yield from analog(0, 999 if "expanded_telemetry" in policy.extensions else 255)
         if v.sequence != "MIC" and not (
             isinstance(v.sequence, int) and v.sequence <= 999
         ):
             yield "$.sequence", "classic telemetry requires 0..999 or MIC"
     elif v.encoding in ("mic_e_hex", "mic_e_binary"):
+        if v.encoding == "mic_e_hex" and "mice_device_ids" in policy.extensions:
+            yield "$.encoding", "hexadecimal telemetry conflicts with mice_device_ids"
         counts = (2, 5) if v.encoding == "mic_e_hex" else (5,)
         if len(v.analog) not in counts:
             yield "$.analog", f"{v.encoding} carries {' or '.join(map(str, counts))} channels"
@@ -646,6 +701,8 @@ def _telemetry(v: Telemetry, policy: EnvelopePolicy | None) -> Iterator[Finding]
         if v.comment:
             yield "$.comment", "Mic-E telemetry replaces the status text"
     elif v.encoding == "base91_comment":
+        if "base91_telemetry" not in policy.extensions:
+            yield "$.encoding", "requires base91_telemetry extension"
         if not (isinstance(v.sequence, int) and v.sequence <= 8280):
             yield "$.sequence", "base91 telemetry requires a sequence in 0..8280"
         if not v.analog:
@@ -657,3 +714,9 @@ def _telemetry(v: Telemetry, policy: EnvelopePolicy | None) -> Iterator[Finding]
             yield "$.digital", "eight binary channels follow five analog channels"
         if v.comment:
             yield "$.comment", "base91 telemetry uses the report comment"
+
+
+@_conformance(LegacyPosition)
+def _legacy(v: LegacyPosition, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    if not policy or not policy.legacy_positions:
+        yield "$", "legacy position requires legacy_positions=True"

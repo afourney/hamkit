@@ -45,7 +45,7 @@ class PacketTests(unittest.TestCase):
         wire = b"N0CALL>APRS,WIDE1-1:!4903.50N/07201.75W-Test"
         self.assertEqual(serialize_packet(packet), wire)
         self.assertEqual(parse_packet(wire), packet)
-        validate_packet(packet, policy=RF)
+        validate_packet(packet, policy=RF())
 
     def test_null_position_convention(self) -> None:
         value = parse_payload(b"!0000.00N\\00000.00W.")

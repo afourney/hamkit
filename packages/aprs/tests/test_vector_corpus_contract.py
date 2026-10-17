@@ -93,12 +93,14 @@ def test_every_row_has_complete_policy_and_preserves_effective_behavior() -> Non
     for row in all_rows():
         assert set(row["policy"]) == policy_fields, row["id"]
         policy = a.EnvelopePolicy(**json.loads(json.dumps(row["policy"])))
-        assert asdict(policy) == row["policy"], row["id"]
+        assert json.loads(json.dumps(asdict(policy))) == row["policy"], row["id"]
         # This is a migration oracle, not an operational policy selector.
         was_rf = row["profile"] == "strict-envelope" or bool(
             (row.get("options") or {}).get("ax25")
         )
-        previous_policy = a.RF if was_rf else a.APRS_IS
+        previous_policy = (a.RF if was_rf else a.APRS_IS)(
+            extensions=policy.extensions, legacy_positions=policy.legacy_positions
+        )
         legacy = row["profile"] in {"historical-1.0", "compatibility-fap"}
         assert policy == previous_policy, row["id"]
         assert type(row["legacy_positions"]) is bool
@@ -118,8 +120,10 @@ def test_row_settings_override_source_hints() -> None:
     row = next(r for r in all_rows() if r["id"] == "OTH-033")
     row["profile"] = "strict-envelope"
     row["options"] = {"ax25": True}
-    custom = a.EnvelopePolicy(".*", ".*", ".*", max_information_bytes=0)
-    row["policy"] = asdict(custom)
+    custom = a.EnvelopePolicy(
+        ".*", ".*", ".*", max_information_bytes=0, legacy_positions=True
+    )
+    row["policy"] = json.loads(json.dumps(asdict(custom)))
     row["legacy_positions"] = True
     result = parse_row(row, row["packet"].encode("latin1"))
     assert isinstance(result, a.Packet)
@@ -137,7 +141,7 @@ def test_roundtrip_runner_uses_stored_policy(monkeypatch: pytest.MonkeyPatch) ->
     row["profile"] = "strict-envelope"
     row["options"] = {"ax25": True}
     custom = a.EnvelopePolicy(".*", ".*", ".*", max_tnc2_line_bytes=1000)
-    row["policy"] = asdict(custom)
+    row["policy"] = json.loads(json.dumps(asdict(custom)))
     parse, serialize = a.parse_packet, a.serialize_packet
     parsed_policies, sent_policies = [], []
 
@@ -146,7 +150,7 @@ def test_roundtrip_runner_uses_stored_policy(monkeypatch: pytest.MonkeyPatch) ->
         return parse(raw, **kwargs)
 
     def record_serialize(value, **kwargs):
-        sent_policies.append(kwargs.get("policy", a.APRS_IS))
+        sent_policies.append(kwargs.get("policy", a.APRS_IS()))
         return serialize(value, **kwargs)
 
     monkeypatch.setattr(a, "parse_packet", record_parse)

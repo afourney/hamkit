@@ -27,18 +27,17 @@ ASCII for global communication. The 1.2 document is a proposed draft, so this
 is adopted compatibility guidance, not a ratified baseline requirement. APRS-IS
 services such as aprs.fi decode UTF-8 in these fields.
 
-**Current behavior:** free-text fields decode as UTF-8; invalid UTF-8 falls back
-to Latin-1, one character per byte, with a nonconforming diagnostic. That fallback
-is a reversible reading, not proof of the sender's encoding; the exact bytes
-remain in `original_wire`. The envelope policy (`APRS_IS`, `RF`, or a custom
-`EnvelopePolicy`) selects
-address and size rules, not a text encoding, so RF output also carries UTF-8. Free text is sent as UTF-8 and length limits
-count encoded bytes. Control characters are nonconforming. Protocol tokens
-(callsigns, addressees, message IDs, object and item names, query names, NTS
-fields, telemetry labels, NMEA fields) remain printable ASCII.
+**Current behavior:** received free text decodes as UTF-8. The policy's
+`byte_fallback` independently selects Latin-1 plus a diagnostic or rejection
+when UTF-8 cannot decode. The exact received bytes remain in `original_wire`.
+`utf8_text` permits non-ASCII only in the designated message, bulletin, status,
+position/object/item and Mic-E free-text fields. Without it, intelligible
+non-ASCII is retained with conformance diagnostics and cannot be sent.
+Protocol tokens remain ASCII under every policy. Lengths count encoded bytes.
+See [packet policies](ENVELOPE_POLICIES.md) for defaults and overrides.
 
-**What resolves it:** a ratified APRS revision that settles character sets, or an
-explicit decision to reject non-ASCII text when transmitting on RF.
+**What remains unresolved:** these are explicitly selected compatibility rules,
+not evidence that the proposed guidance was ratified.
 
 ## NMEA versions, missing fix fields and receiver profiles
 
@@ -113,13 +112,15 @@ slot presence. There is no extra requirement for a numeric observation. A
 
 The later minimum flood example omits gust; proposed water units and examples
 disagree across the documents. `WaterHeight` remains a signed measurement with
-explicit feet/meters and optional external datum metadata. The two water-level
+explicit feet/meters and optional external datum metadata. With `weather_extensions`, the two water-level
 spellings are told apart by their syntax: a decimal value (`F20.1`, `f-1.2`) is
 the 1.1 clarification's feet or meters, and four bytes without a decimal point
 (`F0123`, `F-042`, `F....`) are the 1.2 proposal's tenths of a foot. The 1.2
 proposal's `Xnnn` radiation (two digits times a power of ten, nSv/h) and `Vnnn`
 battery volts (tenths) decode into `radiation` and `battery_voltage`, with `...`
-for unavailable, so they are never read as software/unit codes.
+for unavailable. Without this extension, the older whole-number F/f reading
+is retained (so `F1234` means 1234 feet rather than 123.4 feet); X/V are not
+new sensor fields. The extension selects a meaning, not a detected version.
 `disputed_knots_or_mph` explicitly records unresolved velocity units and must
 not be converted without a selected profile.
 
@@ -159,13 +160,15 @@ manual flag, bearing range and PHG radii are computed properties, so they cannot
 disagree with the codes. A single Q-to-accuracy
 or usability mapping is not imposed: the original notes omit Q=6 and differ from
 APRS101 at low Q values. `Bearing.usable` and accuracy remain reported
-interpretations, not certified derivations. PHGR uses the documented
+interpretations, not certified derivations. With `phg_rate`, PHGR uses the documented
 `PHGabcdr/` layout: `r` is `0`–`9` or `A`–`Z` (0–35 reports per hour), with zero
 denoting an unscheduled transmission. Its slash is required and consumed by the
 public decoder. The encoder emits the rate and slash before other extensions.
 The older PHG form accepts an optional slash before the comment; surrounding
 ASCII whitespace is trimmed for PHG comments. Other position comments and message
-text do not acquire this normalization. This follows the PHGR note's delimiter
+text do not acquire this normalization. With the extension disabled, text
+after baseline PHG is preserved, including separators, rate-shaped text and
+whitespace. This follows the PHGR note's delimiter
 convention, not a universal rule in APRS101 (p20 says there is no separator unless
 otherwise specified). Display half-radius is a documented display choice,
 not an independently transmitted observation.

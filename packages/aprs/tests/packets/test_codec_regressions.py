@@ -13,8 +13,9 @@ from packets.test_roundtrip_corpus import same_semantics, without_evidence
 from hamkit import aprs as a
 
 
-def packet(raw):
-    value = a.parse_packet(raw)
+def packet(raw, policy=None):
+    policy = a.APRS_IS() if policy is None else policy
+    value = a.parse_packet(raw, policy=policy)
     assert isinstance(value, a.Packet)
     return value
 
@@ -236,7 +237,7 @@ def test_structured_weather_is_exempt_from_the_position_comment_budget():
         "$.payload.comment"
     ]
     # Envelope limits still count every weather byte.
-    tight = dataclasses.replace(a.RF, max_information_bytes=60)
+    tight = dataclasses.replace(a.RF(), max_information_bytes=60)
     findings = a.check_packet(packet(weather + b"L123wRSW"), policy=tight)
     assert [d.path for d in findings] == ["$.payload"]
 
@@ -316,16 +317,22 @@ MIC_E = b"N0CALL>S32UVT:`(_f\x1e\x1eOj/"
 def test_mic_e_type_codes(status, device, comment, telemetry):
     # APRS 1.2 (aprs.org/aprs12/mic-e-types.txt) redefines ` and ' as type bytes;
     # no type byte or suffix can make the packet Malformed.
-    decoded = packet(MIC_E + status)
+    policy = a.APRS_IS(
+        extensions=set(a.APRS_IS().extensions)
+        | ({"mice_device_ids"} if device is not None else set())
+    )
+    decoded = packet(MIC_E + status, policy=policy)
     assert decoded.payload.device_code == device
     assert decoded.payload.comment == comment
     t = decoded.payload.extensions.telemetry
     assert (t and t.encoding) == telemetry
-    resent = packet(a.serialize_packet(decoded))
+    resent = packet(a.serialize_packet(decoded, policy=policy), policy=policy)
     assert (resent.payload.device_code, resent.payload.comment) == (device, comment)
 
 
 def test_mic_e_type_codes_are_checked_before_sending():
+    policy = a.APRS_IS(extensions={"mice_device_ids"})
+
     def mic_e(**fields):
         motion = a.Extensions(motion=a.Motion(90, 10))
         fields.setdefault("extensions", motion)
@@ -335,7 +342,9 @@ def test_mic_e_type_codes_are_checked_before_sending():
         )
 
     def findings(**fields):
-        return [(d.path, d.message) for d in a.check_packet(mic_e(**fields))]
+        return [
+            (d.path, d.message) for d in a.check_packet(mic_e(**fields), policy=policy)
+        ]
 
     assert findings(device_code="`_%", comment="Hi") == []
     readback = (
@@ -353,27 +362,33 @@ def test_mic_e_type_codes_are_checked_before_sending():
     shared = a.Extensions(motion=a.Motion(90, 10), telemetry=telemetry)
     assert findings(device_code="'", extensions=shared) == [
         (
-            "$.payload.device_code",
-            "Mic-E telemetry and a type code share the first byte",
+            "$.payload.extensions.telemetry.encoding",
+            "hexadecimal telemetry conflicts with mice_device_ids",
         )
     ]
     with pytest.raises(a.ConformanceError):
-        a.serialize_packet(mic_e(device_code="`", comment="Hi_%"))
+        a.serialize_packet(mic_e(device_code="`", comment="Hi_%"), policy=policy)
 
 
 @pytest.mark.parametrize("device", [">", "]", ">^", "]="])
 @pytest.mark.parametrize("altitude", [b"", b'"4T}'])
 def test_mic_e_grid_stays_in_comment_and_roundtrips(device, altitude):
+    policy = a.APRS_IS(extensions={"mice_device_ids"})
     comment = b"IO91SX/G Ready"
     raw = MIC_E + device[:1].encode() + altitude + comment + device[1:].encode()
-    decoded = without_evidence(packet(raw))
+    decoded = without_evidence(packet(raw, policy=policy))
     assert decoded.payload.device_code == device
     assert decoded.payload.comment == comment.decode()
     assert decoded.payload.latitude_deg == pytest.approx(33.427333333333)
     assert decoded.payload.longitude_deg == pytest.approx(-112.129)
-    assert a.check_packet(decoded) == ()
-    assert a.serialize_packet(decoded) == raw
-    assert without_evidence(packet(a.serialize_packet(decoded))) == decoded
+    assert a.check_packet(decoded, policy=policy) == ()
+    assert a.serialize_packet(decoded, policy=policy) == raw
+    assert (
+        without_evidence(
+            packet(a.serialize_packet(decoded, policy=policy), policy=policy)
+        )
+        == decoded
+    )
 
 
 def test_mic_e_grid_vector_preserves_all_captured_text():
@@ -620,7 +635,7 @@ def test_mic_e_header_conflicts_are_checked_without_envelope_limits(
     if nested:
         p = a.Packet(a.Header("N0GATE", "APRS"), a.ThirdParty(p))
     prefix = "$.payload.packet" if nested else "$"
-    for policy in (a.APRS_IS, a.EnvelopePolicy(".*", ".*", ".*")):
+    for policy in (a.APRS_IS(), a.EnvelopePolicy(".*", ".*", ".*")):
         findings = a.check_packet(p, policy=policy)
         assert [d.path for d in findings] == [prefix + ".header.destination"]
         for send in (a.serialize_packet, a.validate_packet):
@@ -637,7 +652,7 @@ def test_nmea_symbol_requires_matching_header_context():
     with pytest.raises(a.ContextRequiredError, match="NMEA symbol"):
         a.serialize_payload(p.payload)
     changed = dataclasses.replace(p, header=a.Header("N0CALL-9", "APRS"))
-    for policy in (a.APRS_IS, a.EnvelopePolicy(".*", ".*", ".*")):
+    for policy in (a.APRS_IS(), a.EnvelopePolicy(".*", ".*", ".*")):
         findings = a.check_packet(changed, policy=policy)
         assert [d.path for d in findings] == ["$.payload.symbol"]
         with pytest.raises(a.ConformanceError) as caught:

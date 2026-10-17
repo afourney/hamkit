@@ -11,6 +11,7 @@ from . import _data as d
 from . import _models as m
 from ._errors import APRSError, FieldError
 from ._fields import decode_timestamp, encode_timestamp
+from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 from ._text import free_text, token
 
 
@@ -44,7 +45,9 @@ def query(body: bytes, address: str | None = None) -> m.Query:
     )
 
 
-def status(body: bytes, diagnostics: list) -> m.Status:
+def status(
+    body: bytes, diagnostics: list, policy: EnvelopePolicy = _DEFAULT_POLICY
+) -> m.Status:
     timestamp = None
     grid = None
     symbol = None
@@ -66,7 +69,7 @@ def status(body: bytes, diagnostics: list) -> m.Status:
         beam = d.Beam(heading, 10 * (match[2][0] - 48) ** 2, raw=match[0])
         body = body[: match.start()]
     return m.Status(
-        free_text(body, "$.text", diagnostics),
+        free_text(body, "$.text", diagnostics, policy),
         timestamp=timestamp,
         grid=grid,
         symbol=symbol,
@@ -105,7 +108,12 @@ def definition(address: str, body: bytes) -> m.TelemetryDefinition:
     return m.TelemetryDefinition(address, value)
 
 
-def specialized(address: str, body: bytes, diagnostics: list):
+def specialized(
+    address: str,
+    body: bytes,
+    diagnostics: list,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
+):
     if body.startswith((b"PARM.", b"UNIT.", b"EQNS.", b"BITS.")):
         return definition(address, body)
     if body.startswith(b"?"):
@@ -114,7 +122,7 @@ def specialized(address: str, body: bytes, diagnostics: list):
         text, sep, ack = body[3:].rpartition(b"}")
         return m.AutoAnswer(
             address,
-            free_text(text if sep else body[3:], "$.text", diagnostics),
+            free_text(text if sep else body[3:], "$.text", diagnostics, policy),
             previous_ack=token(ack, "$.previous_ack") if sep else None,
         )
     if address.startswith("BLN"):
@@ -122,14 +130,14 @@ def specialized(address: str, body: bytes, diagnostics: list):
             raise FieldError("bulletin requires identifier")
         return m.Bulletin(
             address[3],
-            free_text(body, "$.text", diagnostics),
+            free_text(body, "$.text", diagnostics, policy),
             group=address[4:] or None,
         )
     if address.startswith("NWS-"):
         text, sep, ref = body.partition(b"{")
         return m.NWSBulletin(
             address,
-            free_text(text, "$.text", diagnostics),
+            free_text(text, "$.text", diagnostics, policy),
             reference_id=token(ref, "$.reference_id") if sep else None,
         )
     if re.match(rb"N[#AP1-6SR]\\", body):
@@ -218,7 +226,9 @@ def response(address: str, body: bytes):
     return None
 
 
-def telemetry(raw: bytes, diagnostics: list) -> d.Telemetry:
+def telemetry(
+    raw: bytes, diagnostics: list, policy: EnvelopePolicy = _DEFAULT_POLICY
+) -> d.Telemetry:
     match = re.match(rb"T#(MIC|\d+),?", raw)
     if not match:
         raise FieldError("invalid telemetry sequence")
@@ -251,7 +261,7 @@ def telemetry(raw: bytes, diagnostics: list) -> d.Telemetry:
         tuple(v == 49 for v in bits),
         sequence="MIC" if sequence == b"MIC" else int(sequence),
         sequence_raw=sequence,
-        comment=free_text(comment, "$.comment", diagnostics),
+        comment=free_text(comment, "$.comment", diagnostics, policy),
     )
 
 

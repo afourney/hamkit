@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: MIT
 """Mic-E joint destination/information codec (APRS101 chapter 10).
 
-Status text follows the APRS 1.2 type codes (aprs.org/aprs12/mic-e-types.txt):
-"T......Mv", where T is a type byte and a declared suffix may end the text.
-APRS 1.2 redefines the ` and ' type bytes, which APRS101 used for hex
-telemetry; that reading remains only for the complete legacy hex form.
+With mice_device_ids, status text follows the APRS 1.2 type conventions
+(aprs.org/aprs12/mic-e-types.txt). Without it, apostrophe/backtick selectors
+retain their APRS101 hex-telemetry meaning. Policy selects interpretation;
+there is no general wire version flag and no content heuristic chooses it.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from typing import cast
 from ._data import Altitude, Extensions, Measurement, Motion, Symbol, Telemetry
 from ._errors import FieldError
 from ._models import Header, MicE
+from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 from ._position_codec import base91, center, dao_offset, pack91
 from ._text import free_text
 
@@ -89,7 +90,12 @@ def destination(raw: str):
     return lat, n, message, raw[4] >= "P", raw[5] >= "P"
 
 
-def read(information: bytes, header: Header, diagnostics: list) -> MicE:
+def read(
+    information: bytes,
+    header: Header,
+    diagnostics: list,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
+) -> MicE:
     lat, n, message, offset, west = destination(header.destination)
     b = information[1:]
     if len(b) < 8 or any(not 28 <= c <= 127 for c in b[:6]):
@@ -116,7 +122,7 @@ def read(information: bytes, header: Header, diagnostics: list) -> MicE:
         course -= 400
     motion = Motion(course, speed, course_code=course, speed_code=speed)
     symbol = Symbol(chr(b[7]), chr(b[6]))
-    device, extra, tail = read_status(b[8:], symbol)
+    device, extra, tail = read_status(b[8:], symbol, policy)
     e = replace(extra, motion=motion)
     return MicE(
         dao_offset(lat, e.dao, "latitude"),
@@ -127,7 +133,7 @@ def read(information: bytes, header: Header, diagnostics: list) -> MicE:
         ambiguity=n,
         device_code=device,
         extensions=e,
-        comment=free_text(tail, "$.comment", diagnostics),
+        comment=free_text(tail, "$.comment", diagnostics, policy),
     )
 
 
@@ -174,7 +180,7 @@ def position_bytes(p: MicE, header: Header) -> bytes:
     return bytes([degree_byte, minutes + (88 if minutes < 10 else 28), hundredths + 28])
 
 
-def write(p: MicE, header: Header) -> bytes:
+def write(p: MicE, header: Header, policy: EnvelopePolicy = _DEFAULT_POLICY) -> bytes:
     position = position_bytes(p, header)
     m = p.extensions.motion
     if m is None or m.course_deg is None or m.speed_knots is None:
@@ -194,13 +200,17 @@ def write(p: MicE, header: Header) -> bytes:
         + p.symbol.code.encode()
         + p.symbol.table_id.encode()
     )
-    return (b"`" if p.fix == "current" else b"'") + body + write_status(p)
+    return (b"`" if p.fix == "current" else b"'") + body + write_status(p, policy)
 
 
-def device_parts(code: str | None) -> tuple[str, str]:
+def device_parts(
+    code: str | None, policy: EnvelopePolicy = _DEFAULT_POLICY
+) -> tuple[str, str]:
     """Split a device code into what precedes and what ends the status text."""
     if not code:
         return "", ""
+    if "mice_device_ids" not in policy.extensions and code not in (">", "]"):
+        raise FieldError("Mic-E device code requires mice_device_ids")
     head, rest = code[:1], code[1:]
     if head[:1] not in TYPE_SUFFIXES or rest and rest not in TYPE_SUFFIXES[code[0]]:
         raise FieldError("unsupported Mic-E type code")
@@ -218,18 +228,24 @@ def _legacy_hex(tail: bytes) -> int:
     """Width of complete APRS101 hex telemetry after ` or ', or 0."""
     width = 4 if tail[:1] == b"`" else 10
     complete = re.fullmatch(rb"[0-9A-Fa-f]{%d}" % width, tail[1 : width + 1])
-    if complete and not _suffix(tail[:1].decode(), tail[width + 1 :]):
+    if complete:
         return width
     return 0
 
 
-def read_status(tail: bytes, symbol: Symbol) -> tuple[str | None, Extensions, bytes]:
+def read_status(
+    tail: bytes, symbol: Symbol, policy: EnvelopePolicy = _DEFAULT_POLICY
+) -> tuple[str | None, Extensions, bytes]:
     """Decode the status text after the symbol: device code, extensions, comment."""
     device = None
     suffix = b""
     telemetry = None
     altitude = None
-    width = _legacy_hex(tail) if tail[:1] in (b"`", b"'") else 0
+    modern = "mice_device_ids" in policy.extensions
+    legacy_selector = not modern and tail[:1] in (b"`", b"'")
+    width = _legacy_hex(tail) if legacy_selector else 0
+    if legacy_selector and not width:
+        raise FieldError("truncated or invalid legacy Mic-E hexadecimal telemetry")
     if width:
         values: tuple[int | None, ...] = tuple(
             bytes.fromhex(tail[1 : width + 1].decode())
@@ -245,7 +261,7 @@ def read_status(tail: bytes, symbol: Symbol) -> tuple[str | None, Extensions, by
         tail = tail[6:]
     elif tail[:1] in (b">", b"]", b"`", b"'"):
         device = tail[:1].decode()
-        suffix = _suffix(device, tail[1:])
+        suffix = _suffix(device, tail[1:]) if modern else b""
         tail = tail[1 : len(tail) - len(suffix)]
     if len(tail) >= 4 and tail[3:4] == b"}":
         altitude = Altitude(Measurement(base91(tail[:3]) - 10000, "meters"), "mic_e")
@@ -256,7 +272,7 @@ def read_status(tail: bytes, symbol: Symbol) -> tuple[str | None, Extensions, by
         device += suffix.decode()
     from . import _extensions
 
-    extra, tail = _extensions.read(tail, symbol)
+    extra, tail = _extensions.read(tail, symbol, policy)
     e = replace(
         extra,
         altitude=altitude or extra.altitude,
@@ -265,15 +281,17 @@ def read_status(tail: bytes, symbol: Symbol) -> tuple[str | None, Extensions, by
     return device, e, tail
 
 
-def write_status(p: MicE) -> bytes:
+def write_status(p: MicE, policy: EnvelopePolicy = _DEFAULT_POLICY) -> bytes:
     """Encode the status text after the symbol; the inverse of read_status."""
-    head, suffix = device_parts(p.device_code)
+    head, suffix = device_parts(p.device_code, policy)
     e = replace(p.extensions, motion=None)
     first = b""
     if e.telemetry and e.telemetry.encoding in ("mic_e_hex", "mic_e_binary"):
         if head:
             raise FieldError("Mic-E telemetry and a type code share the first byte")
         t = e.telemetry
+        if t.encoding == "mic_e_hex" and "mice_device_ids" in policy.extensions:
+            raise FieldError("hexadecimal telemetry conflicts with mice_device_ids")
         values = t.analog
         if len(values) == 2 and t.encoding == "mic_e_hex":
             values = (values[0], None, values[1], None, None)
@@ -317,4 +335,9 @@ def write_status(p: MicE) -> bytes:
     from . import _extensions
 
     comment = p.comment.encode()
-    return first + _extensions.write(e, p.symbol, comment) + comment + suffix.encode()
+    return (
+        first
+        + _extensions.write(e, p.symbol, comment, policy)
+        + comment
+        + suffix.encode()
+    )

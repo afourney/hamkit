@@ -127,7 +127,15 @@ from ._models import (
     UserDefined,
 )
 from ._nmea import GGA, GLL, RMC, VTG, WPL, NMEAMetadata, NMEASentence
-from ._policy import APRS_IS, RF, EnvelopePolicy
+from ._policy import (
+    APRS_IS,
+    RF,
+    SUPPORTED_EXTENSIONS,
+    ByteFallback,
+    EnvelopePolicy,
+    Extension,
+    PolicyOverrides,
+)
 from ._transport import parse_tnc2_line, serialize_tnc2_line
 
 __all__ = [
@@ -139,6 +147,7 @@ __all__ = [
     "PHG",
     "RF",
     "RMC",
+    "SUPPORTED_EXTENSIONS",
     "VTG",
     "WPL",
     "APRSError",
@@ -153,6 +162,7 @@ __all__ = [
     "Bearing",
     "Bounds",
     "Bulletin",
+    "ByteFallback",
     "Calibration",
     "Capabilities",
     "Capability",
@@ -168,6 +178,7 @@ __all__ = [
     "DirectStations",
     "EnvelopeError",
     "EnvelopePolicy",
+    "Extension",
     "Extensions",
     "Extent",
     "ExternalExtension",
@@ -207,6 +218,7 @@ __all__ = [
     "Opaque",
     "Packet",
     "Payload",
+    "PolicyOverrides",
     "Position",
     "Query",
     "Radiogram",

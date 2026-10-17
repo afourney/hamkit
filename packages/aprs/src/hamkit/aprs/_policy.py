@@ -1,9 +1,31 @@
 # SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
 # SPDX-License-Identifier: MIT
-"""Declarative constraints for the outer TNC2 packet envelope."""
+"""Resolved envelope constraints and selected APRS payload interpretation."""
 
 import re
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, replace
+from typing import Literal, TypeAlias, TypedDict, Unpack
+
+Extension: TypeAlias = Literal[
+    "utf8_text",
+    "dao",
+    "base91_telemetry",
+    "mice_device_ids",
+    "expanded_telemetry",
+    "phg_rate",
+    "weather_extensions",
+]
+SUPPORTED_EXTENSIONS: tuple[Extension, ...] = (
+    "utf8_text",
+    "dao",
+    "base91_telemetry",
+    "mice_device_ids",
+    "expanded_telemetry",
+    "phg_rate",
+    "weather_extensions",
+)
+ByteFallback: TypeAlias = Literal["latin-1", "reject"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,8 +36,10 @@ class EnvelopePolicy:
     length includes third-party encapsulation. TNC2 line length includes a
     canonical CRLF, even for unframed input. None means no limit.
 
-    These constraints apply to the outer envelope, not encapsulated headers.
-    Basic TNC2 token syntax and payload conformance still apply independently.
+    Envelope constraints exclude encapsulated headers. Extension interpretation
+    and text rules apply throughout the packet tree. Direct construction defaults
+    to the implemented APRS 1.1 baseline (no extensions). Iterable extension input
+    is stored as an immutable tuple in catalog order. See ENVELOPE_POLICIES.md.
     """
 
     source_pattern: str
@@ -25,7 +49,27 @@ class EnvelopePolicy:
     max_information_bytes: int | None = None
     max_tnc2_line_bytes: int | None = None
 
+    extensions: Iterable[Extension] = ()
+    legacy_positions: bool = False
+    byte_fallback: ByteFallback = "latin-1"
+
     def __post_init__(self) -> None:
+        if isinstance(self.extensions, (str, bytes)):
+            raise TypeError("extensions must be a collection of identifiers")
+        supplied = tuple(self.extensions)
+        if any(
+            not isinstance(x, str) or x not in SUPPORTED_EXTENSIONS for x in supplied
+        ):
+            raise ValueError("unknown extension identifier")
+        if len(set(supplied)) != len(supplied):
+            raise ValueError("duplicate extension identifiers")
+        object.__setattr__(
+            self, "extensions", tuple(x for x in SUPPORTED_EXTENSIONS if x in supplied)
+        )
+        if type(self.legacy_positions) is not bool:
+            raise TypeError("legacy_positions must be a bool")
+        if self.byte_fallback not in ("latin-1", "reject"):
+            raise ValueError("byte_fallback must be 'latin-1' or 'reject'")
         for name in (
             "source_pattern",
             "destination_pattern",
@@ -59,7 +103,7 @@ _APRS_IS_SSID = r"(?:-(?!0\Z)[A-Za-z0-9]{1,2})?"
 _APRS_IS_SOURCE = r"(?=.{1,9}\Z)[A-Za-z0-9]{3,9}" + _APRS_IS_SSID
 _APRS_IS_ADDRESS = r"(?=.{1,9}\Z)[A-Za-z0-9]{1,9}" + _APRS_IS_SSID
 
-RF = EnvelopePolicy(
+_RF = EnvelopePolicy(
     source_pattern=_AX25_ADDRESS,
     destination_pattern=_AX25_ADDRESS,
     path_address_pattern=_AX25_ADDRESS,
@@ -67,9 +111,56 @@ RF = EnvelopePolicy(
     max_information_bytes=256,
 )
 
-APRS_IS = EnvelopePolicy(
+_APRS_IS = EnvelopePolicy(
     source_pattern=_APRS_IS_SOURCE,
     destination_pattern=_APRS_IS_ADDRESS,
     path_address_pattern=_APRS_IS_ADDRESS,
     max_tnc2_line_bytes=512,
 )
+
+
+DEFAULT_EXTENSIONS: tuple[Extension, ...] = tuple(
+    x for x in SUPPORTED_EXTENSIONS if x != "mice_device_ids"
+)
+
+
+class PolicyOverrides(TypedDict, total=False):
+    """Individual RF/APRS_IS factory overrides; extensions are a separate argument."""
+
+    source_pattern: str
+    destination_pattern: str
+    path_address_pattern: str
+    max_path_entries: int | None
+    max_information_bytes: int | None
+    max_tnc2_line_bytes: int | None
+    legacy_positions: bool
+    byte_fallback: ByteFallback
+
+
+def RF(
+    *,
+    extensions: Iterable[Extension] | None = None,
+    **overrides: Unpack[PolicyOverrides],
+) -> EnvelopePolicy:
+    """AX.25 envelope limits and compatible extension defaults; explicit empty selects baseline."""
+    return replace(
+        _RF,
+        extensions=DEFAULT_EXTENSIONS if extensions is None else extensions,
+        **overrides,
+    )
+
+
+def APRS_IS(
+    *,
+    extensions: Iterable[Extension] | None = None,
+    **overrides: Unpack[PolicyOverrides],
+) -> EnvelopePolicy:
+    """APRS-IS envelope limits and compatible extension defaults; explicit empty selects baseline."""
+    return replace(
+        _APRS_IS,
+        extensions=DEFAULT_EXTENSIONS if extensions is None else extensions,
+        **overrides,
+    )
+
+
+_DEFAULT_POLICY = APRS_IS()

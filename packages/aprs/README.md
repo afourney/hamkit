@@ -8,7 +8,7 @@ This is an **alpha API** with decoding and encoding for the packet families in
 our [compliance corpus](docs/APRS_COMPLIANCE_VECTORS.md): positions (including
 compressed, ambiguous and Mic-E), objects/items, weather, telemetry, messages,
 queries/responses, status, NMEA and historical formats. Unknown or explicitly
-raw formats preserve their bytes. Public models and JSON shapes are unchanged.
+raw formats preserve their bytes.
 See [codec coverage and compatibility policies](docs/API_COVERAGE.md) for limits.
 
 Install from a repository checkout with `python -m pip install -e packages/aprs`.
@@ -1699,7 +1699,7 @@ Maidenhead
 **Wire encoding available.** A historical prefix around a position. APRS101
 allowed a `!` position within the first 40 bytes of other text; the APRS 1.1
 addendum deprecates that search, so parsing returns a `Beacon` unless you pass
-`legacy_positions=True`.
+`policy=aprs.APRS_IS(legacy_positions=True)`. Use that policy for sending too.
 
 Build with Python:
 
@@ -1918,18 +1918,48 @@ Output:
 }
 ```
 
-Text fields accept UTF-8, following the APRS 1.2 proposed-draft guidance for
-messages, bulletins, status and comments (adopted for compatibility; the
-ratified spec is ASCII). Bytes that are not valid UTF-8 are read as
-Latin-1 with a diagnostic, never dropped or replaced. Pass `policy=aprs.RF` to
-apply AX.25 envelope address and size limits.
+Policies select envelope limits and payload interpretation. `RF()` and
+`APRS_IS()` return the same immutable `EnvelopePolicy` type. Both enable the
+supported comment, UTF-8, expanded telemetry and weather extensions by default;
+modern Mic-E device identifiers require explicit opt-in. Use
+`aprs.RF(extensions=set())` or `aprs.APRS_IS(extensions=set())` for the implemented
+APRS 1.1 baseline. Unknown extension identifiers are rejected.
 
-Envelope entry points accept an immutable `EnvelopePolicy`, with `APRS_IS` as
-the default and `RF` for AX.25 envelope constraints. Each policy supplies source,
-destination and path address patterns, plus optional path-entry, information-byte
-and TNC2-line-byte limits. `None` means no limit. See
-[Envelope policies](docs/ENVELOPE_POLICIES.md) for presets, customization and
-migration from the former `profile=` argument.
+Direct construction supports custom patterns, limits and extensions. Factories
+are optional. This example also saves and reloads the fully specified policy:
+
+```python
+from hamkit import aprs
+
+policy = aprs.EnvelopePolicy(
+    source_pattern=r"src_[0-9]+",
+    destination_pattern=r"dst_[A-Z]+",
+    path_address_pattern=r"via_[a-z]+",
+    max_path_entries=1,
+    max_information_bytes=200,
+    max_tnc2_line_bytes=None,
+    extensions={"utf8_text"},
+    legacy_positions=False,
+    byte_fallback="reject",
+)
+restored = aprs.from_json(aprs.to_json(policy), expected_type=aprs.EnvelopePolicy)
+packet = aprs.Packet(aprs.Header("src_12", "dst_AB"), aprs.Status("Café"))
+print(aprs.serialize_packet(packet, policy=restored).decode("utf-8"))
+```
+
+Output:
+
+```text
+src_12>dst_AB:>Café
+```
+
+Direct construction defaults to empty extensions; factory omission and an
+explicit empty collection are different choices. Policies store all resolved
+values in JSON, with no preset label. UTF-8 applies only to designated free-text
+fields; protocol tokens stay ASCII. Byte fallback and legacy-position search
+are separate settings. Disabled comment extensions preserve matching text.
+See [packet policies](docs/ENVELOPE_POLICIES.md) for the catalog, defaults,
+Mic-E conflicts, weather interpretation and third-party handling.
 
 Positionless weather decodes into measurements with explicit units and a timestamp:
 

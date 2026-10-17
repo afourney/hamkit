@@ -1,11 +1,11 @@
 # APRS codec coverage
 
 Packet dataclasses, payload unions and the packet JSON schema are unchanged.
-Envelope entry points now accept `policy=EnvelopePolicy(...)` instead of a
-profile string, with public `RF` and `APRS_IS` presets. `APRS_IS` is the default.
-Decoding and encoding cover the families exercised by all 1,564 occurrences in
-[the edition 1 corpus](APRS_COMPLIANCE_VECTORS.md). Unknown grammars still use
-`Opaque`; raw wrappers preserve authoritative information bytes.
+Packet and payload entry points accept `policy=EnvelopePolicy(...)`.
+`RF()` and `APRS_IS()` are factories with explicit extension defaults; direct
+construction and fully specified JSON are supported. See
+[packet policies](ENVELOPE_POLICIES.md) for the baseline, catalog and interpretation
+conflicts. Wire support below is subject to the selected extension set.
 
 | Family            | Decoding and encoding                                                                                                                                                      |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -70,7 +70,8 @@ specification-following public decoder (`tests/fap_divergences.json`), each
 with its reasons.
 
 Each JSONL row stores a complete serialized `EnvelopePolicy` under `policy`
-(28 RF and 1,536 APRS-IS), plus an explicit `legacy_positions` boolean. Corpus,
+(28 RF and 1,536 APRS-IS), including explicit extensions, byte fallback and legacy-position settings.
+The separate `legacy_positions` field is provenance. Corpus,
 individual-packet and round-trip runners reconstruct that policy directly. Source
 `profile` and `options` remain provenance, not runtime envelope-policy hints.
 The generator resolves the historical hints once; contract tests verify unchanged
@@ -106,17 +107,17 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   and sending raises `ConformanceError`; packet headers are not silently changed.
   Payload-only Mic-E still requires header context. Longitude degrees
   use APRS101's table, so 100–109° are sent as `l`–`u`, never as control bytes.
-- Mic-E status text follows the APRS 1.2 type codes
-  (aprs.org/aprs12/mic-e-types.txt). `device_code` holds the type byte that
-  begins the text plus any declared suffix that ends it, such as `` `_% ``
-  (Yaesu FTM-400DR), `'|3` (Byonics TinyTrack3) or `]=` (Kenwood TM-D710).
-  Legacy grid/status text such as `IO91SX/G Ready` stays in `comment`, separate
-  from the device code and the encoded latitude/longitude.
-  A leading `` ` `` or `'` is APRS101 hex telemetry only in its complete form
-  without a declared suffix; otherwise it is a type byte, and no type byte or
-  suffix makes a packet `Malformed`. Sending refuses an undeclared type code, a
-  type code combined with hex or binary telemetry, and a comment that would be
-  read back as a different type code.
+- Mic-E status interpretation is policy-selected. With `mice_device_ids`,
+  apostrophe/backtick selectors introduce device text even if the following text
+  is valid hexadecimal. Declared version suffixes become part of `device_code`.
+  Without it, those selectors introduce APRS101 hexadecimal telemetry and
+  incomplete hex fields are undecodable. Original `>` and `]` device markers
+  remain supported, with suffix text preserved in the comment. There is no
+  general APRS revision flag proving the sender's intent. Legacy grid/status
+  text remains literal comment, separate from the encoded coordinates.
+  Sending rejects models incompatible with the selected interpretation and
+  comments that would read back as different fields. Extended high-speed
+  reinterpretation is not implemented.
 - NMEA uses semantic numeric fields and recomputes a supplied checksum. Checksum
   characters can change when equivalent numeric spellings change. A sentence
   received with a bad checksum (`checksum_valid=False`) is a conformance finding:
@@ -160,7 +161,7 @@ All original packet bytes, semantic expectations, options and provenance have a
 frozen integrity hash tied to PR #4's head commit.
 
 Every vector also has an encoding test. With an explicit permissive envelope
-policy (`EnvelopePolicy(".*", ".*", ".*")`), 1,305 occurrences encode and stabilize
+policy (the row policy with its envelope patterns and limits relaxed), 1,305 occurrences encode and stabilize
 through semantic decode/encode round trips with all raw evidence removed. The
 other 259 have explicit refusal records: 176 malformed public packets and 83
 violations of the existing transmit-conformance rules. Those refusal tests assert
@@ -168,9 +169,9 @@ the reason; they are not broad exception catches or skipped tests. Three NMEA
 sentences with bad checksums are first refused, then encode after an explicit
 repair; they are counted among the 1,305.
 
-Of those 1,305, 15 have addresses rejected by the new default `APRS_IS` policy,
+Of those 1,305, 15 have addresses rejected by the `APRS_IS()` envelope constraints,
 including two with SSID `-0`; the tests independently require those
-default-policy refusals and validate the other 1,290 under the default policy. The permissive policy changes no decoded
+envelope refusals and validate the other 1,290 with the row’s interpretation settings. The permissive policy changes no decoded
 fields, packet bytes or payload conformance checks. Dedicated policy tests cover
 custom patterns, optional and zero limits, boundary sizes including CRLF,
 repeated markers, and consistent outer-envelope handling of third-party packets.

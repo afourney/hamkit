@@ -2,25 +2,33 @@
 # SPDX-License-Identifier: MIT
 """Wire text decoding.
 
-APRS101/1.1 specify printable ASCII. UTF-8 in message, bulletin, status and
-comment text follows the APRS 1.2 proposed-draft guidance
-(aprs.org/aprs12/utf-8.txt, 2009), adopted here for compatibility with APRS-IS
-practice; it is not a ratified baseline requirement. Free text decodes as
-UTF-8. Bytes that are not valid UTF-8 fall back to Latin-1, one character per
-byte, with a nonconforming diagnostic; that is a reversible reading, not proof
-of the sender's encoding, and the exact bytes remain in original_wire. Protocol
-tokens stay printable ASCII.
+APRS101/1.1 specify printable ASCII. Receive decoding preserves intelligible
+UTF-8 for diagnostics even when the selected policy does not permit sending it.
+Conformance permits non-ASCII only in designated free-text fields with utf8_text.
+Invalid UTF-8 either falls back to Latin-1 with a diagnostic or raises, according
+to byte_fallback. Original bytes remain evidence, never a serialization source.
+Protocol tokens stay printable ASCII.
 """
 from __future__ import annotations
 
 from ._errors import ModelError
 from ._models import Diagnostic
+from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 
 
-def free_text(raw: bytes, path: str, diagnostics: list[Diagnostic]) -> str:
+def free_text(
+    raw: bytes,
+    path: str,
+    diagnostics: list[Diagnostic],
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
+) -> str:
     try:
         return raw.decode("utf-8")
-    except UnicodeDecodeError:
+    except UnicodeDecodeError as exc:
+        if policy.byte_fallback == "reject":
+            raise ModelError(
+                path, "text is not valid UTF-8 and byte fallback is disabled"
+            ) from exc
         diagnostics.append(
             Diagnostic(
                 "nonconforming", "text is not valid UTF-8; decoded as Latin-1", path

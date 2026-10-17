@@ -829,6 +829,33 @@ def nest_legacy_position(result: JSON, packet: str) -> None:
             }
 
 
+def policy_extensions(row: JSON) -> tuple[aprs.Extension, ...]:
+    """Resolve interpretation from source assertions/bytes, never decoder output.
+
+    PHG vectors retain the documented separator convention. Mic-E legacy
+    telemetry explicitly excludes the modern interpretation of its selectors.
+    """
+    raw = row["packet"].encode("latin-1")
+    expected = json.dumps(row["expected"])
+    selected: list[aprs.Extension] = []
+    if any(b >= 128 for b in raw):
+        selected.append("utf8_text")
+    if re.search(rb"![A-Za-z][\x20-\x7b]{2}!", raw) or '"dao"' in expected:
+        selected.append("dao")
+    if b"|" in raw or "base91_comment" in expected:
+        selected.append("base91_telemetry")
+    if b"PHG" in raw:
+        selected.append("phg_rate")
+    if any(
+        key in expected
+        for key in ('"radiation"', '"battery_voltage"', '"water_height"')
+    ) or re.search(rb"[XV][0-9.]{3}|F[0-9.]{4}", raw):
+        selected.append("weather_extensions")
+    if '"device_code"' in expected and "mic_e_hex" not in expected:
+        selected.append("mice_device_ids")
+    return tuple(selected)
+
+
 def records() -> list[JSON]:
     result = []
     defaults: JSON = {}
@@ -865,7 +892,6 @@ def records() -> list[JSON]:
             strict = case["profile"] == "strict-envelope" or (
                 case.get("options") or {}
             ).get("ax25")
-            row["policy"] = asdict(aprs.RF if strict else aprs.APRS_IS)
             row["legacy_positions"] = case["profile"] in {
                 "historical-1.0",
                 "compatibility-fap",
@@ -903,6 +929,14 @@ def records() -> list[JSON]:
                     ] = "Source has no mapped payload expectation; retain the original assertions for adapter completion."
             if row["id"] in divergences["rows"]:
                 diverge(row, divergences)
+            row["policy"] = asdict(
+                (aprs.RF if strict else aprs.APRS_IS)(
+                    extensions=policy_extensions(row),
+                    legacy_positions=row["legacy_positions"],
+                )
+            )
+            # JSON array is the persisted spelling of the immutable tuple.
+            row["policy"]["extensions"] = list(row["policy"]["extensions"])
             result.append(row)
     assert set(divergences["rows"]) <= {row["id"] for row in result}
     assert set(sequence_packets) == {row["id"] for row in result if "sequence" in row}

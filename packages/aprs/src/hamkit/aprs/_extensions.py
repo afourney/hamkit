@@ -27,6 +27,7 @@ from ._data import (
     Symbol,
 )
 from ._errors import CodecNotImplementedError, FieldError
+from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 from ._text import token
 
 _FIELD = rb"(\d{3}|\.{3}| {3})"
@@ -90,7 +91,9 @@ def _motion(match: re.Match[bytes], df: bool) -> Motion | None:
     return Motion(None if c == 0 else c, s, course_code=c, speed_code=s, raw=match[0])
 
 
-def read(tail: bytes, symbol: Symbol) -> tuple[Extensions, bytes]:
+def read(
+    tail: bytes, symbol: Symbol, policy: EnvelopePolicy = _DEFAULT_POLICY
+) -> tuple[Extensions, bytes]:
     """Split decoded extensions from the information after an uncompressed symbol."""
 
     found: dict[str, Any] = {}
@@ -100,7 +103,10 @@ def read(tail: bytes, symbol: Symbol) -> tuple[Extensions, bytes]:
         from . import _weather
 
         weather, tail = _weather.read(
-            tail, positioned=True, compressed=not bool(_COURSE_SPEED.match(tail))
+            tail,
+            positioned=True,
+            compressed=not bool(_COURSE_SPEED.match(tail)),
+            policy=policy,
         )
         found["weather"] = weather
     elif (symbol.table_id, symbol.code) == ("\\", "l") and (
@@ -139,12 +145,16 @@ def read(tail: bytes, symbol: Symbol) -> tuple[Extensions, bytes]:
         tail = tail[7:]
         # PHGR (aprs.org/aprs12/probes.txt) requires both the rate character
         # and its delimiter. Without '/', a digit/letter belongs to the comment.
-        if re.match(rb"[0-9A-Z]/", tail):
+        if "phg_rate" in policy.extensions and re.match(rb"[0-9A-Z]/", tail):
             found["phg"] = replace(
                 found["phg"], rate_per_hour=_PHGR_RATES.index(tail[0])
             )
             tail = tail[2:]
-        elif tail.startswith(b"/") and not _ALTITUDE.match(tail):
+        elif (
+            "phg_rate" in policy.extensions
+            and tail.startswith(b"/")
+            and not _ALTITUDE.match(tail)
+        ):
             # The older PHG form also commonly separates its comment with '/'.
             # Consume one delimiter, but leave /A= altitude for the decoder below.
             tail = tail[1:]
@@ -181,7 +191,9 @@ def read(tail: bytes, symbol: Symbol) -> tuple[Extensions, bytes]:
     ):
         found["signpost"] = d.Signpost(token(match[1], "$.extensions.signpost.label"))
         tail = tail[: match.start()] + tail[match.end() :]
-    if match := _BASE91_TELEMETRY.search(tail):
+    if "base91_telemetry" in policy.extensions and (
+        match := _BASE91_TELEMETRY.search(tail)
+    ):
         from ._position_codec import base91
 
         raw = match[0][1:-1]
@@ -199,7 +211,9 @@ def read(tail: bytes, symbol: Symbol) -> tuple[Extensions, bytes]:
             raw=match[0],
         )
         tail = tail[: match.start()] + tail[match.end() :]
-    if match := re.search(rb"!([A-Za-z])([\x20-\x7b]{2})!", tail):
+    if "dao" in policy.extensions and (
+        match := re.search(rb"!([A-Za-z])([\x20-\x7b]{2})!", tail)
+    ):
         datum = match[1].decode()
         pair = match[2]
         if pair == b"  ":
@@ -231,7 +245,7 @@ def read(tail: bytes, symbol: Symbol) -> tuple[Extensions, bytes]:
             Measurement(feet, "feet", raw=match[1]), "feet_extension"
         )
         tail = tail[: match.start()] + tail[match.end() :]
-    if "phg" in found:
+    if "phg" in found and "phg_rate" in policy.extensions:
         # PHG/PHGR's presentation convention ignores surrounding whitespace.
         # This is not a general rule for message text or other position comments.
         tail = tail.strip()
@@ -307,7 +321,10 @@ def _motion_bytes(m: Motion) -> bytes:
 
 
 def _write_primary(
-    extensions: Extensions, symbol: Symbol, comment: bytes = b""
+    extensions: Extensions,
+    symbol: Symbol,
+    comment: bytes = b"",
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
 ) -> bytes:
     """The bytes read() would split back into these extensions."""
     e = extensions
@@ -370,7 +387,9 @@ def _write_primary(
                 )
             # Terminate PHGR before altitude or other extensions, too.
             raw += _PHGR_RATES[p.rate_per_hour : p.rate_per_hour + 1] + b"/"
-        elif comment.startswith(b"/") or re.match(rb"[0-9A-Z]/", comment):
+        elif "phg_rate" in policy.extensions and (
+            comment.startswith(b"/") or re.match(rb"[0-9A-Z]/", comment)
+        ):
             # The optional separator protects comments that would otherwise
             # lose their leading slash or be read as a PHGR rate.
             raw += b"/"
@@ -398,8 +417,23 @@ def _write_primary(
     return raw
 
 
-def write(extensions: Extensions, symbol: Symbol, comment: bytes = b"") -> bytes:
+def write(
+    extensions: Extensions,
+    symbol: Symbol,
+    comment: bytes = b"",
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
+) -> bytes:
     e = extensions
+    if e.dao is not None and "dao" not in policy.extensions:
+        raise FieldError("DAO requires dao extension")
+    if e.telemetry is not None and "base91_telemetry" not in policy.extensions:
+        raise FieldError("comment telemetry requires base91_telemetry extension")
+    if (
+        e.phg
+        and e.phg.rate_per_hour is not None
+        and "phg_rate" not in policy.extensions
+    ):
+        raise FieldError("PHGR requires phg_rate extension")
     extra = b""
     if e.weather:
         from . import _weather
@@ -409,6 +443,7 @@ def write(extensions: Extensions, symbol: Symbol, comment: bytes = b"") -> bytes
             positioned=True,
             compressed=e.weather.wind_direction is None
             and e.weather.wind_speed is None,
+            policy=policy,
         )
     if e.area:
         a = e.area
@@ -504,4 +539,4 @@ def write(extensions: Extensions, symbol: Symbol, comment: bytes = b"") -> bytes
     primary = replace(
         e, dao=None, area=None, signpost=None, weather=None, storm=None, telemetry=None
     )
-    return _write_primary(primary, symbol, comment) + extra
+    return _write_primary(primary, symbol, comment, policy) + extra

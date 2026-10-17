@@ -16,6 +16,7 @@ from typing import Any, Literal
 from ._data import Measurement, WaterHeight, Weather
 from ._errors import FieldError
 from ._fields import decode_timestamp, encode_timestamp
+from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 from ._text import free_text
 
 _FIELDS: dict[str, tuple[str, Any, int, float]] = {
@@ -35,7 +36,12 @@ _FIELDS: dict[str, tuple[str, Any, int, float]] = {
 
 
 def read(
-    raw: bytes, *, positioned=False, compressed=False, diagnostics=None
+    raw: bytes,
+    *,
+    positioned=False,
+    compressed=False,
+    diagnostics=None,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
 ) -> tuple[Weather, bytes]:
     original = raw
     values: dict[str, Any] = {}
@@ -62,11 +68,11 @@ def read(
     while raw:
         tag = chr(raw[0])
         if tag in "Ff":
-            height = _water_height(raw)
+            height = _water_height(raw, policy)
             if height:
                 values["water_height"], raw = height
                 continue
-        if tag in "XV":
+        if tag in "XV" and "weather_extensions" in policy.extensions:
             match = re.match(rb"[XV](\d{3}|\.{3})", raw)
             if match:
                 field = match[1]
@@ -119,19 +125,21 @@ def read(
         raw = b""
     if not positioned:
         values["comment"] = free_text(
-            raw, "$.comment", diagnostics if diagnostics is not None else []
+            raw, "$.comment", diagnostics if diagnostics is not None else [], policy
         )
         raw = b""
     return Weather(**values, timestamp=timestamp, raw=original), raw
 
 
-def _water_height(raw: bytes) -> tuple[WaterHeight, bytes] | None:
+def _water_height(
+    raw: bytes, policy: EnvelopePolicy = _DEFAULT_POLICY
+) -> tuple[WaterHeight, bytes] | None:
     """F/f water level: decimal feet/meters (APRS 1.1) or Fnnnn tenths (1.2)."""
     unit: Literal["feet", "meters"] = "feet" if raw[:1] == b"F" else "meters"
     decimal = re.match(rb"[Ff](-?\d+\.\d+)", raw)
     if decimal:
         return WaterHeight(Measurement(float(decimal[1]), unit)), raw[decimal.end() :]
-    if unit == "feet":
+    if unit == "feet" and "weather_extensions" in policy.extensions:
         tenths = re.match(rb"F(\d{4}|-\d{3}|\.{4})", raw)
         if tenths:
             field = tenths[1]
@@ -193,7 +201,13 @@ def _number(value: float | None, width: int, scale: float = 1) -> bytes:
 CODES = re.compile(rb"[A-Za-z][A-Za-z0-9]{2,4}")
 
 
-def write(w: Weather, *, positioned=False, compressed=False) -> bytes:
+def write(
+    w: Weather,
+    *,
+    positioned=False,
+    compressed=False,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
+) -> bytes:
     raw = b""
     if not positioned:
         if w.timestamp is None:
@@ -238,6 +252,8 @@ def write(w: Weather, *, positioned=False, compressed=False) -> bytes:
         if m.value is None:
             if m.unit != "feet":
                 raise FieldError("only feet water height can be marked unavailable")
+            if "weather_extensions" not in policy.extensions:
+                raise FieldError("unavailable water height requires weather_extensions")
             raw += b"F...."
         else:
             # A decimal point distinguishes feet from APRS 1.2's Fnnnn tenths.

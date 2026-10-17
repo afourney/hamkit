@@ -12,17 +12,17 @@ from ._models import (
     Packet,
     UnsupportedPolicy,
 )
-from ._policy import APRS_IS, EnvelopePolicy
+from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 
 
 def parse_tnc2_line(
     line: bytes,
     *,
-    policy: EnvelopePolicy = APRS_IS,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
     unsupported: UnsupportedPolicy = "opaque",
     malformed: MalformedPolicy = "return",
     max_third_party_depth: int = 4,
-    legacy_positions: bool = False,
+    legacy_positions: bool | None = None,
 ) -> Packet | Malformed:
     """Parse one LF- or CRLF-terminated line, as read from APRS-IS or a TNC.
 
@@ -53,7 +53,7 @@ def parse_tnc2_line(
 def serialize_tnc2_line(
     packet: Packet,
     *,
-    policy: EnvelopePolicy = APRS_IS,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
     max_third_party_depth: int = 4,
 ) -> bytes:
     """Encode one CRLF-terminated line, rejecting non-line-safe payloads."""

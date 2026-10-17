@@ -53,8 +53,7 @@ def differences(actual: Any, expected: Any, path: str = "$") -> list[str]:
 def parse_row(row: dict[str, Any], raw: bytes) -> aprs.Packet | aprs.Malformed:
     return aprs.parse_packet(
         raw,
-        policy=aprs.EnvelopePolicy(**row["policy"]),
-        legacy_positions=row["legacy_positions"],
+        policy=aprs.from_json_dict(row["policy"], expected_type=aprs.EnvelopePolicy),
     )
 
 

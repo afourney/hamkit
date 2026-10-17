@@ -14,6 +14,7 @@ from . import _nmea as n
 from ._data import Coordinates, Symbol
 from ._errors import CodecNotImplementedError, FieldError
 from ._models import NMEA, Diagnostic, Header
+from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 from ._text import free_text, token
 
 
@@ -73,7 +74,12 @@ def header_symbol(header: Header | None) -> Symbol | None:
     return None
 
 
-def read(raw: bytes, header: Header | None, diagnostics: list) -> NMEA:
+def read(
+    raw: bytes,
+    header: Header | None,
+    diagnostics: list,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
+) -> NMEA:
     match = re.match(rb"\$([A-Z]{2})([A-Z]{3}),(.*)", raw, re.DOTALL)
     if not match:
         raise FieldError("invalid NMEA sentence identifier")
@@ -173,7 +179,7 @@ def read(raw: bytes, header: Header | None, diagnostics: list) -> NMEA:
         ),
         position_usable=usable and valid is not False,
         symbol=header_symbol(header),
-        comment=free_text(comment, "$.comment", diagnostics),
+        comment=free_text(comment, "$.comment", diagnostics, policy),
     )
 
 
