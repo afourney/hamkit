@@ -428,6 +428,34 @@ def test_weather_codes_still_follow_new_fields():
     assert (w.software_code, w.device_code) == ("X", "RSW")
 
 
+@pytest.mark.parametrize(
+    "prefix", [WX, b"N0CALL>APRS:!4903.50N/07201.75W_220/004g005t077"]
+)
+@pytest.mark.parametrize("tag", [b"F", b"f"])
+@pytest.mark.parametrize(
+    "number",
+    [
+        b"0.0",
+        b"999.0",
+        b"1000.0",
+        b"10000.0",
+        b"-100.0",
+        b"-1000.0",
+        b"0.0000001",
+        b"1234.56789",
+        b"1000000.0",
+    ],
+)
+def test_water_height_encoding_preserves_decimal_measurements(prefix, tag, number):
+    original = without_evidence(packet(prefix + tag + number))
+    assert a.check_packet(original) == ()
+    wire = a.serialize_packet(original)
+    assert wire == prefix + tag + number
+    decoded = without_evidence(packet(wire))
+    assert decoded == original
+    assert a.serialize_packet(decoded) == wire
+
+
 def test_new_weather_fields_are_checked_before_sending():
     w = packet(WX).payload
     odd = dataclasses.replace(w, radiation=a.Measurement(123, "nSv/h"))

@@ -10,6 +10,7 @@ Vnnn battery volts and a fixed four-byte Fnnnn water level in tenths of a foot.
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 from typing import Any, Literal
 
 from ._data import Measurement, WaterHeight, Weather
@@ -239,7 +240,13 @@ def write(w: Weather, *, positioned=False, compressed=False) -> bytes:
                 raise FieldError("only feet water height can be marked unavailable")
             raw += b"F...."
         else:
-            raw += (b"F" if m.unit == "feet" else b"f") + f"{m.value:g}".encode()
+            # A decimal point distinguishes feet from APRS 1.2's Fnnnn tenths.
+            # Expand exponents without rounding away small or precise readings;
+            # the water-height grammar accepts only ordinary decimal numbers.
+            height_text = format(Decimal(str(m.value)), "f")
+            if "." not in height_text:
+                height_text += ".0"
+            raw += (b"F" if m.unit == "feet" else b"f") + height_text.encode()
     if w.radiation:
         raw += b"X" + radiation_code(w.radiation.value)
     if w.battery_voltage:
