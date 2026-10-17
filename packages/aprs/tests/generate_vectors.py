@@ -204,6 +204,17 @@ def translate(e: JSON) -> JSON:
             p["message"] = "unknown"
         if m.get("dti_fix") in ("current", "old"):
             p["fix"] = m["dti_fix"]
+        if "grid_locator" in e:
+            # The public model retains the optional grid as status text, not
+            # inside the device identifier. Preserve the captured trailing text.
+            grid_symbol = e["grid_symbol"]
+            p["comment"] = (
+                e["grid_locator"]
+                + grid_symbol["table_id_raw"]
+                + grid_symbol["code"]
+                + p.get("comment", "")
+            )
+            p["device_code"] = m["type_marker"]
     ext: JSON = {}
     for old, new, fields in (
         ("motion", "motion", "course_deg speed_knots course_code speed_code zero_pair"),

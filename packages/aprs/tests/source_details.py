@@ -211,9 +211,10 @@ def core(packet, raw, profile):
             "longitude_offset": 100 if dest[4] >= "P" else 0,
             "type_marker": p.device_code[:1] if p.device_code else None,
         }
-        if p.device_code and len(p.device_code) > 1:
-            r["grid_locator"] = p.device_code[1:7]
-            r["grid_symbol"] = symbol(a.Symbol(p.device_code[7], p.device_code[8]))
+        match = re.match(r"([A-R]{2}[0-9]{2}[A-X]{2})(/)([A-Za-z])", p.comment)
+        if match:
+            r["grid_locator"] = match[1]
+            r["grid_symbol"] = symbol(a.Symbol(match[2], match[3]))
     if isinstance(p, a.NMEA):
         r["position_usable"] = p.position_usable
         if isinstance(p.sentence, a.GGA):

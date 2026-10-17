@@ -371,6 +371,52 @@ def test_mic_e_type_codes_are_checked_before_sending():
         a.serialize_packet(mic_e(device_code="`", comment="Hi_%"))
 
 
+@pytest.mark.parametrize("device", [">", "]", ">^", "]="])
+@pytest.mark.parametrize("altitude", [b"", b'"4T}'])
+def test_mic_e_grid_stays_in_comment_and_roundtrips(device, altitude):
+    comment = b"IO91SX/G Ready"
+    raw = MIC_E + device[:1].encode() + altitude + comment + device[1:].encode()
+    decoded = without_evidence(packet(raw))
+    assert decoded.payload.device_code == device
+    assert decoded.payload.comment == comment.decode()
+    assert decoded.payload.latitude_deg == pytest.approx(33.427333333333)
+    assert decoded.payload.longitude_deg == pytest.approx(-112.129)
+    assert a.check_packet(decoded) == ()
+    assert a.serialize_packet(decoded) == raw
+    assert without_evidence(packet(a.serialize_packet(decoded))) == decoded
+
+
+def test_mic_e_grid_vector_preserves_all_captured_text():
+    row = next(row for row in rows() if row["id"] == "MIC-265")
+    source = row["source_expected"]
+    original = packet(row["packet"].encode("latin1"))
+    assert original.payload.device_code == source["mic_e"]["type_marker"]
+    assert original.payload.comment == (
+        source["grid_locator"]
+        + source["grid_symbol"]["table_id_raw"]
+        + source["grid_symbol"]["code"]
+        + source["comment"]
+    )
+    assert row["expected"]["payload"]["device_code"] == original.payload.device_code
+    assert row["expected"]["payload"]["comment"] == original.payload.comment
+    assert a.serialize_packet(without_evidence(original)) == row["packet"].encode(
+        "latin1"
+    )
+
+
+def test_mic_e_device_code_cannot_contain_a_grid():
+    original = packet(MIC_E + b">IO91SX/G Ready")
+    invalid = dataclasses.replace(
+        original,
+        payload=dataclasses.replace(
+            original.payload, device_code=">IO91SX/G", comment=" Ready"
+        ),
+    )
+    assert [d.path for d in a.check_packet(invalid)] == ["$.payload.device_code"]
+    with pytest.raises(a.ConformanceError):
+        a.serialize_packet(invalid)
+
+
 def test_embedded_position_search_is_opt_in():
     # APRS101 p.18 (X1J) allowed a "!" position in the first 40 bytes of other
     # text; the APRS 1.1 addendum deprecates the search.

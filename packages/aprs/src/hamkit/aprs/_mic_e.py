@@ -33,10 +33,6 @@ TYPE_SUFFIXES: dict[str, tuple[str, ...]] = {
     "`": _OTHER_SUFFIXES,
     "'": _OTHER_SUFFIXES,
 }
-# The legacy grid/status prefix has no coordinate authority; it stays in the
-# device code after a Kenwood type byte so composing does not discard it.
-_GRID = r"[A-R]{2}[0-9]{2}[A-X]{2}/[A-Za-z]"
-
 _MESSAGES = (
     "emergency",
     "priority",
@@ -202,10 +198,6 @@ def device_parts(code: str | None) -> tuple[str, str]:
     if not code:
         return "", ""
     head, rest = code[:1], code[1:]
-    if head in (">", "]"):
-        grid = re.match(_GRID, rest)
-        if grid:
-            head, rest = head + grid[0], rest[grid.end() :]
     if head[:1] not in TYPE_SUFFIXES or rest and rest not in TYPE_SUFFIXES[code[0]]:
         raise FieldError("unsupported Mic-E type code")
     return head, rest
@@ -254,10 +246,8 @@ def read_status(tail: bytes, symbol: Symbol) -> tuple[str | None, Extensions, by
     if len(tail) >= 4 and tail[3:4] == b"}":
         altitude = Altitude(Measurement(base91(tail[:3]) - 10000, "meters"), "mic_e")
         tail = tail[4:]
-    grid = re.match(_GRID.encode(), tail)
-    if grid and device in (">", "]"):
-        device += grid[0].decode()
-        tail = tail[grid.end() :]
+    # A legacy grid/status prefix remains literal comment text. It is neither
+    # a device identifier nor a replacement for the encoded Mic-E coordinates.
     if device is not None:
         device += suffix.decode()
     from . import _extensions
@@ -315,10 +305,4 @@ def write_status(p: MicE) -> bytes:
     from . import _extensions
 
     comment = p.comment.encode()
-    return (
-        first
-        + head[1:].encode()
-        + _extensions.write(e, p.symbol, comment)
-        + comment
-        + suffix.encode()
-    )
+    return first + _extensions.write(e, p.symbol, comment) + comment + suffix.encode()

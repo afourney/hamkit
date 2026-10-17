@@ -153,7 +153,11 @@ class Position(_Located, Validated):
 
 @dataclass(frozen=True)
 class MicE(_Located, Validated):
-    """Header-dependent position: the destination address carries latitude."""
+    """Header-dependent position: the destination address carries latitude.
+
+    device_code contains the type byte and declared manufacturer suffix only.
+    Optional legacy grid/status text is preserved in comment.
+    """
 
     latitude_deg: float
     longitude_deg: float

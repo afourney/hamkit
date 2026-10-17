@@ -94,6 +94,8 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   (aprs.org/aprs12/mic-e-types.txt). `device_code` holds the type byte that
   begins the text plus any declared suffix that ends it, such as `` `_% ``
   (Yaesu FTM-400DR), `'|3` (Byonics TinyTrack3) or `]=` (Kenwood TM-D710).
+  Legacy grid/status text such as `IO91SX/G Ready` stays in `comment`, separate
+  from the device code and the encoded latitude/longitude.
   A leading `` ` `` or `'` is APRS101 hex telemetry only in its complete form
   without a declared suffix; otherwise it is a type byte, and no type byte or
   suffix makes a packet `Malformed`. Sending refuses an undeclared type code, a
