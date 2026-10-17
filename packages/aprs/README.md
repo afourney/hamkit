@@ -10,6 +10,7 @@ input for each family. Run the Python blocks **in order**, after installing with
 `python -m pip install -e packages/aprs`. Output blocks are captured from the
 current implementation and checked by the documentation tests.
 
+- [JSON conversion](#json-conversion)
 - [Setup and printable packets](#setup-and-printable-packets)
 - [Positions and encodings](#positions-and-encodings)
 - [Position extensions](#position-extensions)
@@ -1021,6 +1022,135 @@ can also be inspected without attempting a codec: `print(a.capability_for(a.MicE
 or `print(a.get_capabilities())`. `partial` support is not a guarantee for every
 field combination.
 
+## JSON conversion
+
+JSON works for full packets, standalone payloads and all structured fields,
+including models whose APRS wire codecs are unimplemented. It is a separate
+conversion API: no radio framing, coordinate quantization or wire-codec call
+is involved. There is **no special type/discriminator key**.
+
+`to_json` / `from_json` handle JSON text; `to_json_dict` / `from_json_dict` handle
+JSON-compatible objects. `expected_type=...` gives a typed return and context
+for a sparse standalone field. Otherwise meaningful present fields determine
+the model. Unknown keys, conflicts and ambiguous shapes raise `JSONModelError`
+(or its `AmbiguousJSONError` subclass), never get silently ignored.
+
+```python
+# The packet's header and payload remain distinct JSON objects.
+json_packet = a.Packet(a.Header("N0CALL", "APRS"), a.Message("W1AW", b"Hello", "003"))
+print(a.to_json(json_packet, indent=2))
+restored: a.Packet = a.from_json(a.to_json(json_packet), expected_type=a.Packet)
+print(restored.payload)
+```
+
+Output:
+
+```text
+{
+  "header": {
+    "source": "N0CALL",
+    "destination": "APRS"
+  },
+  "payload": {
+    "addressee": "W1AW",
+    "message_text": "Hello",
+    "message_id": "003"
+  }
+}
+Message(addressee='W1AW', text=b'Hello', message_id='003', reply_ack=None)
+```
+
+```python
+# Standalone payload and field inference use semantic keys, not class tags.
+print(a.to_json(a.Status(b"Ready")))
+print(a.to_json(a.NonAPRSBeacon(b"Ready")))
+print(a.from_json('{"channel_units":["deg.C",null,"V"]}'))
+print(a.from_json('{"value":null,"unit":"mph","raw":"..."}'))
+print(a.from_json_dict({"latitude_deg": 49, "longitude_deg": -72, "messaging": False}))
+```
+
+Output:
+
+```text
+{"status_text":"Ready"}
+{"beacon_text":"Ready"}
+TelemetryUnits(channels=('deg.C', None, 'V'))
+Measurement(value=None, unit='mph', raw=b'...')
+Position(latitude_deg=49.0, longitude_deg=-72.0, symbol=Symbol(table_id='/', code='-'), messaging=False, timestamp=None, tail=b'', encoding='uncompressed', ambiguity=None, compression=None, extensions=Extensions(motion=None, altitude=None, phg=None, radio_range=None, df_signal=None, df_bearing=None, dao=None, area=None, signpost=None, weather=None, storm=None, telemetry=None), comment=b'')
+```
+
+```python
+# All 256 byte values are reversible; text is not implicitly UTF-8 encoded.
+binary_json = a.to_json(a.UserDefined(b"Q", b"1", b"\x00\xff\r\n"))
+print(binary_json)
+print(a.from_json(binary_json))
+
+# Missing reading, transmitted unavailable reading, and zero are distinct.
+json_weather = a.WeatherReport(a.Weather(wind_speed=a.Measurement(None, "mph")))
+print(a.to_json(json_weather))
+print(a.from_json(a.to_json(json_weather)) == json_weather)
+
+# JSON supports an object report even though its wire codec is missing.
+json_object = a.ObjectReport(
+    "AID", a.Location(49, -72), a.Timestamp("dhm_utc", 12, 30, day=17)
+)
+print(type(a.from_json(a.to_json(json_object))).__name__)
+print(a.capability_for(json_object).encode)
+```
+
+Output:
+
+```text
+{"user_id":"Q","user_type":"1","data":"\u0000\u00ff\r\n"}
+UserDefined(user_id=b'Q', user_type=b'1', data=b'\x00\xff\r\n')
+{"weather":{"wind_speed":{"value":null,"unit":"mph"}}}
+True
+ObjectReport
+unimplemented
+```
+
+```python
+# An empty object supplies no evidence of which default field model is meant.
+try:
+    a.from_json("{}")
+except a.AmbiguousJSONError as error:
+    print(type(error).__name__)
+empty_weather: a.Weather = a.from_json("{}", expected_type=a.Weather)
+print(a.to_json(empty_weather))
+
+try:
+    a.from_json('{"status_text":"Ready","message_text":"Hello"}')
+except a.JSONModelError as error:
+    print(type(error).__name__)
+```
+
+Output:
+
+```text
+AmbiguousJSONError
+{"wind_speed":null}
+JSONModelError
+```
+
+Byte fields are Latin-1 byte-carrier strings, matching the vector document:
+`"Hello"` represents ASCII bytes, `"\u00ff"` represents the single byte `0xff`.
+The serializer escapes non-ASCII/control characters; characters above U+00FF
+are rejected in byte fields. Normal string fields remain Unicode strings.
+
+Compact output omits optional defaults but retains meaningful inference fields,
+such as `messaging: false` for a position report. Use `include_defaults=True`
+to emit all fields. Omitted optional fields and explicit `null` normalize to
+the same Python `None` where the model defines that default; a measurement's
+required `value: null` explicitly means unavailable. Required fields cannot be
+omitted, and `null` is rejected for non-nullable fields.
+
+JSON validates field types and enum choices, not every APRS range or cross-field
+wire constraint. It preserves `original_wire` and diagnostic metadata when
+present, but does not claim those bytes agree with edited semantic fields.
+Nested packets are supported with a separate JSON `max_depth` (default 64).
+See the [JSON schema and inference rules](docs/JSON_FORMAT.md) for all families,
+field aliases, sparse/default shapes and limits.
+
 ## Public boundaries
 
 - `parse_packet(wire, *, profile="monitor", options=DecodeOptions()) -> Packet`
@@ -1117,7 +1247,7 @@ No GPL code or `aprslib` is used.
 - Non-UTC timestamp-looking status text is preserved, correcting TIM-019/020.
 - Empty information is a `FieldError`, recoverable only by explicit payload policy.
 - Existing basic constructors and packet signatures remain usable; new context
-  and policy options are keyword-only. The package version is `0.0.1a2`.
+  and policy options are keyword-only. The package version is `0.0.1a3`.
 
 ## License
 
