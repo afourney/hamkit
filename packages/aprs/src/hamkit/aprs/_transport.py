@@ -7,18 +7,18 @@
 from ._codec import parse_packet, serialize_packet
 from ._errors import EnvelopeError
 from ._models import (
-    EnvelopeProfile,
     Malformed,
     MalformedPolicy,
     Packet,
     UnsupportedPolicy,
 )
+from ._policy import APRS_IS, EnvelopePolicy
 
 
 def parse_tnc2_line(
     line: bytes,
     *,
-    profile: EnvelopeProfile = "monitor",
+    policy: EnvelopePolicy = APRS_IS,
     unsupported: UnsupportedPolicy = "opaque",
     malformed: MalformedPolicy = "return",
     max_third_party_depth: int = 4,
@@ -41,7 +41,7 @@ def parse_tnc2_line(
         )
     return parse_packet(
         raw,
-        profile=profile,
+        policy=policy,
         unsupported=unsupported,
         malformed=malformed,
         max_third_party_depth=max_third_party_depth,
@@ -51,12 +51,12 @@ def parse_tnc2_line(
 def serialize_tnc2_line(
     packet: Packet,
     *,
-    profile: EnvelopeProfile = "monitor",
+    policy: EnvelopePolicy = APRS_IS,
     max_third_party_depth: int = 4,
 ) -> bytes:
     """Encode one CRLF-terminated line, rejecting non-line-safe payloads."""
     raw = serialize_packet(
-        packet, profile=profile, max_third_party_depth=max_third_party_depth
+        packet, policy=policy, max_third_party_depth=max_third_party_depth
     )
     if b"\r" in raw or b"\n" in raw:
         raise EnvelopeError("payload cannot be represented in line-oriented TNC2")

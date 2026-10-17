@@ -44,7 +44,9 @@ class ModelContractTests(unittest.TestCase):
             and dataclasses.is_dataclass(getattr(a, name))
         }
         self.assertEqual(
-            {type(v) for v in (*field_examples(), *payload_examples())}, public
+            # EnvelopePolicy is configuration data, not a packet JSON model.
+            {type(v) for v in (*field_examples(), *payload_examples(), a.RF)},
+            public,
         )
 
     def test_public_annotations_resolve(self) -> None:
@@ -70,6 +72,7 @@ class ModelContractTests(unittest.TestCase):
             "Path",
             "HeaderSemantics",
             "EncodedPacketFields",
+            "EnvelopeProfile",
             "DecodeOptions",
             "EncodeOptions",
             "get_capabilities",
@@ -199,7 +202,6 @@ class ModelContractTests(unittest.TestCase):
 
     def test_option_values_are_checked(self) -> None:
         for kwargs in (
-            {"profile": "radio"},
             {"unsupported": "ignore"},
             {"malformed": "opaque"},
             {"max_third_party_depth": -1},

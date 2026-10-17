@@ -58,17 +58,17 @@ class LenientDecodingTests(unittest.TestCase):
                 with self.assertRaises(a.ConformanceError):
                     a.serialize_packet(packet)
 
-    def test_rf_profile_reports_instead_of_rejecting(self) -> None:
+    def test_rf_policy_reports_instead_of_rejecting(self) -> None:
         raw = b"n0call>APRS,A,B,C,D,E,F,G,H,I:>" + b"x" * 10
-        packet = a.parse_packet(raw, profile="rf")
+        packet = a.parse_packet(raw, policy=a.RF)
         assert isinstance(packet, a.Packet)
         self.assertEqual(
             codes(packet),
             {("nonconforming", "$.header.source"), ("nonconforming", "$.header.path")},
         )
-        monitor = a.parse_packet(raw)
-        assert isinstance(monitor, a.Packet)
-        self.assertEqual(monitor.diagnostics, ())
+        internet = a.parse_packet(raw)
+        assert isinstance(internet, a.Packet)
+        self.assertEqual(internet.diagnostics, ())
 
     def test_extensions_leave_the_comment(self) -> None:
         raw = b"N0CALL>APRS:!4903.50N/07201.75W>088/036/A=001234 hi"
@@ -115,10 +115,10 @@ class LenientDecodingTests(unittest.TestCase):
         self.assertEqual(packet.payload.extensions.motion, a.Motion(88, 36))
         self.assertIsNone(packet.payload.extensions.bearing)
         self.assertEqual(codes(packet), {("nonconforming", "$.payload.comment")})
-        for profile in ("monitor", "rf"):
-            self.assertTrue(a.check_packet(packet, profile=profile))  # type: ignore[arg-type]
+        for policy in (a.APRS_IS, a.RF):
+            self.assertTrue(a.check_packet(packet, policy=policy))
             with self.assertRaises(a.ConformanceError):
-                a.serialize_packet(packet, profile=profile)  # type: ignore[arg-type]
+                a.serialize_packet(packet, policy=policy)
 
 
 class MalformedTests(unittest.TestCase):

@@ -30,7 +30,8 @@ services such as aprs.fi decode UTF-8 in these fields.
 **Current behavior:** free-text fields decode as UTF-8; invalid UTF-8 falls back
 to Latin-1, one character per byte, with a nonconforming diagnostic. That fallback
 is a reversible reading, not proof of the sender's encoding; the exact bytes
-remain in `original_wire`. The envelope profile (`monitor` or `rf`) selects
+remain in `original_wire`. The envelope policy (`APRS_IS`, `RF`, or a custom
+`EnvelopePolicy`) selects
 address and size rules, not a text encoding, so RF output also carries UTF-8. Free text is sent as UTF-8 and length limits
 count encoded bytes. Control characters are nonconforming. Protocol tokens
 (callsigns, addressees, message IDs, object and item names, query names, NTS

@@ -34,7 +34,6 @@ from ._fields.position import CoordinateAxis
 from ._models import (
     Acknowledgment,
     Diagnostic,
-    EnvelopeProfile,
     Header,
     Hop,
     Invalid,
@@ -51,6 +50,7 @@ from ._models import (
     UnsupportedPolicy,
     UserDefined,
 )
+from ._policy import APRS_IS, EnvelopePolicy
 from ._recovery import payload_data
 from ._text import free_text, token
 from ._validation import validate_tree
@@ -73,24 +73,24 @@ _SPECIAL_BODIES = (
 
 @dataclass(frozen=True)
 class _Options:
-    profile: EnvelopeProfile
+    policy: EnvelopePolicy
     unsupported: UnsupportedPolicy
     malformed: MalformedPolicy
     max_depth: int
 
 
 def _options(
-    profile: str, unsupported: str, malformed: str, max_depth: object
+    policy: EnvelopePolicy, unsupported: str, malformed: str, max_depth: object
 ) -> _Options:
-    if profile not in ("monitor", "rf"):
-        raise ValueError("profile must be 'monitor' or 'rf'")
+    if not isinstance(policy, EnvelopePolicy):
+        raise TypeError("policy must be an EnvelopePolicy")
     if unsupported not in ("opaque", "raise"):
         raise ValueError("unsupported must be 'opaque' or 'raise'")
     if malformed not in ("return", "raise"):
         raise ValueError("malformed must be 'return' or 'raise'")
     if type(max_depth) is not int or not 0 <= max_depth <= 32:
         raise ValueError("max_third_party_depth must be an integer in 0..32")
-    return _Options(profile, unsupported, malformed, max_depth)  # type: ignore[arg-type]
+    return _Options(policy, unsupported, malformed, max_depth)  # type: ignore[arg-type]
 
 
 def _special_message(address: str, body: bytes) -> bool:
@@ -476,20 +476,19 @@ def _parse(
     assert header is not None and payload is not None
     assert not isinstance(payload, Malformed)
     found = _prefixed("$.payload", found)
-    if options.profile == "rf" and len(information) > 256:
-        found.append(
-            Diagnostic("nonconforming", "RF information exceeds 256 bytes", "$.payload")
-        )
+    policy = options.policy if depth == 0 else None
+    if policy is not None:
+        found.extend(_envelope_sizes(policy, len(information), len(raw) + 2))
     packet = Packet(header, payload, original_wire=raw)
     # Findings are computed from the finished packet; set them once, in place.
-    object.__setattr__(packet, "diagnostics", (*found, *check(packet, options.profile)))
+    object.__setattr__(packet, "diagnostics", (*found, *check(packet, policy)))
     return packet, found
 
 
 def parse_packet(
     wire: bytes,
     *,
-    profile: EnvelopeProfile = "monitor",
+    policy: EnvelopePolicy = APRS_IS,
     unsupported: UnsupportedPolicy = "opaque",
     malformed: MalformedPolicy = "return",
     max_third_party_depth: int = 4,
@@ -500,14 +499,15 @@ def parse_packet(
     are listed in Packet.diagnostics as "nonconforming". Fields that cannot be
     decoded yield a Malformed with recovered values (or raise with
     malformed="raise"). Families without a decoder become Opaque (or raise with
-    unsupported="raise"). profile="rf" adds AX.25 address and size findings.
+    unsupported="raise"). The envelope policy defaults to APRS_IS; pass RF for
+    AX.25 address and size constraints, or supply a custom EnvelopePolicy.
     CR/LF is never stripped; use parse_tnc2_line for line-oriented input.
     """
     if not isinstance(wire, bytes):
         raise TypeError(
             "parse_packet requires bytes; encode text first, e.g. line.encode()"
         )
-    options = _options(profile, unsupported, malformed, max_third_party_depth)
+    options = _options(policy, unsupported, malformed, max_third_party_depth)
     return _parse(wire, options, 0)[0]
 
 
@@ -525,7 +525,7 @@ def parse_payload(
     """
     if not isinstance(information, bytes):
         raise TypeError("parse_payload requires bytes")
-    options = _options("monitor", unsupported, malformed, max_third_party_depth)
+    options = _options(APRS_IS, unsupported, malformed, max_third_party_depth)
     if header is not None:
         validate_tree(header)
     return _recover_payload(information, header, options, 0, [])
@@ -698,26 +698,56 @@ def _bound_depth(value: Packet | Payload, max_depth: int) -> None:
         payload = payload.packet.payload
 
 
-def _findings(
-    value: Packet | Payload, profile: EnvelopeProfile, max_depth: int
+def _envelope_sizes(
+    policy: EnvelopePolicy, information_bytes: int, line_bytes: int
 ) -> tuple[Diagnostic, ...]:
-    """Conformance findings, plus the RF information size of an encodable packet."""
-    findings = check(value, profile)
-    if isinstance(value, Packet) and profile == "rf":
+    """Measure the outer envelope, including canonical CRLF for line limits."""
+    result = []
+    if (
+        policy.max_information_bytes is not None
+        and information_bytes > policy.max_information_bytes
+    ):
+        result.append(
+            Diagnostic(
+                "nonconforming",
+                f"information exceeds {policy.max_information_bytes} bytes",
+                "$.payload",
+            )
+        )
+    if (
+        policy.max_tnc2_line_bytes is not None
+        and line_bytes > policy.max_tnc2_line_bytes
+    ):
+        result.append(
+            Diagnostic(
+                "nonconforming",
+                f"TNC2 line exceeds {policy.max_tnc2_line_bytes} bytes including CRLF",
+                "$",
+            )
+        )
+    return tuple(result)
+
+
+def _findings(
+    value: Packet | Payload, policy: EnvelopePolicy, max_depth: int
+) -> tuple[Diagnostic, ...]:
+    """Conformance findings, including the encoded outer envelope size."""
+    findings = check(value, policy)
+    if isinstance(value, Packet) and (
+        policy.max_information_bytes is not None
+        or policy.max_tnc2_line_bytes is not None
+    ):
         try:
             information = _encode_payload(value.payload, value.header, max_depth, 0)
         except (CodecNotImplementedError, ContextRequiredError, FieldError):
             return findings  # Reported elsewhere; there are no bytes to measure.
-        if len(information) > 256:
-            size = Diagnostic(
-                "nonconforming", "RF information exceeds 256 bytes", "$.payload"
-            )
-            findings = (*findings, size)
+        line_bytes = len(str(value.header).encode("ascii")) + 1 + len(information) + 2
+        findings = (*findings, *_envelope_sizes(policy, len(information), line_bytes))
     return findings
 
 
 def _ready_to_send(
-    value: Packet | Payload, profile: EnvelopeProfile, max_depth: int
+    value: Packet | Payload, policy: EnvelopePolicy, max_depth: int
 ) -> None:
     _bound_depth(value, max_depth)
     validate_tree(value)
@@ -727,7 +757,7 @@ def _ready_to_send(
             "Mic-E encoding needs the header; use serialize_packet"
         )
     _require_codecs(payload)
-    findings = _findings(value, profile, max_depth)
+    findings = _findings(value, policy, max_depth)
     if findings:
         raise ConformanceError(findings)
 
@@ -735,7 +765,7 @@ def _ready_to_send(
 def serialize_packet(
     packet: Packet,
     *,
-    profile: EnvelopeProfile = "monitor",
+    policy: EnvelopePolicy = APRS_IS,
     max_third_party_depth: int = 4,
 ) -> bytes:
     """Encode a packet for sending. Never replays original_wire.
@@ -743,13 +773,13 @@ def serialize_packet(
     Every packet is validated first: ResourceLimitError for excessive
     third-party nesting, ModelError for invalid fields, CodecNotImplementedError
     for families without an encoder, and ConformanceError (with every finding)
-    for anything outside APRS rules. profile="rf" also applies AX.25 address
-    and information-size limits.
+    for anything outside APRS rules or the selected envelope policy. The default
+    policy is APRS_IS; pass RF or a custom EnvelopePolicy as needed.
     """
     if not isinstance(packet, Packet):
         raise TypeError("serialize_packet requires a Packet; repair a Malformed first")
-    options = _options(profile, "raise", "raise", max_third_party_depth)
-    _ready_to_send(packet, options.profile, options.max_depth)
+    options = _options(policy, "raise", "raise", max_third_party_depth)
+    _ready_to_send(packet, options.policy, options.max_depth)
     return _serialize(packet, options.max_depth, 0)
 
 
@@ -757,15 +787,15 @@ def serialize_payload(payload: Payload, *, max_third_party_depth: int = 4) -> by
     """Encode an information field alone, with the same validation as packets."""
     if isinstance(payload, (Packet, Malformed)):
         raise TypeError("serialize_payload requires a payload model")
-    options = _options("monitor", "raise", "raise", max_third_party_depth)
-    _ready_to_send(payload, options.profile, options.max_depth)
+    options = _options(APRS_IS, "raise", "raise", max_third_party_depth)
+    _ready_to_send(payload, options.policy, options.max_depth)
     return _encode_payload(payload, None, options.max_depth, 0)
 
 
 def check_packet(
     packet: Packet,
     *,
-    profile: EnvelopeProfile = "monitor",
+    policy: EnvelopePolicy = APRS_IS,
     max_third_party_depth: int = 4,
 ) -> tuple[Diagnostic, ...]:
     """Every conformance finding serialize_packet would raise, without raising.
@@ -774,19 +804,17 @@ def check_packet(
     """
     if not isinstance(packet, Packet):
         raise TypeError("check_packet requires a Packet")
-    options = _options(profile, "raise", "raise", max_third_party_depth)
+    options = _options(policy, "raise", "raise", max_third_party_depth)
     _bound_depth(packet, options.max_depth)
     validate_tree(packet)
-    return _findings(packet, options.profile, options.max_depth)
+    return _findings(packet, options.policy, options.max_depth)
 
 
 def validate_packet(
     packet: Packet,
     *,
-    profile: EnvelopeProfile = "monitor",
+    policy: EnvelopePolicy = APRS_IS,
     max_third_party_depth: int = 4,
 ) -> None:
     """Raise exactly as serialize_packet would; return None when it can be sent."""
-    serialize_packet(
-        packet, profile=profile, max_third_party_depth=max_third_party_depth
-    )
+    serialize_packet(packet, policy=policy, max_third_party_depth=max_third_party_depth)

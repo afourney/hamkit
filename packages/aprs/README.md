@@ -1918,8 +1918,15 @@ Output:
 Text fields accept UTF-8, following the APRS 1.2 proposed-draft guidance for
 messages, bulletins, status and comments (adopted for compatibility; the
 ratified spec is ASCII). Bytes that are not valid UTF-8 are read as
-Latin-1 with a diagnostic, never dropped or replaced. Pass `profile="rf"` to
-also report AX.25 address and size limits.
+Latin-1 with a diagnostic, never dropped or replaced. Pass `policy=aprs.RF` to
+apply AX.25 envelope address and size limits.
+
+Envelope entry points accept an immutable `EnvelopePolicy`, with `APRS_IS` as
+the default and `RF` for AX.25 envelope constraints. Each policy supplies source,
+destination and path address patterns, plus optional path-entry, information-byte
+and TNC2-line-byte limits. `None` means no limit. See
+[Envelope policies](docs/ENVELOPE_POLICIES.md) for presets, customization and
+migration from the former `profile=` argument.
 
 Positionless weather decodes into measurements with explicit units and a timestamp:
 

@@ -18,6 +18,26 @@ EXCEPTIONS = json.loads(
     (Path(__file__).parents[1] / "roundtrip_exceptions.json").read_text()
 )
 
+# This suite tests representation, including deliberately invalid addresses.
+# Transport conformance is covered separately; this explicit policy preserves
+# the former monitor envelope behavior without changing any vector content.
+CORPUS_POLICY = a.EnvelopePolicy(".*", ".*", ".*")
+APRS_IS_ADDRESS_REFUSALS = {
+    "BAD-013",
+    "FAP-001",
+    "FAP-002",
+    "FAP-008",
+    "FAP-010",
+    "FAP-014",
+    "FAP-017",
+    "FAP-020",
+    "FAP-044",
+    "FAP-045",
+    "FAP-047",
+    "FAP-051",
+    "FAP-052",
+}
+
 
 def without_evidence(value: Any) -> Any:
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
@@ -80,10 +100,17 @@ def test_vector_roundtrip(row):
     if exception:
         assert exception["kind"] == "conformance"
         with pytest.raises(a.ConformanceError) as caught:
-            a.serialize_packet(clean)
+            a.serialize_packet(clean, policy=CORPUS_POLICY)
         assert [d.message for d in caught.value.diagnostics] == exception["reasons"]
         return
-    wire = a.serialize_packet(clean)
+    # Verify the stricter default independently of representational round trips.
+    if row["id"] in APRS_IS_ADDRESS_REFUSALS:
+        with pytest.raises(a.ConformanceError) as caught:
+            a.serialize_packet(clean)
+        assert all(d.path.startswith("$.header.") for d in caught.value.diagnostics)
+    else:
+        a.validate_packet(clean)
+    wire = a.serialize_packet(clean, policy=CORPUS_POLICY)
     decoded = a.parse_packet(wire)
     assert isinstance(decoded, a.Packet)
     if isinstance(clean.payload, a.NMEA):
@@ -111,8 +138,10 @@ def test_vector_roundtrip(row):
                 )
     same_semantics(clean, decoded)
     # Canonical bytes stabilize after one pass, including checksum and rounding.
-    assert a.serialize_packet(without_evidence(decoded)) == wire
+    assert a.serialize_packet(without_evidence(decoded), policy=CORPUS_POLICY) == wire
 
 
 def test_no_stale_exception_ids():
     assert EXCEPTIONS.keys() <= {r["id"] for r in rows()}
+    assert APRS_IS_ADDRESS_REFUSALS <= {r["id"] for r in rows()}
+    assert not APRS_IS_ADDRESS_REFUSALS.intersection(EXCEPTIONS)

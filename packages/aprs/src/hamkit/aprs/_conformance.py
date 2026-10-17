@@ -41,7 +41,6 @@ from ._models import (
     Capabilities,
     Diagnostic,
     DirectStations,
-    EnvelopeProfile,
     Header,
     HeardStation,
     Item,
@@ -55,10 +54,11 @@ from ._models import (
     Status,
     Trace,
 )
+from ._policy import EnvelopePolicy
 from ._validation import _fields, walk
 
 Finding = tuple[str, str]
-_Rule = Callable[[Any, EnvelopeProfile], Iterable[Finding]]
+_Rule = Callable[[Any, EnvelopePolicy | None], Iterable[Finding]]
 _RULES: dict[type, list[_Rule]] = {}
 
 
@@ -84,12 +84,12 @@ def _plan(model: type) -> tuple[tuple[str, ...], tuple[_Rule, ...]]:
     return plan
 
 
-def check(value: Any, profile: EnvelopeProfile = "monitor") -> tuple[Diagnostic, ...]:
+def check(value: Any, policy: EnvelopePolicy | None = None) -> tuple[Diagnostic, ...]:
     """Every conformance finding in a model graph, with JSON-style paths."""
     result = []
     for node, path in walk(value):
-        # RF limits apply to the transmitted header, not third-party inner ones.
-        node_profile = profile if path in ("$", "$.header") else "monitor"
+        # Envelope policies apply to the outer header, not encapsulated text.
+        node_policy = policy if path in ("$", "$.header") else None
         free, rules = _plan(type(node))
         for name in free:
             if _has_control(getattr(node, name)):
@@ -101,7 +101,7 @@ def check(value: Any, profile: EnvelopeProfile = "monitor") -> tuple[Diagnostic,
                     )
                 )
         for rule in rules:
-            for relative, message in rule(node, node_profile):
+            for relative, message in rule(node, node_policy):
                 result.append(Diagnostic("nonconforming", message, path + relative[1:]))
     return tuple(result)
 
@@ -125,25 +125,26 @@ def _text(
 
 # Envelope ------------------------------------------------------------------
 
-_RF_ADDRESS = re.compile(r"[A-Z0-9]{1,6}(?:-(?:[0-9]|1[0-5]))?")
-
 
 @_conformance(Header)
-def _header(v: Header, profile: EnvelopeProfile) -> Iterator[Finding]:
-    if profile != "rf":
+def _header(v: Header, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    if policy is None:
         return
-    for name, address in (("source", v.source), ("destination", v.destination)):
-        if not _RF_ADDRESS.fullmatch(address):
-            yield f"$.{name}", "not a valid AX.25 address or SSID"
+    for name, address, pattern in (
+        ("source", v.source, policy.source_pattern),
+        ("destination", v.destination, policy.destination_pattern),
+    ):
+        if re.fullmatch(pattern, address) is None:
+            yield f"$.{name}", f"address does not match {name}_pattern"
     for i, hop in enumerate(v.path):
-        if not _RF_ADDRESS.fullmatch(hop.address):
-            yield f"$.path[{i}].address", "not a valid AX.25 address or SSID"
-    if len(v.path) > 8:
-        yield "$.path", "RF paths have at most eight hops"
+        if re.fullmatch(policy.path_address_pattern, hop.address) is None:
+            yield f"$.path[{i}].address", "address does not match path_address_pattern"
+    if policy.max_path_entries is not None and len(v.path) > policy.max_path_entries:
+        yield "$.path", f"path exceeds {policy.max_path_entries} entries"
 
 
 @_conformance(Packet)
-def _packet(v: Packet, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _packet(v: Packet, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     payload = v.payload
     if isinstance(payload, Weather):
         yield from _weather_report(payload, "$.payload", positioned=False)
@@ -158,7 +159,7 @@ def _packet(v: Packet, profile: EnvelopeProfile) -> Iterator[Finding]:
 
 
 @_conformance(Status)
-def _status(v: Status, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _status(v: Status, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     yield from _text("text", v.text, None)
     size = _size(v.text) + (7 if v.timestamp is not None else 0)
     if v.grid is not None:
@@ -172,7 +173,7 @@ def _status(v: Status, profile: EnvelopeProfile) -> Iterator[Finding]:
 
 
 @_conformance(Message)
-def _message(v: Message, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _message(v: Message, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     yield from _text("text", v.text, 67)
     reply = v.reply_ack
     if reply is not None and v.message_id and len(v.message_id) + 1 + len(reply) > 5:
@@ -180,13 +181,13 @@ def _message(v: Message, profile: EnvelopeProfile) -> Iterator[Finding]:
 
 
 @_conformance(Acknowledgment)
-def _ack(v: Acknowledgment, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _ack(v: Acknowledgment, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if v.reply_ack is not None and len(v.message_id) + 1 + len(v.reply_ack) > 5:
         yield "$.reply_ack", "reply-ack ID and ack exceed five characters"
 
 
 @_conformance(AutoAnswer)
-def _auto_answer(v: AutoAnswer, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _auto_answer(v: AutoAnswer, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     suffix = 1 + len(v.previous_ack) if v.previous_ack is not None else 0
     yield from _text("text", v.text, 67 - 3 - suffix)
     if v.previous_ack is not None and len(v.previous_ack) > 2:
@@ -194,7 +195,7 @@ def _auto_answer(v: AutoAnswer, profile: EnvelopeProfile) -> Iterator[Finding]:
 
 
 @_conformance(Bulletin, NWSBulletin)
-def _bulletin(v: Any, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _bulletin(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     yield from _text("text", v.text, 67)
 
 
@@ -202,7 +203,7 @@ _CHANNEL_LIMITS = (7, 6, 5, 5, 4, 5, 4, 3, 3, 3, 2, 2, 2)
 
 
 @_conformance(TelemetryParameters, TelemetryUnits)
-def _labels(v: Any, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _labels(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if not 1 <= len(v.channels) <= len(_CHANNEL_LIMITS):
         yield "$.channels", "requires one to thirteen channels"
     for i, (channel, limit) in enumerate(zip(v.channels, _CHANNEL_LIMITS)):
@@ -211,13 +212,15 @@ def _labels(v: Any, profile: EnvelopeProfile) -> Iterator[Finding]:
 
 
 @_conformance(TelemetryEquations)
-def _equations(v: TelemetryEquations, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _equations(
+    v: TelemetryEquations, policy: EnvelopePolicy | None
+) -> Iterator[Finding]:
     if not 1 <= len(v.coefficients) <= 5:
         yield "$.coefficients", "requires one to five channels"
 
 
 @_conformance(TelemetryBits)
-def _bits(v: TelemetryBits, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _bits(v: TelemetryBits, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     yield from _text("project_title", v.project_title, 23, "|~{")
 
 
@@ -241,7 +244,7 @@ def _nts_values(v: Any) -> list[str]:
 
 
 @_conformance(NTSHeader, NTSAddress, NTSPhone, NTSText, NTSSignature, NTSRouting)
-def _nts(v: Any, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _nts(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if isinstance(v, NTSHeader):
         if not re.fullmatch(r"(?:SVC )?[1-9][0-9]*", v.number):
             yield "$.number", "requires a positive number, optionally after SVC"
@@ -275,7 +278,7 @@ _DIRECTED_QUERIES = {
 
 
 @_conformance(Query)
-def _query(v: Query, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _query(v: Query, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if v.name in _GENERAL_QUERIES and v.addressee is not None:
         yield "$.addressee", "general queries have no addressee"
     if v.name in _DIRECTED_QUERIES and v.addressee is None:
@@ -292,18 +295,18 @@ def _query(v: Query, profile: EnvelopeProfile) -> Iterator[Finding]:
 
 
 @_conformance(Footprint)
-def _footprint(v: Footprint, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _footprint(v: Footprint, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if v.radius_miles > 9999 or v.radius_miles != int(v.radius_miles):
         yield "$.radius_miles", "requires whole miles in 0..9999"
 
 
 @_conformance(DirectStations)
-def _direct(v: DirectStations, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _direct(v: DirectStations, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     yield from _text("stations", "Directs= " + " ".join(v.stations), 67)
 
 
 @_conformance(HeardStation)
-def _heard(v: HeardStation, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _heard(v: HeardStation, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if len(v.counts) != 8:
         yield "$.counts", "requires eight hourly slots (None when unavailable)"
     counts = " ".join("." if x is None else str(x) for x in v.counts)
@@ -311,12 +314,12 @@ def _heard(v: HeardStation, profile: EnvelopeProfile) -> Iterator[Finding]:
 
 
 @_conformance(Trace)
-def _trace(v: Trace, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _trace(v: Trace, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     yield from _text("header", str(v.header) + ":", 67)
 
 
 @_conformance(Capabilities)
-def _capabilities(v: Capabilities, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _capabilities(v: Capabilities, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if not v.tokens:
         yield "$.tokens", "a capabilities report requires at least one token"
     for i, token in enumerate(v.tokens):
@@ -330,15 +333,15 @@ def _capabilities(v: Capabilities, profile: EnvelopeProfile) -> Iterator[Finding
 
 
 @_conformance(Item)
-def _item(v: Item, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _item(v: Item, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if len(v.name) < 3:
         yield "$.name", "item names have at least three characters"
 
 
 @_conformance(Position, Object, Item)
-def _position(v: Position, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _position(v: Position, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     """The encoded tail must read back as the same extensions and comment."""
-    if any(_located(v, profile)):
+    if any(_located(v, policy)):
         return  # Report structural slot errors without secondary comment errors.
     try:
         extensions = v.extensions
@@ -371,7 +374,7 @@ def _position(v: Position, profile: EnvelopeProfile) -> Iterator[Finding]:
 
 
 @_conformance(Position, Object, Item, MicE)
-def _located(v: Any, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _located(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     e = v.extensions
     symbol = (v.symbol.table_id, v.symbol.code)
     primary = [
@@ -454,7 +457,7 @@ def _weather_report(w: Weather, path: str, positioned: bool) -> Iterator[Finding
 
 
 @_conformance(Weather)
-def _weather(v: Weather, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _weather(v: Weather, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     for name in (
         "wind_direction",
         "wind_speed",
@@ -483,7 +486,7 @@ def _weather(v: Weather, profile: EnvelopeProfile) -> Iterator[Finding]:
 
 
 @_conformance(Telemetry)
-def _telemetry(v: Telemetry, profile: EnvelopeProfile) -> Iterator[Finding]:
+def _telemetry(v: Telemetry, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     def analog(low: int, high: int, missing: tuple[int, ...] = ()) -> Iterator[Finding]:
         for i, value in enumerate(v.analog):
             if i in missing and value is None:

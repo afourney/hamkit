@@ -52,7 +52,7 @@ class PolicyTests(unittest.TestCase):
                 a.Packet(
                     a.Header("N0CALL", "APRS"), a.UserDefined(b"Q", b"1", b"x" * 300)
                 ),
-                profile="rf",
+                policy=a.RF,
             )
 
     def test_line_framing_is_explicit(self) -> None:

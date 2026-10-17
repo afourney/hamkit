@@ -29,7 +29,6 @@ from ._errors import APRSError, EnvelopeError
 from ._nmea import NMEAMetadata, NMEASentence
 from ._validation import ANY_TEXT, FREE_TEXT, Validated
 
-EnvelopeProfile: TypeAlias = Literal["monitor", "rf"]
 UnsupportedPolicy: TypeAlias = Literal["opaque", "raise"]
 MalformedPolicy: TypeAlias = Literal["return", "raise"]
 DiagnosticCode: TypeAlias = Literal["unsupported", "malformed", "nonconforming"]

@@ -19,6 +19,7 @@ from . import _models as m
 from ._codec import parse_packet, parse_payload
 from ._errors import APRSError
 from ._json import to_json_dict
+from ._policy import APRS_IS, RF
 
 
 def _relaxed_telemetry(raw: bytes) -> d.Telemetry:
@@ -172,9 +173,7 @@ def view(
     options = options or {}
     packet = parse_packet(
         raw,
-        profile=(
-            "rf" if profile == "strict-envelope" or options.get("ax25") else "monitor"
-        ),
+        policy=(RF if profile == "strict-envelope" or options.get("ax25") else APRS_IS),
     )
     result: dict[str, Any] = to_json_dict(packet, include_defaults=True)
     rejected = (
