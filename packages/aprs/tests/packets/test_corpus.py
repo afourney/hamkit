@@ -15,17 +15,11 @@ from hamkit import aprs
 
 DIRECTORY = Path(__file__).parents[1] / "vectors"
 
-# Rows still checked through the private compatibility view. Each one waits on
-# a parser change or a decision; every other row compares parse_packet output
-# directly. Group 2: Mic-E manufacturer prefixes and the embedded "!" search.
-# Group 3: 000000z timestamps, short or decimal telemetry, minimal GLL and
-# trailing APRS 1.2 weather fields (X/V tails also read as software/unit codes).
+# Rows still checked through the private compatibility view; every other row
+# compares parse_packet output directly. Each waits on a decision: 000000z
+# timestamps, short or decimal telemetry, minimal GLL and trailing APRS 1.2
+# weather fields (X/V tails also read as software/unit codes).
 COMPATIBILITY_PENDING = {
-    "FAP-348",
-    "FAP-349",
-    "FAP-430",
-    "OTH-033",
-    "OTH-035",
     "FAP-362",
     "FAP-433",
     "FAP-434",
@@ -81,6 +75,20 @@ def differences(actual: Any, expected: Any, path: str = "$") -> list[str]:
     )
 
 
+# Receivers in these profiles search other text for an embedded "!" position.
+LEGACY_POSITION_PROFILES = {"historical-1.0", "compatibility-fap"}
+
+
+def parse_row(row: dict[str, Any], raw: bytes) -> aprs.Packet | aprs.Malformed:
+    options = row.get("options") or {}
+    strict = row["profile"] == "strict-envelope" or options.get("ax25")
+    return aprs.parse_packet(
+        raw,
+        policy=aprs.RF if strict else aprs.APRS_IS,
+        legacy_positions=row["profile"] in LEGACY_POSITION_PROFILES,
+    )
+
+
 def rows():
     return [
         json.loads(line)
@@ -109,9 +117,7 @@ def check(row: dict[str, Any]) -> None:
 
         actual, rejected = view(raw, row["profile"], row.get("options"))
     else:
-        options = row.get("options") or {}
-        strict = row["profile"] == "strict-envelope" or options.get("ax25")
-        packet = aprs.parse_packet(raw, policy=aprs.RF if strict else aprs.APRS_IS)
+        packet = parse_row(row, raw)
         actual = aprs.to_json_dict(packet, include_defaults=True)
         rejected = isinstance(packet, aprs.Malformed) or any(
             d.code == "nonconforming" for d in packet.diagnostics

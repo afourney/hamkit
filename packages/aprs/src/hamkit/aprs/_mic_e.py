@@ -1,6 +1,12 @@
 # SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
 # SPDX-License-Identifier: MIT
-"""Mic-E joint destination/information codec (APRS101 chapter 10)."""
+"""Mic-E joint destination/information codec (APRS101 chapter 10).
+
+Status text follows the APRS 1.2 type codes (aprs.org/aprs12/mic-e-types.txt):
+"T......Mv", where T is a type byte and a declared suffix may end the text.
+APRS 1.2 redefines the ` and ' type bytes, which APRS101 used for hex
+telemetry; that reading remains only for the complete legacy hex form.
+"""
 
 from __future__ import annotations
 
@@ -9,11 +15,27 @@ import re
 from dataclasses import replace
 from typing import cast
 
-from ._data import Altitude, Measurement, Motion, Symbol, Telemetry
+from ._data import Altitude, Extensions, Measurement, Motion, Symbol, Telemetry
 from ._errors import FieldError
 from ._models import Header, MicE
 from ._position_codec import base91, center, dao_offset, pack91
 from ._text import free_text
+
+# Declared version suffixes. The manufacturer/version pair after ` or ' does
+# not depend on which of the two type bytes was sent.
+_OTHER_SUFFIXES = (
+    *("_ ", '_"', "_#", "_$", "_%", "_)", "_(", "_0", "_3", "_1"),  # Yaesu
+    *(" X", "(5", "(8", "|3", "|4", ":4", ":8"),  # AP510, Anytone, Byonics, SCS
+)
+TYPE_SUFFIXES: dict[str, tuple[str, ...]] = {
+    ">": ("=", "^"),  # TH-D72, TH-D74
+    "]": ("=",),  # TM-D710
+    "`": _OTHER_SUFFIXES,
+    "'": _OTHER_SUFFIXES,
+}
+# The legacy grid/status prefix has no coordinate authority; it stays in the
+# device code after a Kenwood type byte so composing does not discard it.
+_GRID = r"[A-R]{2}[0-9]{2}[A-X]{2}/[A-Za-z]"
 
 _MESSAGES = (
     "emergency",
@@ -98,49 +120,8 @@ def read(information: bytes, header: Header, diagnostics: list) -> MicE:
         course -= 400
     motion = Motion(course, speed, course_code=course, speed_code=speed)
     symbol = Symbol(chr(b[7]), chr(b[6]))
-    tail = b[8:]
-    device = None
-    altitude = None
-    telemetry = None
-    if tail[:1] in (b"]", b">"):
-        device = tail[:1].decode()
-        tail = tail[1:]
-    if len(tail) >= 4 and tail[3:4] == b"}":
-        altitude = Altitude(Measurement(base91(tail[:3]) - 10000, "meters"), "mic_e")
-        tail = tail[4:]
-    if tail[:1] in (b"`", b"'"):
-        width = 4 if tail[:1] == b"`" else 10
-        if len(tail) < width + 1 or not re.fullmatch(
-            rb"[0-9A-Fa-f]+", tail[1 : width + 1]
-        ):
-            raise FieldError("invalid Mic-E hex telemetry")
-        values: tuple[int | None, ...] = tuple(
-            bytes.fromhex(tail[1 : width + 1].decode())
-        )
-        if width == 4:
-            values = (values[0], None, values[1], None, None)
-        telemetry = Telemetry(values, encoding="mic_e_hex")
-        tail = tail[width + 1 :]
-    elif tail[:1] == b"\x1d":
-        if len(tail) < 6:
-            raise FieldError("truncated Mic-E binary telemetry")
-        telemetry = Telemetry(tuple(tail[1:6]), encoding="mic_e_binary")
-        tail = tail[6:]
-    # The legacy grid/status prefix has no coordinate authority; retain its
-    # bytes in the device code so composing does not discard that information.
-    grid = re.match(rb"[A-R]{2}[0-9]{2}[A-X]{2}/[A-Za-z]", tail)
-    if grid and device:
-        device += grid[0].decode()
-        tail = tail[grid.end() :]
-    from . import _extensions
-
-    extra, tail = _extensions.read(tail, symbol)
-    e = replace(
-        extra,
-        motion=motion,
-        altitude=altitude or extra.altitude,
-        telemetry=telemetry or extra.telemetry,
-    )
+    device, extra, tail = read_status(b[8:], symbol)
+    e = replace(extra, motion=motion)
     return MicE(
         dao_offset(lat, e.dao, "latitude"),
         dao_offset(lon, e.dao, "longitude"),
@@ -213,13 +194,114 @@ def write(p: MicE, header: Header) -> bytes:
         + p.symbol.code.encode()
         + p.symbol.table_id.encode()
     )
-    if p.device_code:
-        if not re.fullmatch(
-            r"[>\]](?:[A-R]{2}[0-9]{2}[A-X]{2}/[A-Za-z])?", p.device_code
-        ):
-            raise FieldError("unsupported Mic-E device marker")
-        body += p.device_code.encode()
+    return (b"`" if p.fix == "current" else b"'") + body + write_status(p)
+
+
+def device_parts(code: str | None) -> tuple[str, str]:
+    """Split a device code into what precedes and what ends the status text."""
+    if not code:
+        return "", ""
+    head, rest = code[:1], code[1:]
+    if head in (">", "]"):
+        grid = re.match(_GRID, rest)
+        if grid:
+            head, rest = head + grid[0], rest[grid.end() :]
+    if head[:1] not in TYPE_SUFFIXES or rest and rest not in TYPE_SUFFIXES[code[0]]:
+        raise FieldError("unsupported Mic-E type code")
+    return head, rest
+
+
+def _suffix(device: str, text: bytes) -> bytes:
+    for suffix in TYPE_SUFFIXES[device]:
+        if text.endswith(suffix.encode()):
+            return suffix.encode()
+    return b""
+
+
+def _legacy_hex(tail: bytes) -> int:
+    """Width of complete APRS101 hex telemetry after ` or ', or 0."""
+    width = 4 if tail[:1] == b"`" else 10
+    complete = re.fullmatch(rb"[0-9A-Fa-f]{%d}" % width, tail[1 : width + 1])
+    if complete and not _suffix(tail[:1].decode(), tail[width + 1 :]):
+        return width
+    return 0
+
+
+def read_status(tail: bytes, symbol: Symbol) -> tuple[str | None, Extensions, bytes]:
+    """Decode the status text after the symbol: device code, extensions, comment."""
+    device = None
+    suffix = b""
+    telemetry = None
+    altitude = None
+    width = _legacy_hex(tail) if tail[:1] in (b"`", b"'") else 0
+    if width:
+        values: tuple[int | None, ...] = tuple(
+            bytes.fromhex(tail[1 : width + 1].decode())
+        )
+        if width == 4:
+            values = (values[0], None, values[1], None, None)
+        telemetry = Telemetry(values, encoding="mic_e_hex")
+        tail = tail[width + 1 :]
+    elif tail[:1] == b"\x1d":
+        if len(tail) < 6:
+            raise FieldError("truncated Mic-E binary telemetry")
+        telemetry = Telemetry(tuple(tail[1:6]), encoding="mic_e_binary")
+        tail = tail[6:]
+    elif tail[:1] in (b">", b"]", b"`", b"'"):
+        device = tail[:1].decode()
+        suffix = _suffix(device, tail[1:])
+        tail = tail[1 : len(tail) - len(suffix)]
+    if len(tail) >= 4 and tail[3:4] == b"}":
+        altitude = Altitude(Measurement(base91(tail[:3]) - 10000, "meters"), "mic_e")
+        tail = tail[4:]
+    grid = re.match(_GRID.encode(), tail)
+    if grid and device in (">", "]"):
+        device += grid[0].decode()
+        tail = tail[grid.end() :]
+    if device is not None:
+        device += suffix.decode()
+    from . import _extensions
+
+    extra, tail = _extensions.read(tail, symbol)
+    e = replace(
+        extra,
+        altitude=altitude or extra.altitude,
+        telemetry=telemetry or extra.telemetry,
+    )
+    return device, e, tail
+
+
+def write_status(p: MicE) -> bytes:
+    """Encode the status text after the symbol; the inverse of read_status."""
+    head, suffix = device_parts(p.device_code)
     e = replace(p.extensions, motion=None)
+    first = b""
+    if e.telemetry and e.telemetry.encoding in ("mic_e_hex", "mic_e_binary"):
+        if head:
+            raise FieldError("Mic-E telemetry and a type code share the first byte")
+        t = e.telemetry
+        values = t.analog
+        if len(values) == 2 and t.encoding == "mic_e_hex":
+            values = (values[0], None, values[1], None, None)
+        if len(values) != 5 or t.digital:
+            raise FieldError("invalid Mic-E telemetry channels")
+        if t.encoding == "mic_e_binary":
+            first = b"\x1d" + bytes(int(cast(float, v)) for v in values)
+        elif values[1] is None and values[3:] == (None, None):
+            first = (
+                b"`"
+                + bytes([int(cast(float, values[0])), int(cast(float, values[2]))])
+                .hex()
+                .upper()
+                .encode()
+            )
+        else:
+            first = (
+                b"'" + bytes(int(cast(float, v)) for v in values).hex().upper().encode()
+            )
+        e = replace(e, telemetry=None)
+    else:
+        first = head[:1].encode()
     if e.altitude and e.altitude.encoding == "mic_e":
         if e.altitude.reference != "unspecified":
             raise FieldError(
@@ -228,35 +310,15 @@ def write(p: MicE, header: Header) -> bytes:
         a = e.altitude.measurement
         if a.unit != "meters" or a.value is None:
             raise FieldError("Mic-E altitude requires meters")
-        body += pack91(round(a.value) + 10000, 3) + b"}"
+        first += pack91(round(a.value) + 10000, 3) + b"}"
         e = replace(e, altitude=None)
-    if e.telemetry and e.telemetry.encoding in ("mic_e_hex", "mic_e_binary"):
-        t = e.telemetry
-        values = t.analog
-        if len(values) == 2 and t.encoding == "mic_e_hex":
-            values = (values[0], None, values[1], None, None)
-        if len(values) != 5 or t.digital:
-            raise FieldError("invalid Mic-E telemetry channels")
-        if t.encoding == "mic_e_binary":
-            body += b"\x1d" + bytes(int(cast(float, v)) for v in values)
-        elif values[1] is None and values[3:] == (None, None):
-            body += (
-                b"`"
-                + bytes([int(cast(float, values[0])), int(cast(float, values[2]))])
-                .hex()
-                .upper()
-                .encode()
-            )
-        else:
-            body += (
-                b"'" + bytes(int(cast(float, v)) for v in values).hex().upper().encode()
-            )
-        e = replace(e, telemetry=None)
     from . import _extensions
 
+    comment = p.comment.encode()
     return (
-        (b"`" if p.fix == "current" else b"'")
-        + body
-        + _extensions.write(e, p.symbol, p.comment.encode())
-        + p.comment.encode()
+        first
+        + head[1:].encode()
+        + _extensions.write(e, p.symbol, comment)
+        + comment
+        + suffix.encode()
     )

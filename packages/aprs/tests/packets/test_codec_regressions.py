@@ -304,3 +304,86 @@ def test_weather_codes_must_end_the_report(raw):
         )
         resent = packet(a.serialize_packet(plain))
         assert resent.payload.comment == comment
+
+
+MIC_E = b"N0CALL>S32UVT:`(_f\x1e\x1eOj/"
+
+
+@pytest.mark.parametrize(
+    ("status", "device", "comment", "telemetry"),
+    [
+        (b'`"4T}Hi_%', "`_%", "Hi", None),  # Yaesu FTM-400DR with altitude
+        (b"'Hello|3", "'|3", "Hello", None),  # Byonics TinyTrack3
+        (b"'1020 x", "'", "1020 x", None),  # incomplete hex: a type byte
+        (b"`plain", "`", "plain", None),  # undeclared suffix stays in the comment
+        (b']"3x}=', "]=", "", None),  # Kenwood TM-D710
+        (b">Ready^", ">^", "Ready", None),  # Kenwood TH-D74
+        (b"`1020", None, "", "mic_e_hex"),  # APRS101 two-channel telemetry
+        (b"'102030FFff text", None, " text", "mic_e_hex"),
+        (b"'102030FFff|3", "'|3", "102030FFff", None),  # a declared suffix wins
+    ],
+)
+def test_mic_e_type_codes(status, device, comment, telemetry):
+    # APRS 1.2 (aprs.org/aprs12/mic-e-types.txt) redefines ` and ' as type bytes;
+    # no type byte or suffix can make the packet Malformed.
+    decoded = packet(MIC_E + status)
+    assert decoded.payload.device_code == device
+    assert decoded.payload.comment == comment
+    t = decoded.payload.extensions.telemetry
+    assert (t and t.encoding) == telemetry
+    resent = packet(a.serialize_packet(decoded))
+    assert (resent.payload.device_code, resent.payload.comment) == (device, comment)
+
+
+def test_mic_e_type_codes_are_checked_before_sending():
+    def mic_e(**fields):
+        motion = a.Extensions(motion=a.Motion(90, 10))
+        fields.setdefault("extensions", motion)
+        payload = a.MicE(33.4277, -112.12, a.Symbol("/", ">"), message="off_duty")
+        return a.Packet(
+            a.Header("N0CALL", "S32UVT"), dataclasses.replace(payload, **fields)
+        )
+
+    def findings(**fields):
+        return [(d.path, d.message) for d in a.check_packet(mic_e(**fields))]
+
+    assert findings(device_code="`_%", comment="Hi") == []
+    readback = (
+        "$.payload.comment",
+        "would be read back as a different Mic-E type code",
+    )
+    assert findings(device_code="`", comment="Hi_%") == [readback]
+    assert findings(comment="]hello") == [readback]
+    assert findings(comment="'1020") == [readback]
+    assert findings(device_code=">", comment="ok=") == [readback]
+    assert findings(device_code="]x") == [
+        ("$.payload.device_code", "not a declared Mic-E type code")
+    ]
+    telemetry = a.Telemetry((1, 2, 3, 4, 5), encoding="mic_e_hex")
+    shared = a.Extensions(motion=a.Motion(90, 10), telemetry=telemetry)
+    assert findings(device_code="'", extensions=shared) == [
+        (
+            "$.payload.device_code",
+            "Mic-E telemetry and a type code share the first byte",
+        )
+    ]
+    with pytest.raises(a.ConformanceError):
+        a.serialize_packet(mic_e(device_code="`", comment="Hi_%"))
+
+
+def test_embedded_position_search_is_opt_in():
+    # APRS101 p.18 (X1J) allowed a "!" position in the first 40 bytes of other
+    # text; the APRS 1.1 addendum deprecates the search.
+    raw = b"N0CALL>BEACON:X!4903.50N/07201.75W-"
+    assert packet(raw).payload == a.Beacon("X!4903.50N/07201.75W-")
+    legacy = a.parse_packet(raw, legacy_positions=True)
+    assert isinstance(legacy.payload, a.LegacyPosition)
+    assert legacy.payload.prefix == b"X"
+    framed = a.parse_tnc2_line(raw + b"\r\n", legacy_positions=True)
+    assert framed.payload == legacy.payload
+    payload = a.parse_payload(raw.partition(b":")[2], legacy_positions=True)
+    assert payload == legacy.payload
+    beyond = b"N0CALL>BEACON:" + b"X" * 40 + b"!4903.50N/07201.75W-"
+    assert isinstance(a.parse_packet(beyond, legacy_positions=True).payload, a.Beacon)
+    with pytest.raises(TypeError):
+        a.parse_packet(raw, legacy_positions="yes")

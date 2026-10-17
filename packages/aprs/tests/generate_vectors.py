@@ -763,6 +763,8 @@ def diverge(row: JSON, divergences: JSON) -> None:
     assert row["profile"] == "compatibility-fap", row["id"]
     entry = divergences["rows"][row["id"]]
     row["divergence"] = [divergences["reasons"][key] for key in entry["reasons"]]
+    if "replace" in entry:
+        row["expected"] = {"original_wire": row["packet"], **entry["replace"]}
     if "accept" in entry:
         assert row.pop("rejection"), row["id"]
         row["expected"] = {
@@ -776,7 +778,6 @@ def diverge(row: JSON, divergences: JSON) -> None:
         target = row["expected"]
         for name in parents:
             target = target[name]
-        assert key in target, (row["id"], path)
         target[key] = value
     for prefix in entry.get("drop_unmapped", []):
         # Facts from FAP's interpretation that the public expectation rejects.

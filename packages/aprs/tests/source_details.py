@@ -351,7 +351,9 @@ def check_core(row):
     from packets.test_corpus import differences
 
     raw = row["packet"].encode("latin1")
-    actual = core(a.parse_packet(raw), raw, row["profile"])
+    from packets.test_corpus import parse_row
+
+    actual = core(parse_row(row, raw), raw, row["profile"])
     errors = []
     for path in row.get("unmapped", []):
         try:

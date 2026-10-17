@@ -215,17 +215,17 @@ def test_conflicting_modern_beacon_interpretation_is_not_rewritten():
 def test_mic_e_device_field_preserves_captured_comment(identifier):
     row = next(r for r in ROWS if r["id"] == identifier)
     payload = row["expected"]["payload"]
-    assert payload["device_code"] == row["packet"].partition(":")[2][9]
+    # The type byte begins the status text and any version suffix ends it.
+    head, suffix = payload["device_code"][0], payload["device_code"][1:]
+    assert head == row["packet"].partition(":")[2][9]
     assert (
-        payload["device_code"] + payload["comment"]
+        head + payload["comment"] + suffix
         == row["source_expected"]["fap_fields"]["Comment"]
     )
 
 
-def test_broken_mic_e_comment_is_not_reinterpreted():
+def test_corrupted_mic_e_is_not_repaired():
     row = next(r for r in ROWS if r["id"] == "FAP-349")
-    assert "device_code" not in row["expected"]["payload"]
-    assert (
-        row["expected"]["payload"]["comment"]
-        == row["source_expected"]["fap_fields"]["Comment"]
-    )
+    assert row["options"]["accept_broken_mice"]
+    assert row["expected"] == {"original_wire": row["packet"], "type": "malformed"}
+    assert row["divergence"]

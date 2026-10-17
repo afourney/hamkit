@@ -22,6 +22,7 @@ def parse_tnc2_line(
     unsupported: UnsupportedPolicy = "opaque",
     malformed: MalformedPolicy = "return",
     max_third_party_depth: int = 4,
+    legacy_positions: bool = False,
 ) -> Packet | Malformed:
     """Parse one LF- or CRLF-terminated line, as read from APRS-IS or a TNC.
 
@@ -45,6 +46,7 @@ def parse_tnc2_line(
         unsupported=unsupported,
         malformed=malformed,
         max_third_party_depth=max_third_party_depth,
+        legacy_positions=legacy_positions,
     )
 
 

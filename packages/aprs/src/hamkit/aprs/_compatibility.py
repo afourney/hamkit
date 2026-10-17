@@ -151,14 +151,6 @@ def view(
         and any(x.code == "nonconforming" for x in packet.diagnostics)
     )
     if profile != "compatibility-fap":
-        if (
-            isinstance(packet, m.Packet)
-            and isinstance(packet.payload, m.LegacyPosition)
-            and profile != "historical-1.0"
-        ):
-            result["payload"] = to_json_dict(
-                m.Beacon(raw.partition(b":")[2].decode("latin1")), include_defaults=True
-            )
         return result, rejected
     _envelope, _, body = raw.partition(b":")
     header = packet.header

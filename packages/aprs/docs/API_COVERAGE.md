@@ -19,7 +19,7 @@ Decoding and encoding cover the families exercised by all 1,564 occurrences in
 | Queries/responses | General/directed queries, footprints, heard-station operands, direct lists, hourly counts, trace headers, capabilities                          |
 | Status            | Text, DHM, grid/symbol and beam/ERP                                                                                                             |
 | NMEA              | GGA, GLL, RMC, VTG and WPL, checksums, independent fix usability, destination/source symbol conventions                                         |
-| Historical/raw    | Grid beacons, X1J embedded positions, plain beacons, Agrelo, user-defined, invalid/test, reserved and external raw formats                      |
+| Historical/raw    | Grid beacons, X1J embedded positions (opt-in), plain beacons, Agrelo, user-defined, invalid/test, reserved and external raw formats             |
 | Vendor weather    | Ultimeter 2000 measurements plus original bytes; other vendor modes retain bytes without invented measurements                                  |
 
 `codec_support()` and `codec_support_for()` describe these boundaries at runtime.
@@ -31,8 +31,9 @@ outside this package's packet codec.
 
 The source vectors deliberately describe different receivers. The same TNC2
 bytes can have different expectations: embedded `!` is a modern beacon versus a
-legacy X1J position; FAP trims comments, converts weather units, rounds some
-values, and accepts certain incomplete historical reports.
+legacy X1J position (opt in with `legacy_positions=True`); FAP trims comments,
+converts weather units, rounds some values, and accepts certain incomplete
+historical reports.
 
 Schema-only differences are resolved in the stored JSONL expectations, not by
 rewriting actual public output during comparison. The offline source-to-schema
@@ -65,13 +66,13 @@ The runtime weather-unit conversion, wrapper flattening, and NMEA source-schema
 comparison have been removed. Source snapshots and all raw packet bytes remain
 unchanged; inverse-unit and source-value tests check that no information was lost.
 
-All but 23 vectors compare public `parse_packet` output with their stored
-expectations directly. Thirty-seven FAP expectations record where FAP's
+All but 18 vectors compare public `parse_packet` output with their stored
+expectations directly; historical and FAP rows parse with
+`legacy_positions=True`. Forty-two FAP expectations record where FAP's
 interpretation differs from the specification-following public decoder
-(`tests/fap_divergences.json`). The remaining 23 still use the compatibility
-view: Mic-E manufacturer prefixes, the embedded `!` search in modern beacons,
-`000000z` timestamps, short or decimal telemetry, minimal GLL sentences and
-trailing APRS 1.2 weather fields. Supplemental FAP source facts are still
+(`tests/fap_divergences.json`). The remaining 18 still use the compatibility
+view: `000000z` timestamps, short or decimal telemetry, minimal GLL sentences
+and trailing APRS 1.2 weather fields. Supplemental FAP source facts are still
 checked through the adapter's helpers.
 
 The 23 sequence occurrences run through a test application receiver using public
@@ -95,6 +96,15 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   longitude flags. A mismatch raises `FieldError`; packet headers are not silently
   changed. Payload-only Mic-E still requires header context. Longitude degrees
   use APRS101's table, so 100–109° are sent as `l`–`u`, never as control bytes.
+- Mic-E status text follows the APRS 1.2 type codes
+  (aprs.org/aprs12/mic-e-types.txt). `device_code` holds the type byte that
+  begins the text plus any declared suffix that ends it, such as `` `_% ``
+  (Yaesu FTM-400DR), `'|3` (Byonics TinyTrack3) or `]=` (Kenwood TM-D710).
+  A leading `` ` `` or `'` is APRS101 hex telemetry only in its complete form
+  without a declared suffix; otherwise it is a type byte, and no type byte or
+  suffix makes a packet `Malformed`. Sending refuses an undeclared type code, a
+  type code combined with hex or binary telemetry, and a comment that would be
+  read back as a different type code.
 - NMEA uses semantic numeric fields and recomputes a supplied checksum. Checksum
   characters can change when equivalent numeric spellings change. A sentence
   received with a bad checksum (`checksum_valid=False`) is a conformance finding:

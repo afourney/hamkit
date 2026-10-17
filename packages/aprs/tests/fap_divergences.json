@@ -12,9 +12,20 @@
     "user_defined": "'{' is APRS101's user-defined data type, so this decodes as user-defined data; FAP rejects experimental formats.",
     "unknown_nmea": "Unknown NMEA sentences are kept as opaque data with an 'unsupported' diagnostic, not rejected.",
     "vtg": "$GPVTG is a supported NMEA sentence (course and speed only, so no usable position); FAP rejects it.",
-    "beacon": "Text with no position in the first 40 bytes is a non-APRS beacon, kept as text; FAP rejects it."
+    "beacon": "Text with no position in the first 40 bytes is a non-APRS beacon, kept as text; FAP rejects it.",
+    "mic_e_type_suffix": "APRS 1.2 Mic-E type codes end the status text with a declared version suffix (\"=\" after \"]\" is the TM-D710); it is part of device_code, not comment text.",
+    "mic_e_type_byte": "APRS 1.2 redefines a leading ` or ' as a Mic-E type byte; APRS101 hex telemetry needs the complete form (10 hex digits after '), so this is a type code followed by comment text. FAP reads two channels.",
+    "mic_e_manufacturer": "APRS 1.2 Mic-E type code ' with the Byonics TinyTrack3 suffix |3 is stored in device_code; FAP keeps both in the comment.",
+    "mic_e_corrupt": "A byte was lost in transit, so the symbol table is invalid; FAP's accept_broken_mice option guesses the repair, while the public parser reports the packet as Malformed."
   },
   "rows": {
+    "FAP-005": {
+      "reasons": ["mic_e_type_suffix"],
+      "set": {
+        "$.payload.comment": "",
+        "$.payload.device_code": "]="
+      }
+    },
     "FAP-013": {
       "reasons": ["case"],
       "set": {
@@ -57,12 +68,34 @@
         "$.payload.comment": " http://aprs.fi/"
       }
     },
+    "FAP-346": {
+      "reasons": ["mic_e_type_suffix"],
+      "set": {
+        "$.payload.comment": "",
+        "$.payload.device_code": "]="
+      }
+    },
     "FAP-347": {
       "reasons": ["mic_e_sequence", "whitespace"],
       "set": {
         "$.payload.comment": " commeeeent",
         "$.payload.extensions.telemetry.sequence": null
       }
+    },
+    "FAP-348": {
+      "reasons": ["mic_e_type_byte"],
+      "set": {
+        "$.payload.comment": "1020 commeeeent",
+        "$.payload.device_code": "'"
+      },
+      "remove": ["$.payload.extensions.telemetry"]
+    },
+    "FAP-349": {
+      "reasons": ["mic_e_corrupt"],
+      "replace": {
+        "type": "malformed"
+      },
+      "drop_unmapped": ["$."]
     },
     "FAP-357": {
       "reasons": ["nmea_precision", "nmea_symbol"],
@@ -182,6 +215,13 @@
       "reasons": ["whitespace"],
       "set": {
         "$.payload.comment": " comment "
+      }
+    },
+    "FAP-430": {
+      "reasons": ["mic_e_manufacturer"],
+      "set": {
+        "$.payload.comment": "|",
+        "$.payload.device_code": "'|3"
       }
     },
     "FAP-431": {

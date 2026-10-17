@@ -77,10 +77,15 @@ class _Options:
     unsupported: UnsupportedPolicy
     malformed: MalformedPolicy
     max_depth: int
+    legacy_positions: bool = False
 
 
 def _options(
-    policy: EnvelopePolicy, unsupported: str, malformed: str, max_depth: object
+    policy: EnvelopePolicy,
+    unsupported: str,
+    malformed: str,
+    max_depth: object,
+    legacy_positions: object = False,
 ) -> _Options:
     if not isinstance(policy, EnvelopePolicy):
         raise TypeError("policy must be an EnvelopePolicy")
@@ -90,7 +95,11 @@ def _options(
         raise ValueError("malformed must be 'return' or 'raise'")
     if type(max_depth) is not int or not 0 <= max_depth <= 32:
         raise ValueError("max_third_party_depth must be an integer in 0..32")
-    return _Options(policy, unsupported, malformed, max_depth)  # type: ignore[arg-type]
+    if type(legacy_positions) is not bool:
+        raise TypeError("legacy_positions must be a bool")
+    return _Options(
+        policy, unsupported, malformed, max_depth, legacy_positions  # type: ignore[arg-type]
+    )
 
 
 def _special_message(address: str, body: bytes) -> bool:
@@ -241,7 +250,9 @@ def _decode_payload(
             return m.Agrelo(int(match[1]), int(match[2]), raw=information)
     if dti == b":":
         return _decode_message(body, diagnostics)
-    offset = information.find(b"!")
+    # APRS101 p.18 lets a position start within the first 40 bytes of other
+    # text (X1J); the APRS 1.1 addendum deprecates that search, so it is opt-in.
+    offset = information.find(b"!") if options.legacy_positions else -1
     if 0 < offset < 40:
         return m.LegacyPosition(
             information[:offset],
@@ -492,6 +503,7 @@ def parse_packet(
     unsupported: UnsupportedPolicy = "opaque",
     malformed: MalformedPolicy = "return",
     max_third_party_depth: int = 4,
+    legacy_positions: bool = False,
 ) -> Packet | Malformed:
     """Parse one unframed TNC2 packet, such as ``b"N0CALL>APRS:>Ready"``.
 
@@ -502,12 +514,16 @@ def parse_packet(
     unsupported="raise"). The envelope policy defaults to APRS_IS; pass RF for
     AX.25 address and size constraints, or supply a custom EnvelopePolicy.
     CR/LF is never stripped; use parse_tnc2_line for line-oriented input.
+    legacy_positions=True restores the deprecated APRS101 search for a "!"
+    position within the first 40 bytes of other text (LegacyPosition).
     """
     if not isinstance(wire, bytes):
         raise TypeError(
             "parse_packet requires bytes; encode text first, e.g. line.encode()"
         )
-    options = _options(policy, unsupported, malformed, max_third_party_depth)
+    options = _options(
+        policy, unsupported, malformed, max_third_party_depth, legacy_positions
+    )
     return _parse(wire, options, 0)[0]
 
 
@@ -518,6 +534,7 @@ def parse_payload(
     unsupported: UnsupportedPolicy = "opaque",
     malformed: MalformedPolicy = "return",
     max_third_party_depth: int = 4,
+    legacy_positions: bool = False,
 ) -> Payload | Malformed:
     """Decode an information field alone. Mic-E always requires header.
 
@@ -525,7 +542,9 @@ def parse_payload(
     """
     if not isinstance(information, bytes):
         raise TypeError("parse_payload requires bytes")
-    options = _options(APRS_IS, unsupported, malformed, max_third_party_depth)
+    options = _options(
+        APRS_IS, unsupported, malformed, max_third_party_depth, legacy_positions
+    )
     if header is not None:
         validate_tree(header)
     return _recover_payload(information, header, options, 0, [])

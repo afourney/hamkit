@@ -31,19 +31,21 @@ invalid timestamps and the historical receiver's validation order. Error wording
 is represented by the public diagnostic scheme rather than copied verbatim.
 
 Every row compares `parse_packet` output with `expected` directly, except the
-23 listed in `COMPATIBILITY_PENDING` (`tests/packets/test_corpus.py`). Those
+18 listed in `COMPATIBILITY_PENDING` (`tests/packets/test_corpus.py`). Those
 still go through the private `_compatibility.py` view while they wait on parser
 changes or decisions; a regression test fails once one of them passes directly,
 so the list can only shrink.
 
 Where FAP's interpretation differs from the public decoder's, and the public
 one follows the specification, `tests/fap_divergences.json` replaces the
-FAP-derived expectation. Each override names its reasons, such as comment
-whitespace kept as transmitted, callsign case, compressed course 0, disputed
-wind units, NMEA default symbols and precision, and packets FAP refuses but the
-specification allows. The generator applies the overrides, copies the reasons
-into the row's `divergence` field and leaves `outcome` and `source_expected` as
-FAP captured them.
+FAP-derived expectation. Each override names its reasons: comment whitespace
+kept as transmitted, callsign case, compressed course 0, disputed wind units,
+NMEA default symbols and precision, packets FAP refuses but the specification
+allows, Mic-E type codes, and a corrupted Mic-E packet that FAP repairs. The
+generator applies the overrides, copies the reasons into the row's
+`divergence` field and leaves `outcome` and `source_expected` as FAP captured
+them. Historical and FAP rows parse with `legacy_positions=True`, since those
+receivers search other text for an embedded `!` position.
 
 The schema migration rewrote 35 stored expectations (33 FAP and two historical
 position cases): equivalent weather units, compressed weather wind nesting,

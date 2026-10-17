@@ -887,10 +887,6 @@
     "kind": "malformed",
     "reasons": ["message requires a nine-byte addressee and colon"]
   },
-  "FAP-348": {
-    "kind": "malformed",
-    "reasons": ["invalid Mic-E hex telemetry"]
-  },
   "FAP-349": {
     "kind": "malformed",
     "reasons": ["invalid symbol table or overlay"]
@@ -1078,10 +1074,6 @@
   "FAP-419": {
     "kind": "conformance",
     "reasons": ["extensions and comment exceed 43 bytes"]
-  },
-  "FAP-430": {
-    "kind": "malformed",
-    "reasons": ["invalid Mic-E hex telemetry"]
   },
   "FAP-432": {
     "kind": "conformance",

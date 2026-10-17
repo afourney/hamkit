@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from packets.test_corpus import load, rows
+from packets.test_corpus import LEGACY_POSITION_PROFILES, load, rows
 
 from hamkit import aprs as a
 
@@ -102,7 +102,8 @@ def same_semantics(x: Any, y: Any, path="$") -> None:
 
 @pytest.mark.parametrize("row", load())
 def test_vector_roundtrip(row):
-    packet = a.parse_packet(row["packet"].encode("latin1"))
+    legacy = row["profile"] in LEGACY_POSITION_PROFILES
+    packet = a.parse_packet(row["packet"].encode("latin1"), legacy_positions=legacy)
     # JSON is lossless even for malformed or nonconforming received packets.
     assert a.to_json_dict(a.from_json(a.to_json(packet))) == a.to_json_dict(packet)
     exception = EXCEPTIONS.get(row["id"])
@@ -137,7 +138,7 @@ def test_vector_roundtrip(row):
     else:
         a.validate_packet(clean)
     wire = a.serialize_packet(clean, policy=CORPUS_POLICY)
-    decoded = a.parse_packet(wire)
+    decoded = a.parse_packet(wire, legacy_positions=legacy)
     assert isinstance(decoded, a.Packet)
     if isinstance(clean.payload, a.NMEA):
         n = clean.payload

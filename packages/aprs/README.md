@@ -683,7 +683,7 @@ encoding. They remain useful for storing or exchanging structured data.
 
 #### Mic-E
 
-**Wire encoding available.** Compact position data with a Mic-E message type. The supplied destination must match latitude, hemisphere and message; the encoder verifies it.
+**Wire encoding available.** Compact position data with a Mic-E message type. The supplied destination must match latitude, hemisphere and message; the encoder verifies it. `device_code` holds the APRS 1.2 type code: the type byte that begins the status text plus any declared suffix that ends it, such as `` `_% `` (Yaesu FTM-400DR) or `]=` (Kenwood TM-D710).
 
 Build with Python:
 
@@ -1696,7 +1696,10 @@ Maidenhead
 
 #### Legacy position
 
-**Wire encoding available.** A historical prefix around a position.
+**Wire encoding available.** A historical prefix around a position. APRS101
+allowed a `!` position within the first 40 bytes of other text; the APRS 1.1
+addendum deprecates that search, so parsing returns a `Beacon` unless you pass
+`legacy_positions=True`.
 
 Build with Python:
 

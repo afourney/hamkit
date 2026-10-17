@@ -33,7 +33,7 @@ from ._data import (
     TelemetryUnits,
     Weather,
 )
-from ._errors import CodecNotImplementedError, FieldError
+from ._errors import APRSError, CodecNotImplementedError, FieldError
 from ._models import (
     NMEA,
     Acknowledgment,
@@ -473,9 +473,28 @@ def _located(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if isinstance(v, MicE):
         if e.motion is None:
             yield "$.extensions.motion", "Mic-E always carries course and speed"
+        yield from _mic_e_status(v)
         return
     if v.compression is not None:
         yield from _compressed(v)
+
+
+def _mic_e_status(v: MicE) -> Iterator[Finding]:
+    """The type code and status text must read back as composed."""
+    from . import _mic_e
+
+    try:
+        _mic_e.device_parts(v.device_code)
+    except APRSError:
+        yield "$.device_code", "not a declared Mic-E type code"
+        return
+    try:
+        device, _, comment = _mic_e.read_status(_mic_e.write_status(v), v.symbol)
+    except APRSError as error:
+        yield "$.device_code", str(error)
+        return
+    if (device, comment) != (v.device_code, v.comment.encode()):
+        yield "$.comment", "would be read back as a different Mic-E type code"
 
 
 def _compressed(v: Any) -> Iterator[Finding]:
