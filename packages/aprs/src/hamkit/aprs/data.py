@@ -73,7 +73,7 @@ class Coordinates:
 
 
 @dataclass(frozen=True)
-class CellBounds:
+class Extent:
     latitude: Bounds
     longitude: Bounds
 
@@ -81,7 +81,7 @@ class CellBounds:
 @dataclass(frozen=True)
 class Ambiguity:
     digits: int
-    cell_bounds: CellBounds | None = None
+    extent: Extent | None = None
     representative: Literal["center"] = "center"
 
 
@@ -94,9 +94,9 @@ class Symbol:
 
 
 @dataclass(frozen=True)
-class GridLocator:
+class Grid:
     locator: str
-    bounds: CellBounds | None = None
+    bounds: Extent | None = None
     center: Coordinates | None = None
 
 
@@ -120,7 +120,7 @@ class Altitude:
 
 
 @dataclass(frozen=True)
-class RadioRange:
+class Range:
     miles: float
     raw: bytes | None = None
 
@@ -138,7 +138,7 @@ class PHG:
 
 
 @dataclass(frozen=True)
-class DFSignal:
+class Signal:
     s_units: int
     height_haat_ft: float
     gain_db: float
@@ -147,7 +147,7 @@ class DFSignal:
 
 
 @dataclass(frozen=True)
-class DFBearing:
+class Bearing:
     bearing_deg: float
     hits_code: int
     range_code: int
@@ -205,6 +205,8 @@ class WaterHeight:
 
 @dataclass(frozen=True)
 class Weather:
+    """Weather observations, usable as a payload or a located extension."""
+
     wind_direction: Measurement | None = None
     wind_speed: Measurement | None = None
     gust: Measurement | None = None
@@ -221,6 +223,8 @@ class Weather:
     software_code: bytes | None = None
     device_code: bytes | None = None
     raw: bytes | None = None
+    timestamp: Timestamp | None = None
+    comment: bytes = b""
 
 
 @dataclass(frozen=True)
@@ -244,7 +248,7 @@ TelemetryEncoding: TypeAlias = Literal[
 
 
 @dataclass(frozen=True)
-class TelemetryData:
+class Telemetry:
     """Ordered raw channels, uncalibrated. Missing channels are None, not zero."""
 
     analog: AnalogChannels = ()
@@ -254,6 +258,7 @@ class TelemetryData:
     sequence_raw: bytes | None = None
     raw: bytes | None = None
     mic_comma: bool = True
+    comment: bytes = b""
 
 
 @dataclass(frozen=True)
@@ -261,15 +266,15 @@ class Extensions:
     motion: Motion | None = None
     altitude: Altitude | None = None
     phg: PHG | None = None
-    radio_range: RadioRange | None = None
-    df_signal: DFSignal | None = None
-    df_bearing: DFBearing | None = None
+    range: Range | None = None
+    signal: Signal | None = None
+    bearing: Bearing | None = None
     dao: DAO | None = None
     area: Area | None = None
     signpost: Signpost | None = None
     weather: Weather | None = None
     storm: Storm | None = None
-    telemetry: TelemetryData | None = None
+    telemetry: Telemetry | None = None
 
 
 @dataclass(frozen=True)
@@ -299,12 +304,12 @@ class ReplyAck:
 
 
 @dataclass(frozen=True)
-class TelemetryParameters:
+class Parameters:
     channels: tuple[str | None, ...]
 
 
 @dataclass(frozen=True)
-class TelemetryUnits:
+class Units:
     channels: tuple[str | None, ...]
 
 
@@ -316,19 +321,17 @@ class Calibration:
 
 
 @dataclass(frozen=True)
-class TelemetryEquations:
+class Equations:
     coefficients: tuple[Calibration | None, ...]
 
 
 @dataclass(frozen=True)
-class TelemetryBits:
+class Bits:
     sense: DigitalChannels
     project_title: bytes = b""
 
 
-TelemetryDefinitionData: TypeAlias = (
-    TelemetryParameters | TelemetryUnits | TelemetryEquations | TelemetryBits
-)
+DefinitionValue: TypeAlias = Parameters | Units | Equations | Bits
 
 
 @dataclass(frozen=True)
@@ -344,46 +347,44 @@ class NTSHeader:
 
 
 @dataclass(frozen=True)
-class NTSAddress:
+class Address:
     lines: tuple[str, str, str, str]
 
 
 @dataclass(frozen=True)
-class NTSPhone:
+class Phone:
     number: str
 
 
 @dataclass(frozen=True)
-class NTSText:
+class Text:
     line: Literal[1, 2, 3, 4, 5, 6]
     text: bytes
 
 
 @dataclass(frozen=True)
-class NTSSignature:
+class Signature:
     text: bytes
 
 
 @dataclass(frozen=True)
-class NTSRouting:
+class Routing:
     received_from: str
     received_at: str
     sent_to: str
     sent_at: str
 
 
-NTSRecord: TypeAlias = (
-    NTSHeader | NTSAddress | NTSPhone | NTSText | NTSSignature | NTSRouting
-)
+NTSRecord: TypeAlias = NTSHeader | Address | Phone | Text | Signature | Routing
 
 
 @dataclass(frozen=True)
-class QueryFootprint:
+class Footprint:
     center: Coordinates
     radius_miles: float
 
 
 @dataclass(frozen=True)
-class CapabilityToken:
+class Capability:
     name: str
     value: bytes | None = None

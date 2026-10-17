@@ -176,7 +176,7 @@ MIC-001: construct MicE; encode CodecNotImplemented
 ```
 
 `Position.location` gives reusable spatial data without station-report flags.
-An `Ambiguity` may also carry `CellBounds`; its center is not an exact fix.
+An `Ambiguity` may also carry `Extent`; its center is not an exact fix.
 Mic-E needs the destination as well as information bytes: use full packet parsing
 or `decode_payload(info, header=...)`. For future encoding, use
 `encode_packet_fields(packet)` to receive **both** derived header and information;
@@ -223,16 +223,12 @@ show(
 )
 show(
     "EXT-033",
-    a.Position(
-        latitude, longitude, extensions=a.Extensions(radio_range=a.RadioRange(50))
-    ),
+    a.Position(latitude, longitude, extensions=a.Extensions(range=a.Range(50))),
     b"N0CALL>APRS:!4903.50N/07201.75W#RNG0050Range",
 )
 show(
     "EXT-035",
-    a.Position(
-        latitude, longitude, extensions=a.Extensions(df_signal=a.DFSignal(2, 80, 6))
-    ),
+    a.Position(latitude, longitude, extensions=a.Extensions(signal=a.Signal(2, 80, 6))),
     b"N0CALL>APRS:!4903.50N/07201.75W\\DFS2360",
 )
 show(
@@ -241,7 +237,7 @@ show(
         latitude,
         longitude,
         extensions=a.Extensions(
-            df_bearing=a.DFBearing(270, hits_code=7, range_code=2, quality_code=7)
+            bearing=a.Bearing(270, hits_code=7, range_code=2, quality_code=7)
         ),
     ),
     b"N0CALL>APRS:=4903.50N/07201.75W\\088/036/270/727",
@@ -286,22 +282,22 @@ report; it is not an invalid position.
 ```python
 show(
     "OBJ-001",
-    a.ObjectReport("LEADER", location, time, name_raw=b"LEADER   "),
+    a.Object("LEADER", location, time, name_raw=b"LEADER   "),
     b"N0CALL>APRS:;LEADER   *092345z4903.50N/07201.75W>",
 )
 show(
     "OBJ-002",
-    a.ObjectReport("LEADER", location, time, alive=False, name_raw=b"LEADER   "),
+    a.Object("LEADER", location, time, alive=False, name_raw=b"LEADER   "),
     b"N0CALL>APRS:;LEADER   _092345z4903.50N/07201.75W>",
 )
 show(
     "OBJ-013",
-    a.ItemReport("AID #2", location),
+    a.Item("AID #2", location),
     b"N0CALL>APRS:)AID #2!4903.50N/07201.75W>",
 )
 show(
     "OBJ-023",
-    a.ObjectReport(
+    a.Object(
         "AREA",
         replace(
             location,
@@ -316,7 +312,7 @@ show(
 )
 show(
     "OBJ-049",
-    a.ItemReport(
+    a.Item(
         "SIGN",
         replace(
             location,
@@ -331,15 +327,15 @@ show(
 Output:
 
 ```text
-OBJ-001: construct ObjectReport; encode CodecNotImplemented
+OBJ-001: construct Object; encode CodecNotImplemented
   decode Opaque; preserved=b';LEADER   *092345z4903.50N/07201.75W>'
-OBJ-002: construct ObjectReport; encode CodecNotImplemented
+OBJ-002: construct Object; encode CodecNotImplemented
   decode Opaque; preserved=b';LEADER   _092345z4903.50N/07201.75W>'
-OBJ-013: construct ItemReport; encode CodecNotImplemented
+OBJ-013: construct Item; encode CodecNotImplemented
   decode Opaque; preserved=b')AID #2!4903.50N/07201.75W>'
-OBJ-023: construct ObjectReport; encode CodecNotImplemented
+OBJ-023: construct Object; encode CodecNotImplemented
   decode Opaque; preserved=b';AREA     *092345z4903.50N\\07201.75Wl010/310'
-OBJ-049: construct ItemReport; encode CodecNotImplemented
+OBJ-049: construct Item; encode CodecNotImplemented
   decode Opaque; preserved=b')SIGN!4903.50N\\07201.75Wm{5}'
 ```
 
@@ -348,7 +344,7 @@ For a compressed object/item, set its wrapper's `encoding="compressed"` and
 
 ## Weather and storms
 
-**Model-only codecs.** `WeatherReport` is positionless; located weather uses
+**Model-only codecs.** `Weather` is positionless; located weather uses
 `Extensions.weather` on a `Position` or an object's `Location`. Storm metadata is
 another extension. `None` means absent; `Measurement(None, ...)` means transmitted
 but unavailable; numeric zero is a measured value. Units and rain windows are
@@ -375,12 +371,12 @@ complete_weather = replace(
 )
 show(
     "WX-001",
-    a.WeatherReport(weather, a.Timestamp("mdhm_utc", 5, 56, day=9, month=10)),
+    replace(weather, timestamp=a.Timestamp("mdhm_utc", 5, 56, day=9, month=10)),
     b"N0CALL>APRS:_10090556c220s004g005t077r001p025P012h50b09900WRSW",
 )
 show(
     "WX-052",
-    a.ObjectReport(
+    a.Object(
         "WX-SITE",
         replace(
             location,
@@ -393,7 +389,7 @@ show(
 )
 show(
     "WX-053",
-    a.ObjectReport(
+    a.Object(
         "STORM",
         replace(
             location,
@@ -416,11 +412,11 @@ print(gauge)
 Output:
 
 ```text
-WX-001: construct WeatherReport; encode CodecNotImplemented
+WX-001: construct Weather; encode CodecNotImplemented
   decode Opaque; preserved=b'_10090556c220s004g005t077r001p025P012h50b09900WRSW'
-WX-052: construct ObjectReport; encode CodecNotImplemented
+WX-052: construct Object; encode CodecNotImplemented
   decode Opaque; preserved=b';WX-SITE  *092345z4903.50N/07201.75W_220/004g005t077r001p025P012h50b09900'
-WX-053: construct ObjectReport; encode CodecNotImplemented
+WX-053: construct Object; encode CodecNotImplemented
   decode Opaque; preserved=b';STORM    *092345z4903.50N\\07201.75W@088/036/HC/150^200/0980>090&030%040'
 Measurement(value=None, unit='mph', raw=b'...')
 WaterHeight(measurement=Measurement(value=20.1, unit='feet', raw=None), reference_datum=None)
@@ -429,28 +425,26 @@ WaterHeight(measurement=Measurement(value=20.1, unit='feet', raw=None), referenc
 ## Telemetry and definitions
 
 **Model-only codecs.** Channel order is preserved, missing samples are `None`,
-and calibration is separate. `TelemetryDefinition` carries PARM, UNIT, EQNS or
+and calibration is separate. `Definition` carries PARM, UNIT, EQNS or
 BITS addressed to the station being described. Classic telemetry, the special
 `MIC` sequence, Mic-E telemetry, and base-91 comment telemetry share
-`TelemetryData` with an explicit `encoding`.
+`Telemetry` with an explicit `encoding`.
 
 ```python
 show(
     "TLM-001",
     a.Telemetry(
-        a.TelemetryData(
-            (199, 0, 255, 73, 123),
-            (False, True, True, False, True, False, False, True),
-            sequence=0,
-        )
+        (199, 0, 255, 73, 123),
+        (False, True, True, False, True, False, False, True),
+        sequence=0,
     ),
     b"N0CALL>APRS:T#000,199,000,255,073,123,01101001",
 )
 show(
     "TLM-010",
-    a.TelemetryDefinition(
+    a.Definition(
         "N0CALL-11",
-        a.TelemetryParameters(
+        a.Parameters(
             (
                 "Battery",
                 "Btemp",
@@ -469,9 +463,9 @@ show(
 )
 show(
     "TLM-011",
-    a.TelemetryDefinition(
+    a.Definition(
         "N0CALL-11",
-        a.TelemetryUnits(
+        a.Units(
             (
                 "v/100",
                 "deg.F",
@@ -490,9 +484,9 @@ show(
 )
 show(
     "TLM-012",
-    a.TelemetryDefinition(
+    a.Definition(
         "N0CALL-11",
-        a.TelemetryEquations(
+        a.Equations(
             (
                 a.Calibration(0, 5.2, 0),
                 a.Calibration(0, 0.53, -32),
@@ -506,9 +500,9 @@ show(
 )
 show(
     "TLM-013",
-    a.TelemetryDefinition(
+    a.Definition(
         "N0CALL-11",
-        a.TelemetryBits(
+        a.Bits(
             (True, False, True, True, False, False, False, False), b"Balloon project"
         ),
     ),
@@ -520,7 +514,7 @@ show(
         latitude,
         longitude,
         extensions=a.Extensions(
-            telemetry=a.TelemetryData(
+            telemetry=a.Telemetry(
                 (0, 0, 0, 0, 0), (False,) * 8, sequence=0, encoding="base91_comment"
             )
         ),
@@ -534,13 +528,13 @@ Output:
 ```text
 TLM-001: construct Telemetry; encode CodecNotImplemented
   decode Opaque; preserved=b'T#000,199,000,255,073,123,01101001'
-TLM-010: construct TelemetryDefinition; encode CodecNotImplemented
+TLM-010: construct Definition; encode CodecNotImplemented
   decode Opaque; preserved=b':N0CALL-11:PARM.Battery,Btemp,ATemp,Pres,Alt,Camra,Chut,Sun,10m,ATV'
-TLM-011: construct TelemetryDefinition; encode CodecNotImplemented
+TLM-011: construct Definition; encode CodecNotImplemented
   decode Opaque; preserved=b':N0CALL-11:UNIT.v/100,deg.F,deg.F,Mbar,Kft,Click,OPEN,on,on,hi'
-TLM-012: construct TelemetryDefinition; encode CodecNotImplemented
+TLM-012: construct Definition; encode CodecNotImplemented
   decode Opaque; preserved=b':N0CALL-11:EQNS.0,5.2,0,0,.53,-32,3,4.39,49,-32,3,18,1,2,3'
-TLM-013: construct TelemetryDefinition; encode CodecNotImplemented
+TLM-013: construct Definition; encode CodecNotImplemented
   decode Opaque; preserved=b':N0CALL-11:BITS.10110000,Balloon project'
 FAP-418: construct Position; encode CodecNotImplemented
   decode Position; lat=62.892000, lon=27.657833; tail=b'036/010/A=000465 |!!!!!!!!!!!!!!|'
@@ -616,14 +610,14 @@ MSG-034: construct NWSBulletin; encode CodecNotImplemented
 
 ## NTS radiograms
 
-**Model-only codecs.** Each radiogram record is a separate `NTSMessage`, not a
-whole assembled radiogram. `NTSText.line` selects N1–N6. All six record shapes
+**Model-only codecs.** Each radiogram record is a separate `Radiogram`, not a
+whole assembled radiogram. `Text.line` selects N1–N6. All six record shapes
 below have named fields; routing and delivery remain application concerns.
 
 ```python
 show(
     "MSG-035",
-    a.NTSMessage(
+    a.Radiogram(
         "W1AW",
         a.NTSHeader("12", "R", "HXA", "N0CALL", "5", "REDMOND WA", "1800", "OCT 15"),
         "001",
@@ -632,29 +626,29 @@ show(
 )
 show(
     "MSG-036",
-    a.NTSMessage(
-        "W1AW", a.NTSAddress(("ADAM", "123 MAIN ST", "REDMOND WA", "98052")), "001"
+    a.Radiogram(
+        "W1AW", a.Address(("ADAM", "123 MAIN ST", "REDMOND WA", "98052")), "001"
     ),
     b"N0CALL>APRS::W1AW     :NA\\ADAM\\123 MAIN ST\\REDMOND WA\\98052{001",
 )
 show(
     "MSG-037",
-    a.NTSMessage("W1AW", a.NTSPhone("5550100"), "001"),
+    a.Radiogram("W1AW", a.Phone("5550100"), "001"),
     b"N0CALL>APRS::W1AW     :NP\\5550100{001",
 )
 show(
     "MSG-038",
-    a.NTSMessage("W1AW", a.NTSText(1, b"LINE 1 TEXT"), "001"),
+    a.Radiogram("W1AW", a.Text(1, b"LINE 1 TEXT"), "001"),
     b"N0CALL>APRS::W1AW     :N1\\LINE 1 TEXT{001",
 )
 show(
     "MSG-044",
-    a.NTSMessage("W1AW", a.NTSSignature(b"TEST SENDER"), "001"),
+    a.Radiogram("W1AW", a.Signature(b"TEST SENDER"), "001"),
     b"N0CALL>APRS::W1AW     :NS\\TEST SENDER{001",
 )
 show(
     "MSG-045",
-    a.NTSMessage("W1AW", a.NTSRouting("W1AW", "151800Z", "N0CALL", "151805Z"), "001"),
+    a.Radiogram("W1AW", a.Routing("W1AW", "151800Z", "N0CALL", "151805Z"), "001"),
     b"N0CALL>APRS::W1AW     :NR\\W1AW\\151800Z\\N0CALL\\151805Z{001",
 )
 ```
@@ -662,17 +656,17 @@ show(
 Output:
 
 ```text
-MSG-035: construct NTSMessage; encode CodecNotImplemented
+MSG-035: construct Radiogram; encode CodecNotImplemented
   decode Opaque; preserved=b':W1AW     :N#\\12\\R\\HXA\\N0CALL\\5\\REDMOND WA\\1800\\OCT 15{001'
-MSG-036: construct NTSMessage; encode CodecNotImplemented
+MSG-036: construct Radiogram; encode CodecNotImplemented
   decode Opaque; preserved=b':W1AW     :NA\\ADAM\\123 MAIN ST\\REDMOND WA\\98052{001'
-MSG-037: construct NTSMessage; encode CodecNotImplemented
+MSG-037: construct Radiogram; encode CodecNotImplemented
   decode Opaque; preserved=b':W1AW     :NP\\5550100{001'
-MSG-038: construct NTSMessage; encode CodecNotImplemented
+MSG-038: construct Radiogram; encode CodecNotImplemented
   decode Opaque; preserved=b':W1AW     :N1\\LINE 1 TEXT{001'
-MSG-044: construct NTSMessage; encode CodecNotImplemented
+MSG-044: construct Radiogram; encode CodecNotImplemented
   decode Opaque; preserved=b':W1AW     :NS\\TEST SENDER{001'
-MSG-045: construct NTSMessage; encode CodecNotImplemented
+MSG-045: construct Radiogram; encode CodecNotImplemented
   decode Opaque; preserved=b':W1AW     :NR\\W1AW\\151800Z\\N0CALL\\151805Z{001'
 ```
 
@@ -680,7 +674,7 @@ MSG-045: construct NTSMessage; encode CodecNotImplemented
 
 **Model-only structured codecs.** General queries omit an addressee; directed
 queries supply one. Response packets currently decode as ordinary `Message`
-text, not `QueryResponse`. Capability tokens retain their order and optional
+text, not `Response`. Capability tokens retain their order and optional
 values. Unknown query names and capability names can be represented.
 
 ```python
@@ -692,21 +686,19 @@ show(
 )
 show(
     "QRY-015",
-    a.QueryResponse("W1AW", a.DirectStations(("W1AW", "W2ABC"))),
+    a.Response("W1AW", a.DirectStations(("W1AW", "W2ABC"))),
     b"N0CALL>APRS::W1AW     :Directs= W1AW W2ABC",
 )
 show(
     "QRY-016",
-    a.QueryResponse("W1AW", a.HeardStation("N0CALL", (1, 3, 2, None, None, 4, 5, 6))),
+    a.Response("W1AW", a.HeardStation("N0CALL", (1, 3, 2, None, None, 4, 5, 6))),
     b"N0CALL>APRS::W1AW     :N0CALL HEARD: 1 3 2 . . 4 5 6",
 )
 show(
     "QRY-017",
-    a.QueryResponse(
+    a.Response(
         "W1AW",
-        a.TraceRoute(
-            a.Header("N0CALL", "APRS", (a.PathHop("DIGI1"), a.PathHop("WIDE", True)))
-        ),
+        a.Trace(a.Header("N0CALL", "APRS", (a.Hop("DIGI1"), a.Hop("WIDE", True)))),
     ),
     b"N0CALL>APRS::W1AW     :N0CALL>APRS,DIGI1,WIDE*:",
 )
@@ -714,9 +706,9 @@ show(
     "QRY-018",
     a.Capabilities(
         (
-            a.CapabilityToken("IGATE"),
-            a.CapabilityToken("MSG_CNT", b"43"),
-            a.CapabilityToken("LOC_CNT", b"14"),
+            a.Capability("IGATE"),
+            a.Capability("MSG_CNT", b"43"),
+            a.Capability("LOC_CNT", b"14"),
         )
     ),
     b"N0CALL>APRS:<IGATE,MSG_CNT=43,LOC_CNT=14",
@@ -730,11 +722,11 @@ QRY-001: construct Query; encode CodecNotImplemented
   decode Opaque; preserved=b'?APRS?'
 QRY-008: construct Query; encode CodecNotImplemented
   decode Opaque; preserved=b':W1AW     :?APRSH N0CALL   '
-QRY-015: construct QueryResponse; encode CodecNotImplemented
+QRY-015: construct Response; encode CodecNotImplemented
   decode Message; to='W1AW'; text=b'Directs= W1AW W2ABC'; id=None
-QRY-016: construct QueryResponse; encode CodecNotImplemented
+QRY-016: construct Response; encode CodecNotImplemented
   decode Message; to='W1AW'; text=b'N0CALL HEARD: 1 3 2 . . 4 5 6'; id=None
-QRY-017: construct QueryResponse; encode CodecNotImplemented
+QRY-017: construct Response; encode CodecNotImplemented
   decode Message; to='W1AW'; text=b'N0CALL>APRS,DIGI1,WIDE*:'; id=None
 QRY-018: construct Capabilities; encode CodecNotImplemented
   decode Opaque; preserved=b'<IGATE,MSG_CNT=43,LOC_CNT=14'
@@ -756,7 +748,7 @@ show(
 )
 show(
     "STA-009",
-    a.Status(b" Home", grid=a.GridLocator("IO91SX"), symbol=a.Symbol("/", "-")),
+    a.Status(b" Home", grid=a.Grid("IO91SX"), symbol=a.Symbol("/", "-")),
     b"N0CALL>APRS:>IO91SX/- Home",
 )
 show("STA-013", a.Status(b"Ready", beam=a.Beam(0, 10)), b"N0CALL>APRS:>Ready^01")
@@ -786,7 +778,7 @@ from NME-001–005; current decoding preserves each entire sentence.
 ```python
 show(
     "NME-001",
-    a.NMEAReport(
+    a.NMEA(
         a.GGA(
             b"102705",
             a.Coordinates(51 + 57.9762 / 60, -29.3256 / 60),
@@ -801,14 +793,14 @@ show(
 )
 show(
     "NME-002",
-    a.NMEAReport(
+    a.NMEA(
         a.GLL(a.Coordinates(25 + 54.459 / 60, -(80 + 20.187 / 60)), b"154027.281", "A")
     ),
     b"N0CALL>APRS:$GPGLL,2554.459,N,08020.187,W,154027.281,A*22",
 )
 show(
     "NME-003",
-    a.NMEAReport(
+    a.NMEA(
         a.RMC(
             b"063909",
             b"291099",
@@ -824,14 +816,12 @@ show(
 )
 show(
     "NME-004",
-    a.NMEAReport(
-        a.VTG(course_true_deg=318.7, speed_knots=35.1, speed_kmh_reported=65.0)
-    ),
+    a.NMEA(a.VTG(course_true_deg=318.7, speed_knots=35.1, speed_kmh_reported=65.0)),
     b"N0CALL>APRS:$GPVTG,318.7,T,,M,35.1,N,65.0,K*69",
 )
 show(
     "NME-005",
-    a.NMEAReport(a.WPL(a.Coordinates(latitude, longitude), b"AID2")),
+    a.NMEA(a.WPL(a.Coordinates(latitude, longitude), b"AID2")),
     b"N0CALL>APRS:$GPWPL,4903.50,N,07201.75,W,AID2*2A",
 )
 ```
@@ -839,15 +829,15 @@ show(
 Output:
 
 ```text
-NME-001: construct NMEAReport; encode CodecNotImplemented
+NME-001: construct NMEA; encode CodecNotImplemented
   decode Opaque; preserved=b'$GPGGA,102705,5157.9762,N,00029.3256,W,1,04,2.0,75.7,M,47.6,M,,*62'
-NME-002: construct NMEAReport; encode CodecNotImplemented
+NME-002: construct NMEA; encode CodecNotImplemented
   decode Opaque; preserved=b'$GPGLL,2554.459,N,08020.187,W,154027.281,A*22'
-NME-003: construct NMEAReport; encode CodecNotImplemented
+NME-003: construct NMEA; encode CodecNotImplemented
   decode Opaque; preserved=b'$GPRMC,063909,A,3349.4302,N,11700.3721,W,43.022,89.3,291099,13.6,E*52'
-NME-004: construct NMEAReport; encode CodecNotImplemented
+NME-004: construct NMEA; encode CodecNotImplemented
   decode Opaque; preserved=b'$GPVTG,318.7,T,,M,35.1,N,65.0,K*69'
-NME-005: construct NMEAReport; encode CodecNotImplemented
+NME-005: construct NMEA; encode CodecNotImplemented
   decode Opaque; preserved=b'$GPWPL,4903.50,N,07201.75,W,AID2*2A'
 ```
 
@@ -861,21 +851,19 @@ unframed monitor packets; RF length limits still apply. Nesting is capped by
 
 ```python
 inner = a.Packet(
-    a.Header("W1AW", "APRS", (a.PathHop("TCPIP"), a.PathHop("N0GATE", True))),
+    a.Header("W1AW", "APRS", (a.Hop("TCPIP"), a.Hop("N0GATE", True))),
     a.Message("N0CALL", b"Hello", "01"),
 )
 show(
     "NET-001",
     a.ThirdParty(inner),
     b"N0GATE>APRS,WIDE2-1:}W1AW>APRS,TCPIP,N0GATE*::N0CALL   :Hello{01",
-    header=a.Header("N0GATE", "APRS", (a.PathHop("WIDE2-1"),)),
+    header=a.Header("N0GATE", "APRS", (a.Hop("WIDE2-1"),)),
 )
 show("OTH-005", a.UserDefined(b"Q", b"1", b"qwerty"), b"N0CALL>APRS:{Q1qwerty")
 show(
     "OTH-008",
-    a.InvalidTest(
-        b"191146,V,4214.2466,N,07303.5181,W,417.238,114.5,091099,14.7,W/GPS FIX"
-    ),
+    a.Invalid(b"191146,V,4214.2466,N,07303.5181,W,417.238,114.5,091099,14.7,W/GPS FIX"),
     b"N0CALL>APRS:,191146,V,4214.2466,N,07303.5181,W,417.238,114.5,091099,14.7,W/GPS FIX",
 )
 show("OTH-031", a.Reserved(ord("~"), b"TEST"), b"N0CALL>APRS:~TEST")
@@ -890,11 +878,11 @@ Output:
 
 ```text
 NET-001: construct ThirdParty; encode b'N0GATE>APRS,WIDE2-1:}W1AW>APRS,TCPIP,N0GATE*::N0CALL   :Hello{01'
-  decode ThirdParty; ThirdParty(packet=Packet(header=Header(source='W1AW', destination='APRS', path=(PathHop(address='TCPIP', repeated=False), PathHop(address='N0GATE', repeated=True))), payload=Message(addressee='N0CALL', text=b'Hello', message_id='01', reply_ack=None), header_semantics=None))
+  decode ThirdParty; ThirdParty(packet=Packet(header=Header(source='W1AW', destination='APRS', path=(Hop(address='TCPIP', repeated=False), Hop(address='N0GATE', repeated=True))), payload=Message(addressee='N0CALL', text=b'Hello', message_id='01', reply_ack=None), header_semantics=None))
 OTH-005: construct UserDefined; encode b'N0CALL>APRS:{Q1qwerty'
   decode UserDefined; UserDefined(user_id=b'Q', user_type=b'1', data=b'qwerty')
-OTH-008: construct InvalidTest; encode b'N0CALL>APRS:,191146,V,4214.2466,N,07303.5181,W,417.238,114.5,091099,14.7,W/GPS FIX'
-  decode InvalidTest; InvalidTest(data=b'191146,V,4214.2466,N,07303.5181,W,417.238,114.5,091099,14.7,W/GPS FIX')
+OTH-008: construct Invalid; encode b'N0CALL>APRS:,191146,V,4214.2466,N,07303.5181,W,417.238,114.5,091099,14.7,W/GPS FIX'
+  decode Invalid; Invalid(data=b'191146,V,4214.2466,N,07303.5181,W,417.238,114.5,091099,14.7,W/GPS FIX')
 OTH-031: construct Reserved; encode b'N0CALL>APRS:~TEST'
   decode Opaque; preserved=b'~TEST'
 OTH-014: construct Opaque; encode b'N0CALL>APRS:"TEST'
@@ -939,14 +927,14 @@ show(
     b"N0CALL>APRS:*7007600000000",
 )
 show("Agrelo", a.Agrelo(123, 4), b"N0CALL>APRS:%123/4")
-show("OTH-012", a.MaidenheadBeacon(a.GridLocator("IO91")), b"N0CALL>APRS:[IO91]")
+show("OTH-012", a.Maidenhead(a.Grid("IO91")), b"N0CALL>APRS:[IO91]")
 show(
     "OTH-034",
     a.LegacyPosition(b"X", a.Position(latitude, longitude)),
     b"N0CALL>BEACON:X!4903.50N/07201.75W-",
     header=a.Header("N0CALL", "BEACON"),
 )
-show("OTH-009", a.NonAPRSBeacon(b"UIDIGI ready"), b"N0CALL>APRS:UIDIGI ready")
+show("OTH-009", a.Beacon(b"UIDIGI ready"), b"N0CALL>APRS:UIDIGI ready")
 show(
     "external-vendor",
     a.ExternalExtension(
@@ -969,11 +957,11 @@ OTH-004: construct RawWeather; encode CodecNotImplemented
   decode Opaque; preserved=b'*7007600000000'
 Agrelo: construct Agrelo; encode CodecNotImplemented
   decode Opaque; preserved=b'%123/4'
-OTH-012: construct MaidenheadBeacon; encode CodecNotImplemented
+OTH-012: construct Maidenhead; encode CodecNotImplemented
   decode Opaque; preserved=b'[IO91]'
 OTH-034: construct LegacyPosition; encode CodecNotImplemented
   decode Opaque; preserved=b'X!4903.50N/07201.75W-'
-OTH-009: construct NonAPRSBeacon; encode CodecNotImplemented
+OTH-009: construct Beacon; encode CodecNotImplemented
   decode Opaque; preserved=b'UIDIGI ready'
 external-vendor: construct ExternalExtension; encode CodecNotImplemented
   decode Opaque; preserved=b'$ULTW0031003702CE0069----000086A00001----011901CC00000005'
@@ -1024,7 +1012,7 @@ field combination.
 
 ## JSON conversion
 
-See the [complete illustrated JSON reference](docs/JSON_FORMAT.md) for all 84
+See the [complete illustrated JSON reference](docs/JSON_FORMAT.md) for all 82
 models, 29 payload families, expanded nested examples, field/default tables,
 allowed units/enums, and the stable type map. Every JSON example is tested.
 
@@ -1076,16 +1064,16 @@ weather_json = """{
   "temperature": {"value": 68, "unit": "fahrenheit"},
   "pressure": {"value": 1013.2, "unit": "hPa"}
 }"""
-report = a.from_json(weather_json, expected_type=a.WeatherReport)
+report = a.from_json(weather_json, expected_type=a.Weather)
 print(type(report).__name__)
-print(report.weather.temperature)
-print(report.weather.pressure)
+print(report.temperature)
+print(report.pressure)
 ```
 
 Output:
 
 ```text
-WeatherReport
+Weather
 Measurement(value=68.0, unit='fahrenheit', raw=None)
 Measurement(value=1013.2, unit='hPa', raw=None)
 ```
@@ -1115,8 +1103,9 @@ all optional fields, as in the reference. Unknown keys, missing/incompatible tag
 duplicate keys and invalid field types raise `JSONModelError`.
 
 `to_json_dict` / `from_json_dict` expose the same format as dictionaries. The
-format deliberately replaces the unreleased inferred-shape JSON API: semantic
-fields retain Python names, and weather report measurements are flattened.
+format deliberately replaces prior unreleased drafts. `Weather` and `Telemetry`
+are shared payload/field models with direct fields in Python and JSON. See the
+[naming map and retained qualifiers](docs/NAMING.md).
 
 ## Public boundaries
 
@@ -1214,7 +1203,7 @@ No GPL code or `aprslib` is used.
 - Non-UTC timestamp-looking status text is preserved, correcting TIM-019/020.
 - Empty information is a `FieldError`, recoverable only by explicit payload policy.
 - Existing basic constructors and packet signatures remain usable; new context
-  and policy options are keyword-only. The package version is `0.0.1a4`.
+  and policy options are keyword-only. The package version is `0.0.1a5`.
 
 ## License
 

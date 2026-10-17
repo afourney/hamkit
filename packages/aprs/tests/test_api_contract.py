@@ -60,7 +60,7 @@ class ModelContractTests(unittest.TestCase):
             ),
             a.Position(49, -72, ambiguity=a.Ambiguity(1)),
             a.Position(49, -72, extensions=a.Extensions(motion=a.Motion(90, 10))),
-            a.Status(grid=a.GridLocator("IO91SX")),
+            a.Status(grid=a.Grid("IO91SX")),
             a.Message("W1AW", b"Reply", reply_ack=a.ReplyAck("01", "02")),
             a.Acknowledgment("W1AW", "01", reply_ack=a.ReplyAck("01", "02")),
         )
@@ -70,14 +70,14 @@ class ModelContractTests(unittest.TestCase):
 
     def test_nested_defined_variants_are_constructible(self) -> None:
         for value in field_examples():
-            if isinstance(value, get_args(a.TelemetryDefinitionData)):
-                self.assertIs(a.TelemetryDefinition("N0CALL", value).definition, value)
+            if isinstance(value, get_args(a.DefinitionValue)):
+                self.assertIs(a.Definition("N0CALL", value).definition, value)
             if isinstance(value, get_args(a.NTSRecord)):
-                self.assertIs(a.NTSMessage("W1AW", value).record, value)
+                self.assertIs(a.Radiogram("W1AW", value).record, value)
             if isinstance(value, get_args(a.NMEASentence)):
-                self.assertIs(a.NMEAReport(value).sentence, value)
-            if isinstance(value, get_args(a.QueryResponseData)):
-                self.assertIs(a.QueryResponse("W1AW", value).response, value)
+                self.assertIs(a.NMEA(value).sentence, value)
+            if isinstance(value, get_args(a.ResponseValue)):
+                self.assertIs(a.Response("W1AW", value).response, value)
 
     def test_missing_is_not_unavailable_or_zero(self) -> None:
         absent = a.Weather()

@@ -11,19 +11,19 @@ from typing import Literal, TypeAlias
 from .data import (
     Ambiguity,
     Beam,
-    CapabilityToken,
+    Capability,
     Compression,
+    DefinitionValue,
     Extensions,
-    GridLocator,
+    Footprint,
+    Grid,
     Location,
     NTSRecord,
     PositionEncoding,
-    QueryFootprint,
     RawFields,
     ReplyAck,
     Symbol,
-    TelemetryData,
-    TelemetryDefinitionData,
+    Telemetry,
     Timestamp,
     Weather,
 )
@@ -62,12 +62,12 @@ class EncodeOptions:
 
 
 @dataclass(frozen=True)
-class PathHop:
+class Hop:
     address: str
     repeated: bool = False
 
 
-Path: TypeAlias = tuple[PathHop, ...]
+Path: TypeAlias = tuple[Hop, ...]
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,7 @@ class Header:
 class HeaderSemantics:
     """Optional interpretation, independent of the exact header tokens."""
 
-    destination_grid: GridLocator | None = None
+    destination_grid: Grid | None = None
     destination_symbol: Symbol | None = None
     source_ssid_symbol: Symbol | None = None
     destination_ssid_route: int | None = None
@@ -141,14 +141,14 @@ class MicE:
     dti: Literal[0x60, 0x27, 0x1C, 0x1D] = 0x60
     fix: Literal["current", "old", "unknown"] = "current"
     type_marker: bytes = b""
-    grid: GridLocator | None = None
+    grid: Grid | None = None
     grid_symbol: Symbol | None = None
     destination_raw: str | None = None
     longitude_offset: int | None = None
 
 
 @dataclass(frozen=True)
-class ObjectReport:
+class Object:
     name: str
     position: Location
     timestamp: Timestamp
@@ -161,7 +161,7 @@ class ObjectReport:
 
 
 @dataclass(frozen=True)
-class ItemReport:
+class Item:
     name: str
     position: Location
     alive: bool = True
@@ -172,24 +172,9 @@ class ItemReport:
 
 
 @dataclass(frozen=True)
-class WeatherReport:
-    """Positionless weather; located weather lives in Position.extensions."""
-
-    weather: Weather
-    timestamp: Timestamp | None = None
-    comment: bytes = b""
-
-
-@dataclass(frozen=True)
-class Telemetry:
-    data: TelemetryData
-    comment: bytes = b""
-
-
-@dataclass(frozen=True)
-class TelemetryDefinition:
+class Definition:
     addressee: str
-    definition: TelemetryDefinitionData
+    definition: DefinitionValue
     values_raw: RawFields = ()
 
 
@@ -197,7 +182,7 @@ class TelemetryDefinition:
 class Status:
     text: bytes = b""
     timestamp: Timestamp | None = None
-    grid: GridLocator | None = None
+    grid: Grid | None = None
     symbol: Symbol | None = None
     beam: Beam | None = None
 
@@ -246,7 +231,7 @@ class NWSBulletin:
 
 
 @dataclass(frozen=True)
-class NTSMessage:
+class Radiogram:
     addressee: str
     record: NTSRecord
     message_id: str | None = None
@@ -258,7 +243,7 @@ class Query:
 
     name: str
     addressee: str | None = None
-    footprint: QueryFootprint | None = None
+    footprint: Footprint | None = None
     heard_station: str | None = None
     arguments: bytes = b""
     message_id: str | None = None
@@ -276,26 +261,26 @@ class HeardStation:
 
 
 @dataclass(frozen=True)
-class TraceRoute:
+class Trace:
     header: Header
 
 
-QueryResponseData: TypeAlias = DirectStations | HeardStation | TraceRoute
+ResponseValue: TypeAlias = DirectStations | HeardStation | Trace
 
 
 @dataclass(frozen=True)
-class QueryResponse:
+class Response:
     addressee: str
-    response: QueryResponseData
+    response: ResponseValue
 
 
 @dataclass(frozen=True)
 class Capabilities:
-    tokens: tuple[CapabilityToken, ...]
+    tokens: tuple[Capability, ...]
 
 
 @dataclass(frozen=True)
-class NMEAReport:
+class NMEA:
     sentence: NMEASentence
     metadata: NMEAMetadata = field(default_factory=NMEAMetadata)
     position_usable: bool | None = None
@@ -332,8 +317,8 @@ class Agrelo:
 
 
 @dataclass(frozen=True)
-class MaidenheadBeacon:
-    grid: GridLocator
+class Maidenhead:
+    grid: Grid
     symbol: Symbol | None = None
     comment: bytes = b""
 
@@ -347,12 +332,12 @@ class LegacyPosition:
 
 
 @dataclass(frozen=True)
-class NonAPRSBeacon:
+class Beacon:
     text: bytes
 
 
 @dataclass(frozen=True)
-class InvalidTest:
+class Invalid:
     data: bytes
 
 
@@ -391,30 +376,30 @@ class Opaque:
 Payload: TypeAlias = (
     Position
     | MicE
-    | ObjectReport
-    | ItemReport
-    | WeatherReport
+    | Object
+    | Item
+    | Weather
     | Telemetry
-    | TelemetryDefinition
+    | Definition
     | Status
     | Message
     | Acknowledgment
     | AutoAnswer
     | Bulletin
     | NWSBulletin
-    | NTSMessage
+    | Radiogram
     | Query
-    | QueryResponse
+    | Response
     | Capabilities
-    | NMEAReport
+    | NMEA
     | ThirdParty
     | UserDefined
     | RawWeather
     | Agrelo
-    | MaidenheadBeacon
+    | Maidenhead
     | LegacyPosition
-    | NonAPRSBeacon
-    | InvalidTest
+    | Beacon
+    | Invalid
     | Reserved
     | ExternalExtension
     | Opaque

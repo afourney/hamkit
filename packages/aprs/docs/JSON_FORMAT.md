@@ -1,10 +1,10 @@
 # APRS JSON reference
 
-This is the canonical JSON format for `hamkit-aprs` 0.0.1a4. Examples are
+This is the canonical JSON format for `hamkit-aprs` 0.0.1a5. Examples are
 pretty-printed, executable data, with nested values expanded. They illustrate
 values, not legal ranges or complete APRS wire support. The field tables are the
 shape contract: every field, requiredness, default, allowed enum, unit and nested
-model is listed. All 84 serializable models and all 29 payload families appear.
+model is listed. All 82 serializable models and all 29 payload families appear.
 
 ## Contents
 
@@ -20,7 +20,7 @@ model is listed. All 84 serializable models and all 29 payload families appear.
 
 `to_json(model, indent=2)` returns text. `to_json_dict(model)` returns a JSON-safe
 dictionary. `from_json(text)` and `from_json_dict(mapping)` return typed models.
-Use `expected_type=WeatherReport` to check a particular class; typed overloads
+Use `expected_type=Weather` to check a particular class; typed overloads
 preserve the concrete return annotation. This does not waive payload tags.
 `include_defaults=True` prints all fields, as in this catalog. The normal compact
 output omits default-valued optional fields, but always retains `type` where
@@ -32,7 +32,9 @@ required. Object property order is not meaningful.
   `measurement`, and `header`. Tags are explicitly registered protocol-independent
   names; Python class names cannot be loaded dynamically.
 - Every payload requires its own `type`, whether standalone, in `Packet.payload`,
-  or in a fixed payload field such as `LegacyPosition.position`.
+  or in a fixed payload field such as `LegacyPosition.position`. Shared
+  `Weather` and `Telemetry` values in fixed nested fields are untagged, because
+  those fields identify their class; when used as payloads they require tags.
 - Nested unions of multiple model classes require a tag: telemetry definitions,
   NMEA sentences, NTS records and query responses. The tags allowed at each union
   are exactly those of its linked models in the tables below.
@@ -43,16 +45,17 @@ required. Object property order is not meaningful.
 - An untagged standalone fixed field may be read only with explicit
   `expected_type=Measurement` (or another concrete non-payload class). A supplied
   tag must always agree with that class. There is no structural inference.
-- `WeatherReport` is flattened: measurements, software/device codes and raw
-  weather evidence sit alongside `"type": "weather"`, timestamp and comment.
-  There is no `weather` wrapper. Python still uses `WeatherReport.weather`.
-  A standalone `Weather` field has tag `weather_fields`; nested `Weather` fields
-  elsewhere are ordinary fixed objects. An empty weather payload is
-  `{"type":"weather"}`.
+- `Weather` and `Telemetry` are shared semantic models, usable as complete
+  payloads or fixed nested values. Python and JSON both expose their fields
+  directly. Weather carries optional timestamp/comment; telemetry carries a
+  comment alongside its channels, sequence and encoding evidence. Nothing is
+  discarded when either model is nested. Empty payloads are `{"type":"weather"}`
+  and `{"type":"telemetry"}`. See the [naming audit](NAMING.md) for the full map
+  and the reasons some qualified names remain.
 - Third-party payloads contain `packet`, whose fixed Packet object is untagged;
   the inner `payload` has its own tag. See [ThirdParty](#thirdparty).
 - Older untagged inferred shapes and ambiguity-driven field aliases are not
-  accepted. JSON field names now match Python attributes except weather flattening.
+  accepted. JSON field names match Python attributes.
 
 ## Values, defaults and constraints
 
@@ -99,41 +102,41 @@ to their own fully expanded object examples in the field table.
 | [Measurement](#measurement)                 | `measurement`           | field / container |
 | [Timestamp](#timestamp)                     | `timestamp`             | field / container |
 | [Coordinates](#coordinates)                 | `coordinates`           | field / container |
-| [CellBounds](#cellbounds)                   | `cell_bounds`           | field / container |
+| [Extent](#extent)                           | `extent`                | field / container |
 | [Ambiguity](#ambiguity)                     | `ambiguity`             | field / container |
 | [Symbol](#symbol)                           | `symbol`                | field / container |
-| [GridLocator](#gridlocator)                 | `grid_locator`          | field / container |
+| [Grid](#grid)                               | `grid`                  | field / container |
 | [Motion](#motion)                           | `motion`                | field / container |
 | [Altitude](#altitude)                       | `altitude`              | field / container |
-| [RadioRange](#radiorange)                   | `radio_range`           | field / container |
+| [Range](#range)                             | `range`                 | field / container |
 | [PHG](#phg)                                 | `phg`                   | field / container |
-| [DFSignal](#dfsignal)                       | `df_signal`             | field / container |
-| [DFBearing](#dfbearing)                     | `df_bearing`            | field / container |
+| [Signal](#signal)                           | `signal`                | field / container |
+| [Bearing](#bearing)                         | `bearing`               | field / container |
 | [Compression](#compression)                 | `compression`           | field / container |
 | [DAO](#dao)                                 | `dao`                   | field / container |
 | [Area](#area)                               | `area`                  | field / container |
 | [Signpost](#signpost)                       | `signpost`              | field / container |
 | [WaterHeight](#waterheight)                 | `water_height`          | field / container |
-| [Weather](#weather)                         | `weather_fields`        | field / container |
+| [Weather](#weather)                         | `weather`               | payload           |
 | [Storm](#storm)                             | `storm`                 | field / container |
-| [TelemetryData](#telemetrydata)             | `telemetry_data`        | field / container |
+| [Telemetry](#telemetry)                     | `telemetry`             | payload           |
 | [Extensions](#extensions)                   | `extensions`            | field / container |
 | [Location](#location)                       | `location`              | field / container |
 | [Beam](#beam)                               | `beam`                  | field / container |
 | [ReplyAck](#replyack)                       | `reply_ack`             | field / container |
-| [TelemetryParameters](#telemetryparameters) | `telemetry_parameters`  | field / container |
-| [TelemetryUnits](#telemetryunits)           | `telemetry_units`       | field / container |
+| [Parameters](#parameters)                   | `parameters`            | field / container |
+| [Units](#units)                             | `units`                 | field / container |
 | [Calibration](#calibration)                 | `calibration`           | field / container |
-| [TelemetryEquations](#telemetryequations)   | `telemetry_equations`   | field / container |
-| [TelemetryBits](#telemetrybits)             | `telemetry_bits`        | field / container |
+| [Equations](#equations)                     | `equations`             | field / container |
+| [Bits](#bits)                               | `bits`                  | field / container |
 | [NTSHeader](#ntsheader)                     | `nts_header`            | field / container |
-| [NTSAddress](#ntsaddress)                   | `nts_address`           | field / container |
-| [NTSPhone](#ntsphone)                       | `nts_phone`             | field / container |
-| [NTSText](#ntstext)                         | `nts_text`              | field / container |
-| [NTSSignature](#ntssignature)               | `nts_signature`         | field / container |
-| [NTSRouting](#ntsrouting)                   | `nts_routing`           | field / container |
-| [QueryFootprint](#queryfootprint)           | `query_footprint`       | field / container |
-| [CapabilityToken](#capabilitytoken)         | `capability_token`      | field / container |
+| [Address](#address)                         | `address`               | field / container |
+| [Phone](#phone)                             | `phone`                 | field / container |
+| [Text](#text)                               | `text`                  | field / container |
+| [Signature](#signature)                     | `signature`             | field / container |
+| [Routing](#routing)                         | `routing`               | field / container |
+| [Footprint](#footprint)                     | `footprint`             | field / container |
+| [Capability](#capability)                   | `capability`            | field / container |
 | [NMEAMetadata](#nmeametadata)               | `nmea_metadata`         | field / container |
 | [GGA](#gga)                                 | `gga`                   | field / container |
 | [GLL](#gll)                                 | `gll`                   | field / container |
@@ -142,38 +145,36 @@ to their own fully expanded object examples in the field table.
 | [WPL](#wpl)                                 | `wpl`                   | field / container |
 | [DecodeOptions](#decodeoptions)             | `decode_options`        | field / container |
 | [EncodeOptions](#encodeoptions)             | `encode_options`        | field / container |
-| [PathHop](#pathhop)                         | `path_hop`              | field / container |
+| [Hop](#hop)                                 | `hop`                   | field / container |
 | [Header](#header)                           | `header`                | field / container |
 | [HeaderSemantics](#headersemantics)         | `header_semantics`      | field / container |
 | [Position](#position)                       | `position`              | payload           |
 | [MicE](#mice)                               | `mic_e`                 | payload           |
-| [ObjectReport](#objectreport)               | `object`                | payload           |
-| [ItemReport](#itemreport)                   | `item`                  | payload           |
-| [WeatherReport](#weatherreport)             | `weather`               | payload           |
-| [Telemetry](#telemetry)                     | `telemetry`             | payload           |
-| [TelemetryDefinition](#telemetrydefinition) | `telemetry_definition`  | payload           |
+| [Object](#object)                           | `object`                | payload           |
+| [Item](#item)                               | `item`                  | payload           |
+| [Definition](#definition)                   | `definition`            | payload           |
 | [Status](#status)                           | `status`                | payload           |
 | [Message](#message)                         | `message`               | payload           |
 | [Acknowledgment](#acknowledgment)           | `acknowledgment`        | payload           |
 | [AutoAnswer](#autoanswer)                   | `auto_answer`           | payload           |
 | [Bulletin](#bulletin)                       | `bulletin`              | payload           |
 | [NWSBulletin](#nwsbulletin)                 | `nws_bulletin`          | payload           |
-| [NTSMessage](#ntsmessage)                   | `nts_message`           | payload           |
+| [Radiogram](#radiogram)                     | `radiogram`             | payload           |
 | [Query](#query)                             | `query`                 | payload           |
 | [DirectStations](#directstations)           | `direct_stations`       | field / container |
 | [HeardStation](#heardstation)               | `heard_station`         | field / container |
-| [TraceRoute](#traceroute)                   | `trace_route`           | field / container |
-| [QueryResponse](#queryresponse)             | `query_response`        | payload           |
+| [Trace](#trace)                             | `trace`                 | field / container |
+| [Response](#response)                       | `response`              | payload           |
 | [Capabilities](#capabilities)               | `capabilities`          | payload           |
-| [NMEAReport](#nmeareport)                   | `nmea`                  | payload           |
+| [NMEA](#nmea)                               | `nmea`                  | payload           |
 | [ThirdParty](#thirdparty)                   | `third_party`           | payload           |
 | [UserDefined](#userdefined)                 | `user_defined`          | payload           |
 | [RawWeather](#rawweather)                   | `raw_weather`           | payload           |
 | [Agrelo](#agrelo)                           | `agrelo`                | payload           |
-| [MaidenheadBeacon](#maidenheadbeacon)       | `maidenhead_beacon`     | payload           |
+| [Maidenhead](#maidenhead)                   | `maidenhead`            | payload           |
 | [LegacyPosition](#legacyposition)           | `legacy_position`       | payload           |
-| [NonAPRSBeacon](#nonaprsbeacon)             | `non_aprs_beacon`       | payload           |
-| [InvalidTest](#invalidtest)                 | `invalid_test`          | payload           |
+| [Beacon](#beacon)                           | `beacon`                | payload           |
+| [Invalid](#invalid)                         | `invalid`               | payload           |
 | [Reserved](#reserved)                       | `reserved`              | payload           |
 | [ExternalExtension](#externalextension)     | `external_extension`    | payload           |
 | [Diagnostic](#diagnostic)                   | `diagnostic`            | field / container |
@@ -247,13 +248,13 @@ Standalone tag: `coordinates`. [Back to type map](#type-map-and-object-catalog).
 | `latitude_deg`  | finite number               | **required**                            |
 | `longitude_deg` | finite number               | **required**                            |
 
-### CellBounds
+### Extent
 
-Standalone tag: `cell_bounds`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `extent`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "cell_bounds",
+  "type": "extent",
   "latitude": [49, 50],
   "longitude": [-73, -72]
 }
@@ -261,7 +262,7 @@ Standalone tag: `cell_bounds`. [Back to type map](#type-map-and-object-catalog).
 
 | Field       | JSON value / allowed values                            | Presence / default                      |
 | ----------- | ------------------------------------------------------ | --------------------------------------- |
-| `type`      | `"cell_bounds"`                                        | required standalone; nested rules above |
+| `type`      | `"extent"`                                             | required standalone; nested rules above |
 | `latitude`  | array of exactly 2 items: finite number, finite number | **required**                            |
 | `longitude` | array of exactly 2 items: finite number, finite number | **required**                            |
 
@@ -273,7 +274,7 @@ Standalone tag: `ambiguity`. [Back to type map](#type-map-and-object-catalog).
 {
   "type": "ambiguity",
   "digits": 4,
-  "cell_bounds": {
+  "extent": {
     "latitude": [49, 50],
     "longitude": [-73, -72]
   },
@@ -281,12 +282,12 @@ Standalone tag: `ambiguity`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field            | JSON value / allowed values       | Presence / default                      |
-| ---------------- | --------------------------------- | --------------------------------------- |
-| `type`           | `"ambiguity"`                     | required standalone; nested rules above |
-| `digits`         | integer                           | **required**                            |
-| `cell_bounds`    | [CellBounds](#cellbounds) or null | optional; default `null`                |
-| `representative` | `'center'`                        | optional; default `'center'`            |
+| Field            | JSON value / allowed values | Presence / default                      |
+| ---------------- | --------------------------- | --------------------------------------- |
+| `type`           | `"ambiguity"`               | required standalone; nested rules above |
+| `digits`         | integer                     | **required**                            |
+| `extent`         | [Extent](#extent) or null   | optional; default `null`                |
+| `representative` | `'center'`                  | optional; default `'center'`            |
 
 ### Symbol
 
@@ -306,13 +307,13 @@ Standalone tag: `symbol`. [Back to type map](#type-map-and-object-catalog).
 | `table_id` | string                      | optional; default `'/'`                 |
 | `code`     | string                      | optional; default `'-'`                 |
 
-### GridLocator
+### Grid
 
-Standalone tag: `grid_locator`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `grid`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "grid_locator",
+  "type": "grid",
   "locator": "IO91SX",
   "bounds": {
     "latitude": [49, 50],
@@ -327,9 +328,9 @@ Standalone tag: `grid_locator`. [Back to type map](#type-map-and-object-catalog)
 
 | Field     | JSON value / allowed values         | Presence / default                      |
 | --------- | ----------------------------------- | --------------------------------------- |
-| `type`    | `"grid_locator"`                    | required standalone; nested rules above |
+| `type`    | `"grid"`                            | required standalone; nested rules above |
 | `locator` | string                              | **required**                            |
-| `bounds`  | [CellBounds](#cellbounds) or null   | optional; default `null`                |
+| `bounds`  | [Extent](#extent) or null           | optional; default `null`                |
 | `center`  | [Coordinates](#coordinates) or null | optional; default `null`                |
 
 ### Motion
@@ -382,13 +383,13 @@ Standalone tag: `altitude`. [Back to type map](#type-map-and-object-catalog).
 | `encoding`    | `'feet_extension'`, `'compressed'`, `'mic_e'`, `'nmea'` | **required**                            |
 | `reference`   | `'unspecified'`, `'MSL'`, `'ellipsoid'`                 | optional; default `'unspecified'`       |
 
-### RadioRange
+### Range
 
-Standalone tag: `radio_range`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `range`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "radio_range",
+  "type": "range",
   "miles": 12,
   "raw": null
 }
@@ -396,7 +397,7 @@ Standalone tag: `radio_range`. [Back to type map](#type-map-and-object-catalog).
 
 | Field   | JSON value / allowed values | Presence / default                      |
 | ------- | --------------------------- | --------------------------------------- |
-| `type`  | `"radio_range"`             | required standalone; nested rules above |
+| `type`  | `"range"`                   | required standalone; nested rules above |
 | `miles` | finite number               | **required**                            |
 | `raw`   | Latin-1 byte string or null | optional; default `null`                |
 
@@ -430,13 +431,13 @@ Standalone tag: `phg`. [Back to type map](#type-map-and-object-catalog).
 | `display_radius_miles_1_1` | finite number or null       | optional; default `null`                |
 | `rate_per_hour`            | integer or null             | optional; default `null`                |
 
-### DFSignal
+### Signal
 
-Standalone tag: `df_signal`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `signal`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "df_signal",
+  "type": "signal",
   "s_units": 5,
   "height_haat_ft": 80,
   "gain_db": 3,
@@ -447,20 +448,20 @@ Standalone tag: `df_signal`. [Back to type map](#type-map-and-object-catalog).
 
 | Field             | JSON value / allowed values | Presence / default                      |
 | ----------------- | --------------------------- | --------------------------------------- |
-| `type`            | `"df_signal"`               | required standalone; nested rules above |
+| `type`            | `"signal"`                  | required standalone; nested rules above |
 | `s_units`         | integer                     | **required**                            |
 | `height_haat_ft`  | finite number               | **required**                            |
 | `gain_db`         | finite number               | **required**                            |
 | `directivity_deg` | finite number or null       | optional; default `null`                |
 | `raw`             | Latin-1 byte string or null | optional; default `null`                |
 
-### DFBearing
+### Bearing
 
-Standalone tag: `df_bearing`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `bearing`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "df_bearing",
+  "type": "bearing",
   "bearing_deg": 120,
   "hits_code": 3,
   "range_code": 2,
@@ -475,7 +476,7 @@ Standalone tag: `df_bearing`. [Back to type map](#type-map-and-object-catalog).
 
 | Field                    | JSON value / allowed values | Presence / default                      |
 | ------------------------ | --------------------------- | --------------------------------------- |
-| `type`                   | `"df_bearing"`              | required standalone; nested rules above |
+| `type`                   | `"bearing"`                 | required standalone; nested rules above |
 | `bearing_deg`            | finite number               | **required**                            |
 | `hits_code`              | integer                     | **required**                            |
 | `range_code`             | integer                     | **required**                            |
@@ -606,25 +607,35 @@ Standalone tag: `water_height`. [Back to type map](#type-map-and-object-catalog)
 
 ### Weather
 
-Standalone tag: `weather_fields`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `weather`. [Back to type map](#type-map-and-object-catalog).
+
+Weather measurements are direct JSON properties; `weather` is not a JSON property.
 
 ```json
 {
-  "type": "weather_fields",
-  "wind_direction": null,
+  "type": "weather",
+  "wind_direction": {
+    "value": 270,
+    "unit": "degrees",
+    "raw": null
+  },
   "wind_speed": {
-    "value": null,
+    "value": 12,
     "unit": "mph",
-    "raw": "..."
+    "raw": null
   },
   "gust": null,
-  "temperature": null,
-  "humidity": {
-    "value": 100,
-    "unit": "percent",
-    "raw": "00"
+  "temperature": {
+    "value": 68,
+    "unit": "fahrenheit",
+    "raw": null
   },
-  "pressure": null,
+  "humidity": null,
+  "pressure": {
+    "value": 1013.2,
+    "unit": "hPa",
+    "raw": null
+  },
   "rain_1h": null,
   "rain_24h": null,
   "rain_since_midnight": null,
@@ -634,13 +645,23 @@ Standalone tag: `weather_fields`. [Back to type map](#type-map-and-object-catalo
   "water_height": null,
   "software_code": null,
   "device_code": null,
-  "raw": null
+  "raw": null,
+  "timestamp": {
+    "kind": "mdhm_utc",
+    "hour": 12,
+    "minute": 30,
+    "day": 17,
+    "second": null,
+    "month": 10,
+    "raw": null
+  },
+  "comment": ""
 }
 ```
 
 | Field                 | JSON value / allowed values         | Presence / default                      |
 | --------------------- | ----------------------------------- | --------------------------------------- |
-| `type`                | `"weather_fields"`                  | required standalone; nested rules above |
+| `type`                | `"weather"`                         | required standalone; nested rules above |
 | `wind_direction`      | [Measurement](#measurement) or null | optional; default `null`                |
 | `wind_speed`          | [Measurement](#measurement) or null | optional; default `null`                |
 | `gust`                | [Measurement](#measurement) or null | optional; default `null`                |
@@ -657,6 +678,8 @@ Standalone tag: `weather_fields`. [Back to type map](#type-map-and-object-catalo
 | `software_code`       | Latin-1 byte string or null         | optional; default `null`                |
 | `device_code`         | Latin-1 byte string or null         | optional; default `null`                |
 | `raw`                 | Latin-1 byte string or null         | optional; default `null`                |
+| `timestamp`           | [Timestamp](#timestamp) or null     | optional; default `null`                |
+| `comment`             | Latin-1 byte string                 | optional; default `""`                  |
 
 ### Storm
 
@@ -690,26 +713,27 @@ Standalone tag: `storm`. [Back to type map](#type-map-and-object-catalog).
 | `whole_gale_radius_nm`     | finite number or null       | optional; default `null`                |
 | `raw`                      | Latin-1 byte string or null | optional; default `null`                |
 
-### TelemetryData
+### Telemetry
 
-Standalone tag: `telemetry_data`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `telemetry`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "telemetry_data",
-  "analog": [1, null, 3],
-  "digital": [true, null],
-  "sequence": "MIC",
-  "encoding": "mic_e_hex",
+  "type": "telemetry",
+  "analog": [1, 2, 3, 4, 5],
+  "digital": [true, true, true, true, true, true, true, true],
+  "sequence": 1,
+  "encoding": "classic",
   "sequence_raw": null,
   "raw": null,
-  "mic_comma": true
+  "mic_comma": true,
+  "comment": ""
 }
 ```
 
 | Field          | JSON value / allowed values                                                         | Presence / default                      |
 | -------------- | ----------------------------------------------------------------------------------- | --------------------------------------- |
-| `type`         | `"telemetry_data"`                                                                  | required standalone; nested rules above |
+| `type`         | `"telemetry"`                                                                       | required standalone; nested rules above |
 | `analog`       | array of finite number or null                                                      | optional; default `[]`                  |
 | `digital`      | array of boolean or null                                                            | optional; default `[]`                  |
 | `sequence`     | integer or `'MIC'` or null                                                          | optional; default `null`                |
@@ -717,6 +741,7 @@ Standalone tag: `telemetry_data`. [Back to type map](#type-map-and-object-catalo
 | `sequence_raw` | Latin-1 byte string or null                                                         | optional; default `null`                |
 | `raw`          | Latin-1 byte string or null                                                         | optional; default `null`                |
 | `mic_comma`    | boolean                                                                             | optional; default `true`                |
+| `comment`      | Latin-1 byte string                                                                 | optional; default `""`                  |
 
 ### Extensions
 
@@ -728,9 +753,9 @@ Standalone tag: `extensions`. [Back to type map](#type-map-and-object-catalog).
   "motion": null,
   "altitude": null,
   "phg": null,
-  "radio_range": null,
-  "df_signal": null,
-  "df_bearing": null,
+  "range": null,
+  "signal": null,
+  "bearing": null,
   "dao": null,
   "area": null,
   "signpost": null,
@@ -754,28 +779,30 @@ Standalone tag: `extensions`. [Back to type map](#type-map-and-object-catalog).
     "water_height": null,
     "software_code": null,
     "device_code": null,
-    "raw": null
+    "raw": null,
+    "timestamp": null,
+    "comment": ""
   },
   "storm": null,
   "telemetry": null
 }
 ```
 
-| Field         | JSON value / allowed values             | Presence / default                      |
-| ------------- | --------------------------------------- | --------------------------------------- |
-| `type`        | `"extensions"`                          | required standalone; nested rules above |
-| `motion`      | [Motion](#motion) or null               | optional; default `null`                |
-| `altitude`    | [Altitude](#altitude) or null           | optional; default `null`                |
-| `phg`         | [PHG](#phg) or null                     | optional; default `null`                |
-| `radio_range` | [RadioRange](#radiorange) or null       | optional; default `null`                |
-| `df_signal`   | [DFSignal](#dfsignal) or null           | optional; default `null`                |
-| `df_bearing`  | [DFBearing](#dfbearing) or null         | optional; default `null`                |
-| `dao`         | [DAO](#dao) or null                     | optional; default `null`                |
-| `area`        | [Area](#area) or null                   | optional; default `null`                |
-| `signpost`    | [Signpost](#signpost) or null           | optional; default `null`                |
-| `weather`     | [Weather](#weather) or null             | optional; default `null`                |
-| `storm`       | [Storm](#storm) or null                 | optional; default `null`                |
-| `telemetry`   | [TelemetryData](#telemetrydata) or null | optional; default `null`                |
+| Field       | JSON value / allowed values     | Presence / default                      |
+| ----------- | ------------------------------- | --------------------------------------- |
+| `type`      | `"extensions"`                  | required standalone; nested rules above |
+| `motion`    | [Motion](#motion) or null       | optional; default `null`                |
+| `altitude`  | [Altitude](#altitude) or null   | optional; default `null`                |
+| `phg`       | [PHG](#phg) or null             | optional; default `null`                |
+| `range`     | [Range](#range) or null         | optional; default `null`                |
+| `signal`    | [Signal](#signal) or null       | optional; default `null`                |
+| `bearing`   | [Bearing](#bearing) or null     | optional; default `null`                |
+| `dao`       | [DAO](#dao) or null             | optional; default `null`                |
+| `area`      | [Area](#area) or null           | optional; default `null`                |
+| `signpost`  | [Signpost](#signpost) or null   | optional; default `null`                |
+| `weather`   | [Weather](#weather) or null     | optional; default `null`                |
+| `storm`     | [Storm](#storm) or null         | optional; default `null`                |
+| `telemetry` | [Telemetry](#telemetry) or null | optional; default `null`                |
 
 ### Location
 
@@ -795,9 +822,9 @@ Standalone tag: `location`. [Back to type map](#type-map-and-object-catalog).
     "motion": null,
     "altitude": null,
     "phg": null,
-    "radio_range": null,
-    "df_signal": null,
-    "df_bearing": null,
+    "range": null,
+    "signal": null,
+    "bearing": null,
     "dao": null,
     "area": null,
     "signpost": null,
@@ -859,36 +886,36 @@ Standalone tag: `reply_ack`. [Back to type map](#type-map-and-object-catalog).
 | `message_number` | string                      | **required**                            |
 | `previous_ack`   | string or null              | optional; default `null`                |
 
-### TelemetryParameters
+### Parameters
 
-Standalone tag: `telemetry_parameters`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `parameters`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "telemetry_parameters",
+  "type": "parameters",
   "channels": ["Temperature", null, "Voltage"]
 }
 ```
 
 | Field      | JSON value / allowed values | Presence / default                      |
 | ---------- | --------------------------- | --------------------------------------- |
-| `type`     | `"telemetry_parameters"`    | required standalone; nested rules above |
+| `type`     | `"parameters"`              | required standalone; nested rules above |
 | `channels` | array of string or null     | **required**                            |
 
-### TelemetryUnits
+### Units
 
-Standalone tag: `telemetry_units`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `units`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "telemetry_units",
+  "type": "units",
   "channels": ["deg.C", null, "V"]
 }
 ```
 
 | Field      | JSON value / allowed values | Presence / default                      |
 | ---------- | --------------------------- | --------------------------------------- |
-| `type`     | `"telemetry_units"`         | required standalone; nested rules above |
+| `type`     | `"units"`                   | required standalone; nested rules above |
 | `channels` | array of string or null     | **required**                            |
 
 ### Calibration
@@ -911,13 +938,13 @@ Standalone tag: `calibration`. [Back to type map](#type-map-and-object-catalog).
 | `b`    | finite number               | **required**                            |
 | `c`    | finite number               | **required**                            |
 
-### TelemetryEquations
+### Equations
 
-Standalone tag: `telemetry_equations`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `equations`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "telemetry_equations",
+  "type": "equations",
   "coefficients": [
     {
       "a": 0,
@@ -931,16 +958,16 @@ Standalone tag: `telemetry_equations`. [Back to type map](#type-map-and-object-c
 
 | Field          | JSON value / allowed values                  | Presence / default                      |
 | -------------- | -------------------------------------------- | --------------------------------------- |
-| `type`         | `"telemetry_equations"`                      | required standalone; nested rules above |
+| `type`         | `"equations"`                                | required standalone; nested rules above |
 | `coefficients` | array of [Calibration](#calibration) or null | **required**                            |
 
-### TelemetryBits
+### Bits
 
-Standalone tag: `telemetry_bits`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `bits`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "telemetry_bits",
+  "type": "bits",
   "sense": [true, true, true, true, true, true, true, true],
   "project_title": "Project"
 }
@@ -948,7 +975,7 @@ Standalone tag: `telemetry_bits`. [Back to type map](#type-map-and-object-catalo
 
 | Field           | JSON value / allowed values | Presence / default                      |
 | --------------- | --------------------------- | --------------------------------------- |
-| `type`          | `"telemetry_bits"`          | required standalone; nested rules above |
+| `type`          | `"bits"`                    | required standalone; nested rules above |
 | `sense`         | array of boolean or null    | **required**                            |
 | `project_title` | Latin-1 byte string         | optional; default `""`                  |
 
@@ -982,45 +1009,45 @@ Standalone tag: `nts_header`. [Back to type map](#type-map-and-object-catalog).
 | `time`       | string                      | **required**                            |
 | `date`       | string                      | **required**                            |
 
-### NTSAddress
+### Address
 
-Standalone tag: `nts_address`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `address`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "nts_address",
+  "type": "address",
   "lines": ["ADAM", "123 MAIN ST", "REDMOND WA", "98052"]
 }
 ```
 
 | Field   | JSON value / allowed values                              | Presence / default                      |
 | ------- | -------------------------------------------------------- | --------------------------------------- |
-| `type`  | `"nts_address"`                                          | required standalone; nested rules above |
+| `type`  | `"address"`                                              | required standalone; nested rules above |
 | `lines` | array of exactly 4 items: string, string, string, string | **required**                            |
 
-### NTSPhone
+### Phone
 
-Standalone tag: `nts_phone`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `phone`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "nts_phone",
+  "type": "phone",
   "number": "5550100"
 }
 ```
 
 | Field    | JSON value / allowed values | Presence / default                      |
 | -------- | --------------------------- | --------------------------------------- |
-| `type`   | `"nts_phone"`               | required standalone; nested rules above |
+| `type`   | `"phone"`                   | required standalone; nested rules above |
 | `number` | string                      | **required**                            |
 
-### NTSText
+### Text
 
-Standalone tag: `nts_text`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `text`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "nts_text",
+  "type": "text",
   "line": 1,
   "text": "Hello"
 }
@@ -1028,33 +1055,33 @@ Standalone tag: `nts_text`. [Back to type map](#type-map-and-object-catalog).
 
 | Field  | JSON value / allowed values  | Presence / default                      |
 | ------ | ---------------------------- | --------------------------------------- |
-| `type` | `"nts_text"`                 | required standalone; nested rules above |
+| `type` | `"text"`                     | required standalone; nested rules above |
 | `line` | `1`, `2`, `3`, `4`, `5`, `6` | **required**                            |
 | `text` | Latin-1 byte string          | **required**                            |
 
-### NTSSignature
+### Signature
 
-Standalone tag: `nts_signature`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `signature`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "nts_signature",
+  "type": "signature",
   "text": "N0CALL"
 }
 ```
 
 | Field  | JSON value / allowed values | Presence / default                      |
 | ------ | --------------------------- | --------------------------------------- |
-| `type` | `"nts_signature"`           | required standalone; nested rules above |
+| `type` | `"signature"`               | required standalone; nested rules above |
 | `text` | Latin-1 byte string         | **required**                            |
 
-### NTSRouting
+### Routing
 
-Standalone tag: `nts_routing`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `routing`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "nts_routing",
+  "type": "routing",
   "received_from": "W1AW",
   "received_at": "151800Z",
   "sent_to": "N0CALL",
@@ -1064,19 +1091,19 @@ Standalone tag: `nts_routing`. [Back to type map](#type-map-and-object-catalog).
 
 | Field           | JSON value / allowed values | Presence / default                      |
 | --------------- | --------------------------- | --------------------------------------- |
-| `type`          | `"nts_routing"`             | required standalone; nested rules above |
+| `type`          | `"routing"`                 | required standalone; nested rules above |
 | `received_from` | string                      | **required**                            |
 | `received_at`   | string                      | **required**                            |
 | `sent_to`       | string                      | **required**                            |
 | `sent_at`       | string                      | **required**                            |
 
-### QueryFootprint
+### Footprint
 
-Standalone tag: `query_footprint`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `footprint`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "query_footprint",
+  "type": "footprint",
   "center": {
     "latitude_deg": 49,
     "longitude_deg": -72
@@ -1087,17 +1114,17 @@ Standalone tag: `query_footprint`. [Back to type map](#type-map-and-object-catal
 
 | Field          | JSON value / allowed values | Presence / default                      |
 | -------------- | --------------------------- | --------------------------------------- |
-| `type`         | `"query_footprint"`         | required standalone; nested rules above |
+| `type`         | `"footprint"`               | required standalone; nested rules above |
 | `center`       | [Coordinates](#coordinates) | **required**                            |
 | `radius_miles` | finite number               | **required**                            |
 
-### CapabilityToken
+### Capability
 
-Standalone tag: `capability_token`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `capability`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "capability_token",
+  "type": "capability",
   "name": "MSG_CNT",
   "value": "43"
 }
@@ -1105,7 +1132,7 @@ Standalone tag: `capability_token`. [Back to type map](#type-map-and-object-cata
 
 | Field   | JSON value / allowed values | Presence / default                      |
 | ------- | --------------------------- | --------------------------------------- |
-| `type`  | `"capability_token"`        | required standalone; nested rules above |
+| `type`  | `"capability"`              | required standalone; nested rules above |
 | `name`  | string                      | **required**                            |
 | `value` | Latin-1 byte string or null | optional; default `null`                |
 
@@ -1307,13 +1334,13 @@ Standalone tag: `encode_options`. [Back to type map](#type-map-and-object-catalo
 | `specification` | `'core-1.1'`, `'historical-1.0'`, `'compatibility-fap'` | optional; default `'core-1.1'`          |
 | `destination`   | `'derive'`, `'require_match'`                           | optional; default `'derive'`            |
 
-### PathHop
+### Hop
 
-Standalone tag: `path_hop`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `hop`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "path_hop",
+  "type": "hop",
   "address": "WIDE1-1",
   "repeated": false
 }
@@ -1321,7 +1348,7 @@ Standalone tag: `path_hop`. [Back to type map](#type-map-and-object-catalog).
 
 | Field      | JSON value / allowed values | Presence / default                      |
 | ---------- | --------------------------- | --------------------------------------- |
-| `type`     | `"path_hop"`                | required standalone; nested rules above |
+| `type`     | `"hop"`                     | required standalone; nested rules above |
 | `address`  | string                      | **required**                            |
 | `repeated` | boolean                     | optional; default `false`               |
 
@@ -1338,12 +1365,12 @@ Standalone tag: `header`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field         | JSON value / allowed values  | Presence / default                      |
-| ------------- | ---------------------------- | --------------------------------------- |
-| `type`        | `"header"`                   | required standalone; nested rules above |
-| `source`      | string                       | **required**                            |
-| `destination` | string                       | **required**                            |
-| `path`        | array of [PathHop](#pathhop) | optional; default `[]`                  |
+| Field         | JSON value / allowed values | Presence / default                      |
+| ------------- | --------------------------- | --------------------------------------- |
+| `type`        | `"header"`                  | required standalone; nested rules above |
+| `source`      | string                      | **required**                            |
+| `destination` | string                      | **required**                            |
+| `path`        | array of [Hop](#hop)        | optional; default `[]`                  |
 
 ### HeaderSemantics
 
@@ -1371,15 +1398,15 @@ Standalone tag: `header_semantics`. [Back to type map](#type-map-and-object-cata
 }
 ```
 
-| Field                    | JSON value / allowed values         | Presence / default                      |
-| ------------------------ | ----------------------------------- | --------------------------------------- |
-| `type`                   | `"header_semantics"`                | required standalone; nested rules above |
-| `destination_grid`       | [GridLocator](#gridlocator) or null | optional; default `null`                |
-| `destination_symbol`     | [Symbol](#symbol) or null           | optional; default `null`                |
-| `source_ssid_symbol`     | [Symbol](#symbol) or null           | optional; default `null`                |
-| `destination_ssid_route` | integer or null                     | optional; default `null`                |
-| `software_identifier`    | string or null                      | optional; default `null`                |
-| `q_construct`            | string or null                      | optional; default `null`                |
+| Field                    | JSON value / allowed values | Presence / default                      |
+| ------------------------ | --------------------------- | --------------------------------------- |
+| `type`                   | `"header_semantics"`        | required standalone; nested rules above |
+| `destination_grid`       | [Grid](#grid) or null       | optional; default `null`                |
+| `destination_symbol`     | [Symbol](#symbol) or null   | optional; default `null`                |
+| `source_ssid_symbol`     | [Symbol](#symbol) or null   | optional; default `null`                |
+| `destination_ssid_route` | integer or null             | optional; default `null`                |
+| `software_identifier`    | string or null              | optional; default `null`                |
+| `q_construct`            | string or null              | optional; default `null`                |
 
 ### Position
 
@@ -1404,9 +1431,9 @@ Standalone tag: `position`. [Back to type map](#type-map-and-object-catalog).
     "motion": null,
     "altitude": null,
     "phg": null,
-    "radio_range": null,
-    "df_signal": null,
-    "df_bearing": null,
+    "range": null,
+    "signal": null,
+    "bearing": null,
     "dao": null,
     "area": null,
     "signpost": null,
@@ -1452,9 +1479,9 @@ Standalone tag: `mic_e`. [Back to type map](#type-map-and-object-catalog).
       "motion": null,
       "altitude": null,
       "phg": null,
-      "radio_range": null,
-      "df_signal": null,
-      "df_bearing": null,
+      "range": null,
+      "signal": null,
+      "bearing": null,
       "dao": null,
       "area": null,
       "signpost": null,
@@ -1486,12 +1513,12 @@ Standalone tag: `mic_e`. [Back to type map](#type-map-and-object-catalog).
 | `dti`              | `96`, `39`, `28`, `29`                              | optional; default `96`                  |
 | `fix`              | `'current'`, `'old'`, `'unknown'`                   | optional; default `'current'`           |
 | `type_marker`      | Latin-1 byte string                                 | optional; default `""`                  |
-| `grid`             | [GridLocator](#gridlocator) or null                 | optional; default `null`                |
+| `grid`             | [Grid](#grid) or null                               | optional; default `null`                |
 | `grid_symbol`      | [Symbol](#symbol) or null                           | optional; default `null`                |
 | `destination_raw`  | string or null                                      | optional; default `null`                |
 | `longitude_offset` | integer or null                                     | optional; default `null`                |
 
-### ObjectReport
+### Object
 
 Standalone tag: `object`. [Back to type map](#type-map-and-object-catalog).
 
@@ -1511,9 +1538,9 @@ Standalone tag: `object`. [Back to type map](#type-map-and-object-catalog).
       "motion": null,
       "altitude": null,
       "phg": null,
-      "radio_range": null,
-      "df_signal": null,
-      "df_bearing": null,
+      "range": null,
+      "signal": null,
+      "bearing": null,
       "dao": null,
       "area": null,
       "signpost": null,
@@ -1553,7 +1580,7 @@ Standalone tag: `object`. [Back to type map](#type-map-and-object-catalog).
 | `encoding`    | `'uncompressed'`, `'compressed'`    | optional; default `'uncompressed'`      |
 | `compression` | [Compression](#compression) or null | optional; default `null`                |
 
-### ItemReport
+### Item
 
 Standalone tag: `item`. [Back to type map](#type-map-and-object-catalog).
 
@@ -1573,9 +1600,9 @@ Standalone tag: `item`. [Back to type map](#type-map-and-object-catalog).
       "motion": null,
       "altitude": null,
       "phg": null,
-      "radio_range": null,
-      "df_signal": null,
-      "df_bearing": null,
+      "range": null,
+      "signal": null,
+      "bearing": null,
       "dao": null,
       "area": null,
       "signpost": null,
@@ -1603,130 +1630,28 @@ Standalone tag: `item`. [Back to type map](#type-map-and-object-catalog).
 | `encoding`    | `'uncompressed'`, `'compressed'`    | optional; default `'uncompressed'`      |
 | `compression` | [Compression](#compression) or null | optional; default `null`                |
 
-### WeatherReport
+### Definition
 
-Standalone tag: `weather`. [Back to type map](#type-map-and-object-catalog).
-
-Weather measurements are direct JSON properties; `weather` is not a JSON property.
+Standalone tag: `definition`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "weather",
-  "wind_direction": {
-    "value": 270,
-    "unit": "degrees",
-    "raw": null
-  },
-  "wind_speed": {
-    "value": 12,
-    "unit": "mph",
-    "raw": null
-  },
-  "gust": null,
-  "temperature": {
-    "value": 68,
-    "unit": "fahrenheit",
-    "raw": null
-  },
-  "humidity": null,
-  "pressure": {
-    "value": 1013.2,
-    "unit": "hPa",
-    "raw": null
-  },
-  "rain_1h": null,
-  "rain_24h": null,
-  "rain_since_midnight": null,
-  "snow_24h": null,
-  "luminosity": null,
-  "rain_counter": null,
-  "water_height": null,
-  "software_code": null,
-  "device_code": null,
-  "raw": null,
-  "timestamp": {
-    "kind": "mdhm_utc",
-    "hour": 12,
-    "minute": 30,
-    "day": 17,
-    "second": null,
-    "month": 10,
-    "raw": null
-  },
-  "comment": ""
-}
-```
-
-| Field                 | JSON value / allowed values         | Presence / default                      |
-| --------------------- | ----------------------------------- | --------------------------------------- |
-| `type`                | `"weather"`                         | required standalone; nested rules above |
-| `wind_direction`      | [Measurement](#measurement) or null | optional; default `null`                |
-| `wind_speed`          | [Measurement](#measurement) or null | optional; default `null`                |
-| `gust`                | [Measurement](#measurement) or null | optional; default `null`                |
-| `temperature`         | [Measurement](#measurement) or null | optional; default `null`                |
-| `humidity`            | [Measurement](#measurement) or null | optional; default `null`                |
-| `pressure`            | [Measurement](#measurement) or null | optional; default `null`                |
-| `rain_1h`             | [Measurement](#measurement) or null | optional; default `null`                |
-| `rain_24h`            | [Measurement](#measurement) or null | optional; default `null`                |
-| `rain_since_midnight` | [Measurement](#measurement) or null | optional; default `null`                |
-| `snow_24h`            | [Measurement](#measurement) or null | optional; default `null`                |
-| `luminosity`          | [Measurement](#measurement) or null | optional; default `null`                |
-| `rain_counter`        | [Measurement](#measurement) or null | optional; default `null`                |
-| `water_height`        | [WaterHeight](#waterheight) or null | optional; default `null`                |
-| `software_code`       | Latin-1 byte string or null         | optional; default `null`                |
-| `device_code`         | Latin-1 byte string or null         | optional; default `null`                |
-| `raw`                 | Latin-1 byte string or null         | optional; default `null`                |
-| `timestamp`           | [Timestamp](#timestamp) or null     | optional; default `null`                |
-| `comment`             | Latin-1 byte string                 | optional; default `""`                  |
-
-### Telemetry
-
-Standalone tag: `telemetry`. [Back to type map](#type-map-and-object-catalog).
-
-```json
-{
-  "type": "telemetry",
-  "data": {
-    "analog": [1, 2, 3, 4, 5],
-    "digital": [true, true, true, true, true, true, true, true],
-    "sequence": 1,
-    "encoding": "classic",
-    "sequence_raw": null,
-    "raw": null,
-    "mic_comma": true
-  },
-  "comment": ""
-}
-```
-
-| Field     | JSON value / allowed values     | Presence / default                      |
-| --------- | ------------------------------- | --------------------------------------- |
-| `type`    | `"telemetry"`                   | required standalone; nested rules above |
-| `data`    | [TelemetryData](#telemetrydata) | **required**                            |
-| `comment` | Latin-1 byte string             | optional; default `""`                  |
-
-### TelemetryDefinition
-
-Standalone tag: `telemetry_definition`. [Back to type map](#type-map-and-object-catalog).
-
-```json
-{
-  "type": "telemetry_definition",
+  "type": "definition",
   "addressee": "N0CALL",
   "definition": {
-    "type": "telemetry_parameters",
+    "type": "parameters",
     "channels": ["Temperature"]
   },
   "values_raw": []
 }
 ```
 
-| Field        | JSON value / allowed values                                                                                                                                      | Presence / default                      |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| `type`       | `"telemetry_definition"`                                                                                                                                         | required standalone; nested rules above |
-| `addressee`  | string                                                                                                                                                           | **required**                            |
-| `definition` | [TelemetryParameters](#telemetryparameters) or [TelemetryUnits](#telemetryunits) or [TelemetryEquations](#telemetryequations) or [TelemetryBits](#telemetrybits) | **required**                            |
-| `values_raw` | array of Latin-1 byte string                                                                                                                                     | optional; default `[]`                  |
+| Field        | JSON value / allowed values                                                              | Presence / default                      |
+| ------------ | ---------------------------------------------------------------------------------------- | --------------------------------------- |
+| `type`       | `"definition"`                                                                           | required standalone; nested rules above |
+| `addressee`  | string                                                                                   | **required**                            |
+| `definition` | [Parameters](#parameters) or [Units](#units) or [Equations](#equations) or [Bits](#bits) | **required**                            |
+| `values_raw` | array of Latin-1 byte string                                                             | optional; default `[]`                  |
 
 ### Status
 
@@ -1743,14 +1668,14 @@ Standalone tag: `status`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field       | JSON value / allowed values         | Presence / default                      |
-| ----------- | ----------------------------------- | --------------------------------------- |
-| `type`      | `"status"`                          | required standalone; nested rules above |
-| `text`      | Latin-1 byte string                 | optional; default `""`                  |
-| `timestamp` | [Timestamp](#timestamp) or null     | optional; default `null`                |
-| `grid`      | [GridLocator](#gridlocator) or null | optional; default `null`                |
-| `symbol`    | [Symbol](#symbol) or null           | optional; default `null`                |
-| `beam`      | [Beam](#beam) or null               | optional; default `null`                |
+| Field       | JSON value / allowed values     | Presence / default                      |
+| ----------- | ------------------------------- | --------------------------------------- |
+| `type`      | `"status"`                      | required standalone; nested rules above |
+| `text`      | Latin-1 byte string             | optional; default `""`                  |
+| `timestamp` | [Timestamp](#timestamp) or null | optional; default `null`                |
+| `grid`      | [Grid](#grid) or null           | optional; default `null`                |
+| `symbol`    | [Symbol](#symbol) or null       | optional; default `null`                |
+| `beam`      | [Beam](#beam) or null           | optional; default `null`                |
 
 ### Message
 
@@ -1860,16 +1785,16 @@ Standalone tag: `nws_bulletin`. [Back to type map](#type-map-and-object-catalog)
 | `text`         | Latin-1 byte string         | **required**                            |
 | `reference_id` | string or null              | optional; default `null`                |
 
-### NTSMessage
+### Radiogram
 
-Standalone tag: `nts_message`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `radiogram`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "nts_message",
+  "type": "radiogram",
   "addressee": "W1AW",
   "record": {
-    "type": "nts_text",
+    "type": "text",
     "line": 1,
     "text": "Hello"
   },
@@ -1877,12 +1802,12 @@ Standalone tag: `nts_message`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field        | JSON value / allowed values                                                                                                                                        | Presence / default                      |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- |
-| `type`       | `"nts_message"`                                                                                                                                                    | required standalone; nested rules above |
-| `addressee`  | string                                                                                                                                                             | **required**                            |
-| `record`     | [NTSHeader](#ntsheader) or [NTSAddress](#ntsaddress) or [NTSPhone](#ntsphone) or [NTSText](#ntstext) or [NTSSignature](#ntssignature) or [NTSRouting](#ntsrouting) | **required**                            |
-| `message_id` | string or null                                                                                                                                                     | optional; default `null`                |
+| Field        | JSON value / allowed values                                                                                                          | Presence / default                      |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- |
+| `type`       | `"radiogram"`                                                                                                                        | required standalone; nested rules above |
+| `addressee`  | string                                                                                                                               | **required**                            |
+| `record`     | [NTSHeader](#ntsheader) or [Address](#address) or [Phone](#phone) or [Text](#text) or [Signature](#signature) or [Routing](#routing) | **required**                            |
+| `message_id` | string or null                                                                                                                       | optional; default `null`                |
 
 ### Query
 
@@ -1906,15 +1831,15 @@ Standalone tag: `query`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field           | JSON value / allowed values               | Presence / default                      |
-| --------------- | ----------------------------------------- | --------------------------------------- |
-| `type`          | `"query"`                                 | required standalone; nested rules above |
-| `name`          | string                                    | **required**                            |
-| `addressee`     | string or null                            | optional; default `null`                |
-| `footprint`     | [QueryFootprint](#queryfootprint) or null | optional; default `null`                |
-| `heard_station` | string or null                            | optional; default `null`                |
-| `arguments`     | Latin-1 byte string                       | optional; default `""`                  |
-| `message_id`    | string or null                            | optional; default `null`                |
+| Field           | JSON value / allowed values     | Presence / default                      |
+| --------------- | ------------------------------- | --------------------------------------- |
+| `type`          | `"query"`                       | required standalone; nested rules above |
+| `name`          | string                          | **required**                            |
+| `addressee`     | string or null                  | optional; default `null`                |
+| `footprint`     | [Footprint](#footprint) or null | optional; default `null`                |
+| `heard_station` | string or null                  | optional; default `null`                |
+| `arguments`     | Latin-1 byte string             | optional; default `""`                  |
+| `message_id`    | string or null                  | optional; default `null`                |
 
 ### DirectStations
 
@@ -1950,13 +1875,13 @@ Standalone tag: `heard_station`. [Back to type map](#type-map-and-object-catalog
 | `station` | string                      | **required**                            |
 | `counts`  | array of integer or null    | **required**                            |
 
-### TraceRoute
+### Trace
 
-Standalone tag: `trace_route`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `trace`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "trace_route",
+  "type": "trace",
   "header": {
     "source": "N0CALL",
     "destination": "APRS",
@@ -1967,16 +1892,16 @@ Standalone tag: `trace_route`. [Back to type map](#type-map-and-object-catalog).
 
 | Field    | JSON value / allowed values | Presence / default                      |
 | -------- | --------------------------- | --------------------------------------- |
-| `type`   | `"trace_route"`             | required standalone; nested rules above |
+| `type`   | `"trace"`                   | required standalone; nested rules above |
 | `header` | [Header](#header)           | **required**                            |
 
-### QueryResponse
+### Response
 
-Standalone tag: `query_response`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `response`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "query_response",
+  "type": "response",
   "addressee": "W1AW",
   "response": {
     "type": "direct_stations",
@@ -1985,11 +1910,11 @@ Standalone tag: `query_response`. [Back to type map](#type-map-and-object-catalo
 }
 ```
 
-| Field       | JSON value / allowed values                                                                     | Presence / default                      |
-| ----------- | ----------------------------------------------------------------------------------------------- | --------------------------------------- |
-| `type`      | `"query_response"`                                                                              | required standalone; nested rules above |
-| `addressee` | string                                                                                          | **required**                            |
-| `response`  | [DirectStations](#directstations) or [HeardStation](#heardstation) or [TraceRoute](#traceroute) | **required**                            |
+| Field       | JSON value / allowed values                                                           | Presence / default                      |
+| ----------- | ------------------------------------------------------------------------------------- | --------------------------------------- |
+| `type`      | `"response"`                                                                          | required standalone; nested rules above |
+| `addressee` | string                                                                                | **required**                            |
+| `response`  | [DirectStations](#directstations) or [HeardStation](#heardstation) or [Trace](#trace) | **required**                            |
 
 ### Capabilities
 
@@ -2007,12 +1932,12 @@ Standalone tag: `capabilities`. [Back to type map](#type-map-and-object-catalog)
 }
 ```
 
-| Field    | JSON value / allowed values                  | Presence / default                      |
-| -------- | -------------------------------------------- | --------------------------------------- |
-| `type`   | `"capabilities"`                             | required standalone; nested rules above |
-| `tokens` | array of [CapabilityToken](#capabilitytoken) | **required**                            |
+| Field    | JSON value / allowed values        | Presence / default                      |
+| -------- | ---------------------------------- | --------------------------------------- |
+| `type`   | `"capabilities"`                   | required standalone; nested rules above |
+| `tokens` | array of [Capability](#capability) | **required**                            |
 
-### NMEAReport
+### NMEA
 
 Standalone tag: `nmea`. [Back to type map](#type-map-and-object-catalog).
 
@@ -2141,13 +2066,13 @@ Standalone tag: `agrelo`. [Back to type map](#type-map-and-object-catalog).
 | `quality_code` | integer                     | **required**                            |
 | `raw`          | Latin-1 byte string or null | optional; default `null`                |
 
-### MaidenheadBeacon
+### Maidenhead
 
-Standalone tag: `maidenhead_beacon`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `maidenhead`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "maidenhead_beacon",
+  "type": "maidenhead",
   "grid": {
     "locator": "IO91SX",
     "bounds": null,
@@ -2160,8 +2085,8 @@ Standalone tag: `maidenhead_beacon`. [Back to type map](#type-map-and-object-cat
 
 | Field     | JSON value / allowed values | Presence / default                      |
 | --------- | --------------------------- | --------------------------------------- |
-| `type`    | `"maidenhead_beacon"`       | required standalone; nested rules above |
-| `grid`    | [GridLocator](#gridlocator) | **required**                            |
+| `type`    | `"maidenhead"`              | required standalone; nested rules above |
+| `grid`    | [Grid](#grid)               | **required**                            |
 | `symbol`  | [Symbol](#symbol) or null   | optional; default `null`                |
 | `comment` | Latin-1 byte string         | optional; default `""`                  |
 
@@ -2191,9 +2116,9 @@ Standalone tag: `legacy_position`. [Back to type map](#type-map-and-object-catal
       "motion": null,
       "altitude": null,
       "phg": null,
-      "radio_range": null,
-      "df_signal": null,
-      "df_bearing": null,
+      "range": null,
+      "signal": null,
+      "bearing": null,
       "dao": null,
       "area": null,
       "signpost": null,
@@ -2212,36 +2137,36 @@ Standalone tag: `legacy_position`. [Back to type map](#type-map-and-object-catal
 | `prefix`   | Latin-1 byte string         | **required**                            |
 | `position` | [Position](#position)       | **required**                            |
 
-### NonAPRSBeacon
+### Beacon
 
-Standalone tag: `non_aprs_beacon`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `beacon`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "non_aprs_beacon",
+  "type": "beacon",
   "text": "UIDIGI ready"
 }
 ```
 
 | Field  | JSON value / allowed values | Presence / default                      |
 | ------ | --------------------------- | --------------------------------------- |
-| `type` | `"non_aprs_beacon"`         | required standalone; nested rules above |
+| `type` | `"beacon"`                  | required standalone; nested rules above |
 | `text` | Latin-1 byte string         | **required**                            |
 
-### InvalidTest
+### Invalid
 
-Standalone tag: `invalid_test`. [Back to type map](#type-map-and-object-catalog).
+Standalone tag: `invalid`. [Back to type map](#type-map-and-object-catalog).
 
 ```json
 {
-  "type": "invalid_test",
+  "type": "invalid",
   "data": "invalid fix"
 }
 ```
 
 | Field  | JSON value / allowed values | Presence / default                      |
 | ------ | --------------------------- | --------------------------------------- |
-| `type` | `"invalid_test"`            | required standalone; nested rules above |
+| `type` | `"invalid"`                 | required standalone; nested rules above |
 | `data` | Latin-1 byte string         | **required**                            |
 
 ### Reserved
@@ -2350,9 +2275,9 @@ Standalone tag: `packet`. [Back to type map](#type-map-and-object-catalog).
       "motion": null,
       "altitude": null,
       "phg": null,
-      "radio_range": null,
-      "df_signal": null,
-      "df_bearing": null,
+      "range": null,
+      "signal": null,
+      "bearing": null,
       "dao": null,
       "area": null,
       "signpost": null,
@@ -2367,13 +2292,13 @@ Standalone tag: `packet`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field              | JSON value / allowed values                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Presence / default                      |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| `type`             | `"packet"`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | required standalone; nested rules above |
-| `header`           | [Header](#header)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | **required**                            |
-| `payload`          | [Position](#position) or [MicE](#mice) or [ObjectReport](#objectreport) or [ItemReport](#itemreport) or [WeatherReport](#weatherreport) or [Telemetry](#telemetry) or [TelemetryDefinition](#telemetrydefinition) or [Status](#status) or [Message](#message) or [Acknowledgment](#acknowledgment) or [AutoAnswer](#autoanswer) or [Bulletin](#bulletin) or [NWSBulletin](#nwsbulletin) or [NTSMessage](#ntsmessage) or [Query](#query) or [QueryResponse](#queryresponse) or [Capabilities](#capabilities) or [NMEAReport](#nmeareport) or [ThirdParty](#thirdparty) or [UserDefined](#userdefined) or [RawWeather](#rawweather) or [Agrelo](#agrelo) or [MaidenheadBeacon](#maidenheadbeacon) or [LegacyPosition](#legacyposition) or [NonAPRSBeacon](#nonaprsbeacon) or [InvalidTest](#invalidtest) or [Reserved](#reserved) or [ExternalExtension](#externalextension) or [Opaque](#opaque) | **required**                            |
-| `original_wire`    | Latin-1 byte string or null                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | optional; default `null`                |
-| `header_semantics` | [HeaderSemantics](#headersemantics) or null                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | optional; default `null`                |
+| Field              | JSON value / allowed values                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Presence / default                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `type`             | `"packet"`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | required standalone; nested rules above |
+| `header`           | [Header](#header)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | **required**                            |
+| `payload`          | [Position](#position) or [MicE](#mice) or [Object](#object) or [Item](#item) or [Weather](#weather) or [Telemetry](#telemetry) or [Definition](#definition) or [Status](#status) or [Message](#message) or [Acknowledgment](#acknowledgment) or [AutoAnswer](#autoanswer) or [Bulletin](#bulletin) or [NWSBulletin](#nwsbulletin) or [Radiogram](#radiogram) or [Query](#query) or [Response](#response) or [Capabilities](#capabilities) or [NMEA](#nmea) or [ThirdParty](#thirdparty) or [UserDefined](#userdefined) or [RawWeather](#rawweather) or [Agrelo](#agrelo) or [Maidenhead](#maidenhead) or [LegacyPosition](#legacyposition) or [Beacon](#beacon) or [Invalid](#invalid) or [Reserved](#reserved) or [ExternalExtension](#externalextension) or [Opaque](#opaque) | **required**                            |
+| `original_wire`    | Latin-1 byte string or null                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | optional; default `null`                |
+| `header_semantics` | [HeaderSemantics](#headersemantics) or null                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | optional; default `null`                |
 
 ### EncodedPacketFields
 
@@ -2401,42 +2326,42 @@ Standalone tag: `encoded_packet_fields`. [Back to type map](#type-map-and-object
 
 Each allowed member is shown in its actual container. Fixed nested fields remain untagged.
 
-### TelemetryDefinition with TelemetryParameters
+### Definition with Parameters
 
 ```json
 {
-  "type": "telemetry_definition",
+  "type": "definition",
   "addressee": "N0CALL",
   "definition": {
-    "type": "telemetry_parameters",
+    "type": "parameters",
     "channels": ["Temperature", null, "Voltage"]
   },
   "values_raw": []
 }
 ```
 
-### TelemetryDefinition with TelemetryUnits
+### Definition with Units
 
 ```json
 {
-  "type": "telemetry_definition",
+  "type": "definition",
   "addressee": "N0CALL",
   "definition": {
-    "type": "telemetry_units",
+    "type": "units",
     "channels": ["deg.C", null, "V"]
   },
   "values_raw": []
 }
 ```
 
-### TelemetryDefinition with TelemetryEquations
+### Definition with Equations
 
 ```json
 {
-  "type": "telemetry_definition",
+  "type": "definition",
   "addressee": "N0CALL",
   "definition": {
-    "type": "telemetry_equations",
+    "type": "equations",
     "coefficients": [
       {
         "a": 0,
@@ -2450,14 +2375,14 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
 }
 ```
 
-### TelemetryDefinition with TelemetryBits
+### Definition with Bits
 
 ```json
 {
-  "type": "telemetry_definition",
+  "type": "definition",
   "addressee": "N0CALL",
   "definition": {
-    "type": "telemetry_bits",
+    "type": "bits",
     "sense": [true, true, true, true, true, true, true, true],
     "project_title": "Project"
   },
@@ -2465,7 +2390,7 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
 }
 ```
 
-### NMEAReport with GGA
+### NMEA with GGA
 
 ```json
 {
@@ -2497,7 +2422,7 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
 }
 ```
 
-### NMEAReport with GLL
+### NMEA with GLL
 
 ```json
 {
@@ -2523,7 +2448,7 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
 }
 ```
 
-### NMEAReport with RMC
+### NMEA with RMC
 
 ```json
 {
@@ -2554,7 +2479,7 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
 }
 ```
 
-### NMEAReport with VTG
+### NMEA with VTG
 
 ```json
 {
@@ -2578,7 +2503,7 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
 }
 ```
 
-### NMEAReport with WPL
+### NMEA with WPL
 
 ```json
 {
@@ -2603,11 +2528,11 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
 }
 ```
 
-### NTSMessage with NTSHeader
+### Radiogram with NTSHeader
 
 ```json
 {
-  "type": "nts_message",
+  "type": "radiogram",
   "addressee": "W1AW",
   "record": {
     "type": "nts_header",
@@ -2624,42 +2549,42 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
 }
 ```
 
-### NTSMessage with NTSAddress
+### Radiogram with Address
 
 ```json
 {
-  "type": "nts_message",
+  "type": "radiogram",
   "addressee": "W1AW",
   "record": {
-    "type": "nts_address",
+    "type": "address",
     "lines": ["ADAM", "123 MAIN ST", "REDMOND WA", "98052"]
   },
   "message_id": null
 }
 ```
 
-### NTSMessage with NTSPhone
+### Radiogram with Phone
 
 ```json
 {
-  "type": "nts_message",
+  "type": "radiogram",
   "addressee": "W1AW",
   "record": {
-    "type": "nts_phone",
+    "type": "phone",
     "number": "5550100"
   },
   "message_id": null
 }
 ```
 
-### NTSMessage with NTSText
+### Radiogram with Text
 
 ```json
 {
-  "type": "nts_message",
+  "type": "radiogram",
   "addressee": "W1AW",
   "record": {
-    "type": "nts_text",
+    "type": "text",
     "line": 1,
     "text": "Hello"
   },
@@ -2667,28 +2592,28 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
 }
 ```
 
-### NTSMessage with NTSSignature
+### Radiogram with Signature
 
 ```json
 {
-  "type": "nts_message",
+  "type": "radiogram",
   "addressee": "W1AW",
   "record": {
-    "type": "nts_signature",
+    "type": "signature",
     "text": "N0CALL"
   },
   "message_id": null
 }
 ```
 
-### NTSMessage with NTSRouting
+### Radiogram with Routing
 
 ```json
 {
-  "type": "nts_message",
+  "type": "radiogram",
   "addressee": "W1AW",
   "record": {
-    "type": "nts_routing",
+    "type": "routing",
     "received_from": "W1AW",
     "received_at": "151800Z",
     "sent_to": "N0CALL",
@@ -2698,11 +2623,11 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
 }
 ```
 
-### QueryResponse with DirectStations
+### Response with DirectStations
 
 ```json
 {
-  "type": "query_response",
+  "type": "response",
   "addressee": "W1AW",
   "response": {
     "type": "direct_stations",
@@ -2711,11 +2636,11 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
 }
 ```
 
-### QueryResponse with HeardStation
+### Response with HeardStation
 
 ```json
 {
-  "type": "query_response",
+  "type": "response",
   "addressee": "W1AW",
   "response": {
     "type": "heard_station",
@@ -2725,14 +2650,14 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
 }
 ```
 
-### QueryResponse with TraceRoute
+### Response with Trace
 
 ```json
 {
-  "type": "query_response",
+  "type": "response",
   "addressee": "W1AW",
   "response": {
-    "type": "trace_route",
+    "type": "trace",
     "header": {
       "source": "N0CALL",
       "destination": "APRS",

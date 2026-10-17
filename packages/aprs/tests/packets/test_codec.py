@@ -10,10 +10,10 @@ from hamkit.aprs import (
     EnvelopeError,
     FieldError,
     Header,
+    Hop,
     Message,
     Opaque,
     Packet,
-    PathHop,
     Position,
     Status,
     Symbol,
@@ -30,7 +30,7 @@ from hamkit.aprs import (
 class PacketTests(unittest.TestCase):
     def test_build_position(self) -> None:
         packet = Packet(
-            Header("N0CALL", "APRS", (PathHop("WIDE1-1"),)),
+            Header("N0CALL", "APRS", (Hop("WIDE1-1"),)),
             Position(49 + 3.5 / 60, -(72 + 1.75 / 60), tail=b"Test"),
         )
         wire = b"N0CALL>APRS,WIDE1-1:!4903.50N/07201.75W-Test"
@@ -72,7 +72,7 @@ class PacketTests(unittest.TestCase):
     def test_path_markers(self) -> None:
         packet = parse_packet(b"N0CALL>APRS,D1,D2*,WIDE2-1:>Ready")
         self.assertEqual(
-            packet.header.path, (PathHop("D1"), PathHop("D2", True), PathHop("WIDE2-1"))
+            packet.header.path, (Hop("D1"), Hop("D2", True), Hop("WIDE2-1"))
         )
 
     def test_message_and_ack_round_trips(self) -> None:
@@ -171,7 +171,7 @@ class PacketTests(unittest.TestCase):
                 serialize_packet(Packet(Header(source, "APRS"), Status()), profile="rf")
         for count in (8, 9):
             packet = Packet(
-                Header("N0CALL", "APRS", tuple(PathHop("D1") for _ in range(count))),
+                Header("N0CALL", "APRS", tuple(Hop("D1") for _ in range(count))),
                 Status(),
             )
             if count == 8:

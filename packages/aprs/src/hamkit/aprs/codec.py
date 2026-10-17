@@ -29,12 +29,12 @@ from .models import (
     EncodedPacketFields,
     EncodeOptions,
     Header,
-    InvalidTest,
+    Hop,
+    Invalid,
     Message,
     MicE,
     Opaque,
     Packet,
-    PathHop,
     Payload,
     Position,
     Reserved,
@@ -147,7 +147,7 @@ def _decode_payload(
             raise FieldError("user-defined payload needs user ID and type")
         return UserDefined(body[:1], body[1:2], body[2:])
     if dti == b",":
-        return InvalidTest(body)
+        return Invalid(body)
     if information.startswith((b"!!", b"$ULTW", b"#", b"*")):
         raise CodecNotImplemented("vendor raw-weather interpretation")
     if dti in (b"!", b"=", b"/", b"@"):
@@ -221,7 +221,7 @@ def _encode_payload(
         if len(payload.user_id) != 1 or len(payload.user_type) != 1:
             raise FieldError("user ID and type must each be one byte")
         raw = b"{" + payload.user_id + payload.user_type + payload.data
-    elif isinstance(payload, InvalidTest):
+    elif isinstance(payload, Invalid):
         raw = b"," + payload.data
     elif isinstance(payload, Reserved):
         if not 0 <= payload.dti <= 255:
@@ -390,7 +390,7 @@ def _parse_packet(
     header = Header(
         source.decode("latin-1"),
         tokens[0],
-        tuple(PathHop(t.removesuffix("*"), t.endswith("*")) for t in tokens[1:]),
+        tuple(Hop(t.removesuffix("*"), t.endswith("*")) for t in tokens[1:]),
     )
     validate_header(header, profile=profile)
     if profile == "rf" and len(information) > 256:

@@ -26,14 +26,12 @@ def examples() -> dict[type[a.JSONModel], a.JSONModel]:
         if not isinstance(v, a.CodecCapability)
     }
     values[a.UserDefined] = a.UserDefined(b"Q", b"1", b"Hello\x00\xff")
-    values[a.WeatherReport] = a.WeatherReport(
-        a.Weather(
-            wind_direction=a.Measurement(270, "degrees"),
-            wind_speed=a.Measurement(12, "mph"),
-            temperature=a.Measurement(68, "fahrenheit"),
-            pressure=a.Measurement(1013.2, "hPa"),
-        ),
-        a.Timestamp("mdhm_utc", 12, 30, day=17, month=10),
+    values[a.Weather] = a.Weather(
+        wind_direction=a.Measurement(270, "degrees"),
+        wind_speed=a.Measurement(12, "mph"),
+        temperature=a.Measurement(68, "fahrenheit"),
+        pressure=a.Measurement(1013.2, "hPa"),
+        timestamp=a.Timestamp("mdhm_utc", 12, 30, day=17, month=10),
     )
     values[a.Packet] = a.parse_packet(b"N0CALL>APRS:!4903.50N/07201.75W>")
     return values
@@ -46,17 +44,15 @@ def catalog_examples() -> list[a.JSONModel]:
     # demonstrate every union variant in context, too.
     result = [values[s.model] for s in _SCHEMAS]
     containers: tuple[tuple[Any, Callable[[Any], a.JSONModel]], ...] = (
-        (a.TelemetryDefinitionData, lambda v: a.TelemetryDefinition("N0CALL", v)),
-        (a.NMEASentence, a.NMEAReport),
-        (a.NTSRecord, lambda v: a.NTSMessage("W1AW", v)),
-        (a.QueryResponseData, lambda v: a.QueryResponse("W1AW", v)),
+        (a.DefinitionValue, lambda v: a.Definition("N0CALL", v)),
+        (a.NMEASentence, a.NMEA),
+        (a.NTSRecord, lambda v: a.Radiogram("W1AW", v)),
+        (a.ResponseValue, lambda v: a.Response("W1AW", v)),
     )
     for union, container in containers:
         result.extend(container(values[model]) for model in get_args(union))
     result.append(
-        a.Packet(
-            a.Header("N0CALL", "APRS"), cast(a.WeatherReport, values[a.WeatherReport])
-        )
+        a.Packet(a.Header("N0CALL", "APRS"), cast(a.Weather, values[a.Weather]))
     )
     return result
 
@@ -116,11 +112,11 @@ def generate() -> str:
     samples = catalog_examples()
     doc = """# APRS JSON reference
 
-This is the canonical JSON format for `hamkit-aprs` 0.0.1a4. Examples are
+This is the canonical JSON format for `hamkit-aprs` 0.0.1a5. Examples are
 pretty-printed, executable data, with nested values expanded. They illustrate
 values, not legal ranges or complete APRS wire support. The field tables are the
 shape contract: every field, requiredness, default, allowed enum, unit and nested
-model is listed. All 84 serializable models and all 29 payload families appear.
+model is listed. All 82 serializable models and all 29 payload families appear.
 
 ## Contents
 
@@ -136,7 +132,7 @@ model is listed. All 84 serializable models and all 29 payload families appear.
 
 `to_json(model, indent=2)` returns text. `to_json_dict(model)` returns a JSON-safe
 dictionary. `from_json(text)` and `from_json_dict(mapping)` return typed models.
-Use `expected_type=WeatherReport` to check a particular class; typed overloads
+Use `expected_type=Weather` to check a particular class; typed overloads
 preserve the concrete return annotation. This does not waive payload tags.
 `include_defaults=True` prints all fields, as in this catalog. The normal compact
 output omits default-valued optional fields, but always retains `type` where
@@ -148,7 +144,9 @@ required. Object property order is not meaningful.
   `measurement`, and `header`. Tags are explicitly registered protocol-independent
   names; Python class names cannot be loaded dynamically.
 - Every payload requires its own `type`, whether standalone, in `Packet.payload`,
-  or in a fixed payload field such as `LegacyPosition.position`.
+  or in a fixed payload field such as `LegacyPosition.position`. Shared
+  `Weather` and `Telemetry` values in fixed nested fields are untagged, because
+  those fields identify their class; when used as payloads they require tags.
 - Nested unions of multiple model classes require a tag: telemetry definitions,
   NMEA sentences, NTS records and query responses. The tags allowed at each union
   are exactly those of its linked models in the tables below.
@@ -159,16 +157,17 @@ required. Object property order is not meaningful.
 - An untagged standalone fixed field may be read only with explicit
   `expected_type=Measurement` (or another concrete non-payload class). A supplied
   tag must always agree with that class. There is no structural inference.
-- `WeatherReport` is flattened: measurements, software/device codes and raw
-  weather evidence sit alongside `"type": "weather"`, timestamp and comment.
-  There is no `weather` wrapper. Python still uses `WeatherReport.weather`.
-  A standalone `Weather` field has tag `weather_fields`; nested `Weather` fields
-  elsewhere are ordinary fixed objects. An empty weather payload is
-  `{"type":"weather"}`.
+- `Weather` and `Telemetry` are shared semantic models, usable as complete
+  payloads or fixed nested values. Python and JSON both expose their fields
+  directly. Weather carries optional timestamp/comment; telemetry carries a
+  comment alongside its channels, sequence and encoding evidence. Nothing is
+  discarded when either model is nested. Empty payloads are `{"type":"weather"}`
+  and `{"type":"telemetry"}`. See the [naming audit](NAMING.md) for the full map
+  and the reasons some qualified names remain.
 - Third-party payloads contain `packet`, whose fixed Packet object is untagged;
   the inner `payload` has its own tag. See [ThirdParty](#thirdparty).
 - Older untagged inferred shapes and ambiguity-driven field aliases are not
-  accepted. JSON field names now match Python attributes except weather flattening.
+  accepted. JSON field names match Python attributes.
 
 ## Values, defaults and constraints
 
@@ -220,7 +219,7 @@ to their own fully expanded object examples in the field table.
     for schema, value in zip(_SCHEMAS, samples):
         name = schema.model.__name__
         doc += f"\n### {name}\n\nStandalone tag: `{schema.tag}`. [Back to type map](#type-map-and-object-catalog).\n\n"
-        if schema.model is a.WeatherReport:
+        if schema.model is a.Weather:
             doc += "Weather measurements are direct JSON properties; `weather` is not a JSON property.\n\n"
         doc += (
             "```json\n"
@@ -232,12 +231,6 @@ to their own fully expanded object examples in the field table.
             f'| `type` | `"{schema.tag}"` | required standalone; nested rules above |\n'
         )
         entries = [(f, schema.model) for f in dataclasses.fields(schema.model)]
-        if schema.model is a.WeatherReport:
-            entries = [(f, a.Weather) for f in dataclasses.fields(a.Weather)] + [
-                (f, schema.model)
-                for f in dataclasses.fields(schema.model)
-                if f.name != "weather"
-            ]
         for f, owner in entries:
             doc += f"| `{f.name}` | {annotation_text(_HINTS[owner][f.name])} | {default_text(f)} |\n"
     doc += "\n## Nested union examples\n\nEach allowed member is shown in its actual container. Fixed nested fields remain untagged.\n"

@@ -40,16 +40,16 @@ JSONModel: TypeAlias = (
     d.Measurement
     | d.Timestamp
     | d.Coordinates
-    | d.CellBounds
+    | d.Extent
     | d.Ambiguity
     | d.Symbol
-    | d.GridLocator
+    | d.Grid
     | d.Motion
     | d.Altitude
-    | d.RadioRange
+    | d.Range
     | d.PHG
-    | d.DFSignal
-    | d.DFBearing
+    | d.Signal
+    | d.Bearing
     | d.Compression
     | d.DAO
     | d.Area
@@ -57,24 +57,24 @@ JSONModel: TypeAlias = (
     | d.WaterHeight
     | d.Weather
     | d.Storm
-    | d.TelemetryData
+    | d.Telemetry
     | d.Extensions
     | d.Location
     | d.Beam
     | d.ReplyAck
-    | d.TelemetryParameters
-    | d.TelemetryUnits
+    | d.Parameters
+    | d.Units
     | d.Calibration
-    | d.TelemetryEquations
-    | d.TelemetryBits
+    | d.Equations
+    | d.Bits
     | d.NTSHeader
-    | d.NTSAddress
-    | d.NTSPhone
-    | d.NTSText
-    | d.NTSSignature
-    | d.NTSRouting
-    | d.QueryFootprint
-    | d.CapabilityToken
+    | d.Address
+    | d.Phone
+    | d.Text
+    | d.Signature
+    | d.Routing
+    | d.Footprint
+    | d.Capability
     | n.NMEAMetadata
     | n.GGA
     | n.GLL
@@ -83,38 +83,36 @@ JSONModel: TypeAlias = (
     | n.WPL
     | m.DecodeOptions
     | m.EncodeOptions
-    | m.PathHop
+    | m.Hop
     | m.Header
     | m.HeaderSemantics
     | m.Position
     | m.MicE
-    | m.ObjectReport
-    | m.ItemReport
-    | m.WeatherReport
-    | m.Telemetry
-    | m.TelemetryDefinition
+    | m.Object
+    | m.Item
+    | m.Definition
     | m.Status
     | m.Message
     | m.Acknowledgment
     | m.AutoAnswer
     | m.Bulletin
     | m.NWSBulletin
-    | m.NTSMessage
+    | m.Radiogram
     | m.Query
     | m.DirectStations
     | m.HeardStation
-    | m.TraceRoute
-    | m.QueryResponse
+    | m.Trace
+    | m.Response
     | m.Capabilities
-    | m.NMEAReport
+    | m.NMEA
     | m.ThirdParty
     | m.UserDefined
     | m.RawWeather
     | m.Agrelo
-    | m.MaidenheadBeacon
+    | m.Maidenhead
     | m.LegacyPosition
-    | m.NonAPRSBeacon
-    | m.InvalidTest
+    | m.Beacon
+    | m.Invalid
     | m.Reserved
     | m.ExternalExtension
     | m.Diagnostic
@@ -156,41 +154,41 @@ _SCHEMAS = (
     _Schema(d.Measurement, "measurement"),
     _Schema(d.Timestamp, "timestamp"),
     _Schema(d.Coordinates, "coordinates"),
-    _Schema(d.CellBounds, "cell_bounds"),
+    _Schema(d.Extent, "extent"),
     _Schema(d.Ambiguity, "ambiguity"),
     _Schema(d.Symbol, "symbol"),
-    _Schema(d.GridLocator, "grid_locator"),
+    _Schema(d.Grid, "grid"),
     _Schema(d.Motion, "motion"),
     _Schema(d.Altitude, "altitude"),
-    _Schema(d.RadioRange, "radio_range"),
+    _Schema(d.Range, "range"),
     _Schema(d.PHG, "phg"),
-    _Schema(d.DFSignal, "df_signal"),
-    _Schema(d.DFBearing, "df_bearing"),
+    _Schema(d.Signal, "signal"),
+    _Schema(d.Bearing, "bearing"),
     _Schema(d.Compression, "compression"),
     _Schema(d.DAO, "dao"),
     _Schema(d.Area, "area"),
     _Schema(d.Signpost, "signpost"),
     _Schema(d.WaterHeight, "water_height"),
-    _Schema(d.Weather, "weather_fields"),
+    _Schema(d.Weather, "weather"),
     _Schema(d.Storm, "storm"),
-    _Schema(d.TelemetryData, "telemetry_data"),
+    _Schema(d.Telemetry, "telemetry"),
     _Schema(d.Extensions, "extensions"),
     _Schema(d.Location, "location"),
     _Schema(d.Beam, "beam"),
     _Schema(d.ReplyAck, "reply_ack"),
-    _Schema(d.TelemetryParameters, "telemetry_parameters"),
-    _Schema(d.TelemetryUnits, "telemetry_units"),
+    _Schema(d.Parameters, "parameters"),
+    _Schema(d.Units, "units"),
     _Schema(d.Calibration, "calibration"),
-    _Schema(d.TelemetryEquations, "telemetry_equations"),
-    _Schema(d.TelemetryBits, "telemetry_bits"),
+    _Schema(d.Equations, "equations"),
+    _Schema(d.Bits, "bits"),
     _Schema(d.NTSHeader, "nts_header"),
-    _Schema(d.NTSAddress, "nts_address"),
-    _Schema(d.NTSPhone, "nts_phone"),
-    _Schema(d.NTSText, "nts_text"),
-    _Schema(d.NTSSignature, "nts_signature"),
-    _Schema(d.NTSRouting, "nts_routing"),
-    _Schema(d.QueryFootprint, "query_footprint"),
-    _Schema(d.CapabilityToken, "capability_token"),
+    _Schema(d.Address, "address"),
+    _Schema(d.Phone, "phone"),
+    _Schema(d.Text, "text"),
+    _Schema(d.Signature, "signature"),
+    _Schema(d.Routing, "routing"),
+    _Schema(d.Footprint, "footprint"),
+    _Schema(d.Capability, "capability"),
     _Schema(n.NMEAMetadata, "nmea_metadata"),
     _Schema(n.GGA, "gga"),
     _Schema(n.GLL, "gll"),
@@ -199,38 +197,36 @@ _SCHEMAS = (
     _Schema(n.WPL, "wpl"),
     _Schema(m.DecodeOptions, "decode_options"),
     _Schema(m.EncodeOptions, "encode_options"),
-    _Schema(m.PathHop, "path_hop"),
+    _Schema(m.Hop, "hop"),
     _Schema(m.Header, "header"),
     _Schema(m.HeaderSemantics, "header_semantics"),
     _Schema(m.Position, "position"),
     _Schema(m.MicE, "mic_e"),
-    _Schema(m.ObjectReport, "object"),
-    _Schema(m.ItemReport, "item"),
-    _Schema(m.WeatherReport, "weather"),
-    _Schema(m.Telemetry, "telemetry"),
-    _Schema(m.TelemetryDefinition, "telemetry_definition"),
+    _Schema(m.Object, "object"),
+    _Schema(m.Item, "item"),
+    _Schema(m.Definition, "definition"),
     _Schema(m.Status, "status"),
     _Schema(m.Message, "message"),
     _Schema(m.Acknowledgment, "acknowledgment"),
     _Schema(m.AutoAnswer, "auto_answer"),
     _Schema(m.Bulletin, "bulletin"),
     _Schema(m.NWSBulletin, "nws_bulletin"),
-    _Schema(m.NTSMessage, "nts_message"),
+    _Schema(m.Radiogram, "radiogram"),
     _Schema(m.Query, "query"),
     _Schema(m.DirectStations, "direct_stations"),
     _Schema(m.HeardStation, "heard_station"),
-    _Schema(m.TraceRoute, "trace_route"),
-    _Schema(m.QueryResponse, "query_response"),
+    _Schema(m.Trace, "trace"),
+    _Schema(m.Response, "response"),
     _Schema(m.Capabilities, "capabilities"),
-    _Schema(m.NMEAReport, "nmea"),
+    _Schema(m.NMEA, "nmea"),
     _Schema(m.ThirdParty, "third_party"),
     _Schema(m.UserDefined, "user_defined"),
     _Schema(m.RawWeather, "raw_weather"),
     _Schema(m.Agrelo, "agrelo"),
-    _Schema(m.MaidenheadBeacon, "maidenhead_beacon"),
+    _Schema(m.Maidenhead, "maidenhead"),
     _Schema(m.LegacyPosition, "legacy_position"),
-    _Schema(m.NonAPRSBeacon, "non_aprs_beacon"),
-    _Schema(m.InvalidTest, "invalid_test"),
+    _Schema(m.Beacon, "beacon"),
+    _Schema(m.Invalid, "invalid"),
     _Schema(m.Reserved, "reserved"),
     _Schema(m.ExternalExtension, "external_extension"),
     _Schema(m.Diagnostic, "diagnostic"),
@@ -289,7 +285,9 @@ def _contextualize(value: JSONValue, annotation: Any) -> JSONValue:
             if annotation in _BY_MODEL
             else (models[0] if len(models) == 1 else None)
         )
-        if fixed is not None and fixed not in _PAYLOAD_MODELS:
+        if fixed is not None and fixed not in (
+            _PAYLOAD_MODELS - {d.Weather, d.Telemetry}
+        ):
             return {k: v for k, v in value.items() if k != "type"}
     if origin is tuple and isinstance(value, list):
         variadic = len(args) == 2 and args[1] is Ellipsis
@@ -382,19 +380,9 @@ def _decode_model(
     maximum: int,
 ) -> JSONModel:
     _limit(depth, maximum, path)
-    if "type" in value or model in _PAYLOAD_MODELS:
+    if "type" in value or model in (_PAYLOAD_MODELS - {d.Weather, d.Telemetry}):
         _tagged_model(value, (model,), path)
     value = {k: v for k, v in value.items() if k != "type"}
-    if model is m.WeatherReport:
-        if "weather" in value:
-            raise JSONModelError(
-                f"{path}.weather: use direct weather measurement fields"
-            )
-        weather_keys = _BY_MODEL[d.Weather].allowed
-        value = {
-            **{k: v for k, v in value.items() if k not in weather_keys},
-            "weather": {k: v for k, v in value.items() if k in weather_keys},
-        }
     schema = _BY_MODEL[model]
     extra, missing = set(value) - schema.allowed, schema.required - set(value)
     if extra or missing:
@@ -484,11 +472,7 @@ def _encode(
             if f.default_factory is not MISSING:
                 default = f.default_factory()
             if include_defaults or default is MISSING or item != default:
-                if isinstance(model, m.WeatherReport) and key == "weather":
-                    assert isinstance(encoded, dict)
-                    result.update({k: v for k, v in encoded.items() if k != "type"})
-                else:
-                    result[key] = _contextualize(encoded, hints[f.name])
+                result[key] = _contextualize(encoded, hints[f.name])
         return result
     finally:
         active.remove(id(value))
@@ -542,6 +526,8 @@ def from_json_dict(
     if expected_type is not None and expected_type not in _BY_MODEL:
         raise JSONModelError("expected_type must be a supported concrete APRS model")
     model = expected_type or _tagged_model(raw, tuple(_BY_MODEL), "$")
+    if model in _PAYLOAD_MODELS:
+        _tagged_model(raw, (model,), "$")
     return _decode_model(raw, model, "$", 0, max_depth)
 
 
