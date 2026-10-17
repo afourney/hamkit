@@ -11,9 +11,8 @@ they do not claim to produce a TNC2 line. Calling `serialize_packet` on those
 models raises `CodecNotImplemented`.
 
 Install from a repository checkout with `python -m pip install -e packages/aprs`.
-Each Python block below runs independently. Each JSON block is one complete
-input: copy it into a string named `json_text` and run the one-line call directly
-beneath it. Every example is followed by its exact output and checked by tests.
+Each Python block below runs independently, including the examples that embed
+JSON directly. Every example is followed by its exact output and checked by tests.
 Nothing here sends packets over a network or radio.
 
 ## Find an example
@@ -44,11 +43,11 @@ Start with one status packet. `parse_packet` reads the whole TNC2 envelope and
 returns a Packet with a Header and a typed payload. `to_json` is a module function.
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.parse_packet(b"N0CALL>APRS:>Ready")
+packet = aprs.parse_packet(b"N0CALL>APRS:>Ready")
 print(packet)
-print(a.to_json(packet, indent=2))
+print(aprs.to_json(packet, indent=2))
 ```
 
 Output:
@@ -76,15 +75,17 @@ fields are edited. JSON type tags identify models, not Python class names.
 ## Build a status packet
 
 **Wire encoding available** for basic status text. These two inputs build the
-same packet and produce the same TNC2 line.
+same packet and produce the same TNC2 line. `from_json` builds the Packet;
+`serialize_packet` converts it to bytes. `.decode("ascii")` displays these
+printable examples without a Python bytes prefix.
 
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(a.Header("N0CALL", "APRS"), a.Status(b"Ready"))
-print(a.serialize_packet(packet).decode("ascii"))
+packet = aprs.Packet(aprs.Header("N0CALL", "APRS"), aprs.Status(b"Ready"))
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
 
 Output:
@@ -95,7 +96,11 @@ N0CALL>APRS:>Ready
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -107,9 +112,10 @@ Build the same packet from JSON:
     "text": "Ready"
   }
 }
+"""
+)
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(a.serialize_packet(a.from_json(json_text)).decode("ascii"))`
 
 Output:
 
@@ -131,11 +137,11 @@ examples easy to read; keep the bytes when handling binary payloads.
 Read one position packet:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.parse_packet(b"N0CALL>APRS:!4903.50N/07201.75W>")
+packet = aprs.parse_packet(b"N0CALL>APRS:!4903.50N/07201.75W>")
 print(packet)
-print(a.to_json(packet, indent=2))
+print(aprs.to_json(packet, indent=2))
 ```
 
 Output:
@@ -163,13 +169,13 @@ Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Posi
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"),
-    a.Position(49.05833333333333, -72.02916666666667, symbol=a.Symbol("/", ">")),
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.Position(49.05833333333333, -72.02916666666667, symbol=aprs.Symbol("/", ">")),
 )
-print(a.serialize_packet(packet).decode("ascii"))
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
 
 Output:
@@ -180,7 +186,11 @@ N0CALL>APRS:!4903.50N/07201.75W>
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -196,9 +206,10 @@ Build the same packet from JSON:
     }
   }
 }
+"""
+)
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(a.serialize_packet(a.from_json(json_text)).decode("ascii"))`
 
 Output:
 
@@ -213,10 +224,12 @@ N0CALL>APRS:!4903.50N/07201.75W>
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(a.Header("N0CALL", "APRS"), a.Message("W1AW", b"Hello", "003"))
-print(a.serialize_packet(packet).decode("ascii"))
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"), aprs.Message("W1AW", b"Hello", "003")
+)
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
 
 Output:
@@ -227,7 +240,11 @@ N0CALL>APRS::W1AW     :Hello{003
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -241,9 +258,10 @@ Build the same packet from JSON:
     "message_id": "003"
   }
 }
+"""
+)
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(a.serialize_packet(a.from_json(json_text)).decode("ascii"))`
 
 Output:
 
@@ -258,10 +276,10 @@ N0CALL>APRS::W1AW     :Hello{003
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(a.Header("N0CALL", "APRS"), a.Acknowledgment("W1AW", "003"))
-print(a.serialize_packet(packet).decode("ascii"))
+packet = aprs.Packet(aprs.Header("N0CALL", "APRS"), aprs.Acknowledgment("W1AW", "003"))
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
 
 Output:
@@ -272,7 +290,11 @@ N0CALL>APRS::W1AW     :ack003
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -285,9 +307,10 @@ Build the same packet from JSON:
     "message_id": "003"
   }
 }
+"""
+)
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(a.serialize_packet(a.from_json(json_text)).decode("ascii"))`
 
 Output:
 
@@ -302,13 +325,13 @@ N0CALL>APRS::W1AW     :ack003
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"),
-    a.ThirdParty(a.Packet(a.Header("W1AW", "APRS"), a.Status(b"Ready"))),
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.ThirdParty(aprs.Packet(aprs.Header("W1AW", "APRS"), aprs.Status(b"Ready"))),
 )
-print(a.serialize_packet(packet).decode("ascii"))
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
 
 Output:
@@ -319,7 +342,11 @@ N0CALL>APRS:}W1AW>APRS:>Ready
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -340,9 +367,10 @@ Build the same packet from JSON:
     }
   }
 }
+"""
+)
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(a.serialize_packet(a.from_json(json_text)).decode("ascii"))`
 
 Output:
 
@@ -357,10 +385,12 @@ N0CALL>APRS:}W1AW>APRS:>Ready
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(a.Header("N0CALL", "APRS"), a.UserDefined(b"Q", b"1", b"Hello"))
-print(a.serialize_packet(packet).decode("ascii"))
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"), aprs.UserDefined(b"Q", b"1", b"Hello")
+)
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
 
 Output:
@@ -371,7 +401,11 @@ N0CALL>APRS:{Q1Hello
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -385,9 +419,10 @@ Build the same packet from JSON:
     "data": "Hello"
   }
 }
+"""
+)
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(a.serialize_packet(a.from_json(json_text)).decode("ascii"))`
 
 Output:
 
@@ -402,10 +437,10 @@ N0CALL>APRS:{Q1Hello
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(a.Header("N0CALL", "APRS"), a.Invalid(b"invalid fix"))
-print(a.serialize_packet(packet).decode("ascii"))
+packet = aprs.Packet(aprs.Header("N0CALL", "APRS"), aprs.Invalid(b"invalid fix"))
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
 
 Output:
@@ -416,7 +451,11 @@ N0CALL>APRS:,invalid fix
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -428,9 +467,10 @@ Build the same packet from JSON:
     "data": "invalid fix"
   }
 }
+"""
+)
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(a.serialize_packet(a.from_json(json_text)).decode("ascii"))`
 
 Output:
 
@@ -445,10 +485,10 @@ N0CALL>APRS:,invalid fix
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(a.Header("N0CALL", "APRS"), a.Reserved(ord("~"), b"data"))
-print(a.serialize_packet(packet).decode("ascii"))
+packet = aprs.Packet(aprs.Header("N0CALL", "APRS"), aprs.Reserved(ord("~"), b"data"))
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
 
 Output:
@@ -459,7 +499,11 @@ N0CALL>APRS:~data
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -472,9 +516,10 @@ Build the same packet from JSON:
     "data": "data"
   }
 }
+"""
+)
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(a.serialize_packet(a.from_json(json_text)).decode("ascii"))`
 
 Output:
 
@@ -489,10 +534,10 @@ N0CALL>APRS:~data
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(a.Header("N0CALL", "APRS"), a.Opaque(b"~vendor data"))
-print(a.serialize_packet(packet).decode("ascii"))
+packet = aprs.Packet(aprs.Header("N0CALL", "APRS"), aprs.Opaque(b"~vendor data"))
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
 
 Output:
@@ -503,7 +548,11 @@ N0CALL>APRS:~vendor data
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -515,9 +564,10 @@ Build the same packet from JSON:
     "information": "~vendor data"
   }
 }
+"""
+)
+print(aprs.serialize_packet(packet).decode("ascii"))
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(a.serialize_packet(a.from_json(json_text)).decode("ascii"))`
 
 Output:
 
@@ -536,15 +586,15 @@ For example, this is what happens if you ask the current encoder to write a
 weather model to the wire:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"),
-    a.Weather(temperature=a.Measurement(68, "fahrenheit")),
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.Weather(temperature=aprs.Measurement(68, "fahrenheit")),
 )
 try:
-    print(a.serialize_packet(packet).decode("ascii"))
-except a.CodecNotImplemented as error:
+    print(aprs.serialize_packet(packet).decode("ascii"))
+except aprs.CodecNotImplemented as error:
     print(type(error).__name__)
 ```
 
@@ -566,10 +616,11 @@ encoding. They remain useful for storing or exchanging structured data.
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"), a.MicE(a.Location(49, -72), (True, False, True))
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.MicE(aprs.Location(49, -72), (True, False, True)),
 )
 print(type(packet.payload).__name__)
 ```
@@ -582,7 +633,11 @@ MicE
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -598,9 +653,10 @@ Build the same packet from JSON:
     "comment_bits": [true, false, true]
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -615,11 +671,13 @@ MicE
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"),
-    a.Object("AID #2", a.Location(49, -72), a.Timestamp("dhm_utc", 12, 30, day=17)),
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.Object(
+        "AID #2", aprs.Location(49, -72), aprs.Timestamp("dhm_utc", 12, 30, day=17)
+    ),
 )
 print(type(packet.payload).__name__)
 ```
@@ -632,7 +690,11 @@ Object
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -654,9 +716,10 @@ Build the same packet from JSON:
     }
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -671,9 +734,11 @@ Object
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(a.Header("N0CALL", "APRS"), a.Item("WATER", a.Location(49, -72)))
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"), aprs.Item("WATER", aprs.Location(49, -72))
+)
 print(type(packet.payload).__name__)
 ```
 
@@ -685,7 +750,11 @@ Item
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -701,9 +770,10 @@ Build the same packet from JSON:
     }
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -718,15 +788,15 @@ Item
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"),
-    a.Weather(
-        wind_direction=a.Measurement(270, "degrees"),
-        wind_speed=a.Measurement(12, "mph"),
-        temperature=a.Measurement(68, "fahrenheit"),
-        pressure=a.Measurement(1013.2, "hPa"),
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.Weather(
+        wind_direction=aprs.Measurement(270, "degrees"),
+        wind_speed=aprs.Measurement(12, "mph"),
+        temperature=aprs.Measurement(68, "fahrenheit"),
+        pressure=aprs.Measurement(1013.2, "hPa"),
     ),
 )
 print(type(packet.payload).__name__)
@@ -740,7 +810,11 @@ Weather
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -767,9 +841,10 @@ Build the same packet from JSON:
     }
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -786,10 +861,11 @@ Weather
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"), a.Telemetry((199, 0, 255), (False, True), sequence=1)
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.Telemetry((199, 0, 255), (False, True), sequence=1),
 )
 print(type(packet.payload).__name__)
 ```
@@ -802,7 +878,11 @@ Telemetry
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -816,9 +896,10 @@ Build the same packet from JSON:
     "sequence": 1
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -833,11 +914,11 @@ Telemetry
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"),
-    a.Definition("N0CALL", a.Parameters(("Temperature", "Voltage"))),
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.Definition("N0CALL", aprs.Parameters(("Temperature", "Voltage"))),
 )
 print(type(packet.payload).__name__)
 ```
@@ -850,7 +931,11 @@ Definition
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -866,9 +951,10 @@ Build the same packet from JSON:
     }
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -885,9 +971,11 @@ Definition
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(a.Header("N0CALL", "APRS"), a.AutoAnswer("W1AW", b"Away", "02"))
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"), aprs.AutoAnswer("W1AW", b"Away", "02")
+)
 print(type(packet.payload).__name__)
 ```
 
@@ -899,7 +987,11 @@ AutoAnswer
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -913,9 +1005,10 @@ Build the same packet from JSON:
     "previous_ack": "02"
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -930,10 +1023,10 @@ AutoAnswer
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"), a.Bulletin("1", b"Meeting at 1900", "CLUB")
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"), aprs.Bulletin("1", b"Meeting at 1900", "CLUB")
 )
 print(type(packet.payload).__name__)
 ```
@@ -946,7 +1039,11 @@ Bulletin
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -960,9 +1057,10 @@ Build the same packet from JSON:
     "group": "CLUB"
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -977,10 +1075,10 @@ Bulletin
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"), a.NWSBulletin("NWS-WARN", b"Storm", "S9JbA")
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"), aprs.NWSBulletin("NWS-WARN", b"Storm", "S9JbA")
 )
 print(type(packet.payload).__name__)
 ```
@@ -993,7 +1091,11 @@ NWSBulletin
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -1007,9 +1109,10 @@ Build the same packet from JSON:
     "reference_id": "S9JbA"
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -1024,10 +1127,10 @@ NWSBulletin
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"), a.Radiogram("W1AW", a.Text(1, b"Hello"), "001")
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"), aprs.Radiogram("W1AW", aprs.Text(1, b"Hello"), "001")
 )
 print(type(packet.payload).__name__)
 ```
@@ -1040,7 +1143,11 @@ Radiogram
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -1058,9 +1165,10 @@ Build the same packet from JSON:
     "message_id": "001"
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -1075,11 +1183,11 @@ Radiogram
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"),
-    a.Query("APRS", footprint=a.Footprint(a.Coordinates(49, -72), 20)),
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.Query("APRS", footprint=aprs.Footprint(aprs.Coordinates(49, -72), 20)),
 )
 print(type(packet.payload).__name__)
 ```
@@ -1092,7 +1200,11 @@ Query
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -1111,9 +1223,10 @@ Build the same packet from JSON:
     }
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -1128,10 +1241,11 @@ Query
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"), a.Response("W1AW", a.DirectStations(("N0CALL",)))
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.Response("W1AW", aprs.DirectStations(("N0CALL",))),
 )
 print(type(packet.payload).__name__)
 ```
@@ -1144,7 +1258,11 @@ Response
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -1160,9 +1278,10 @@ Build the same packet from JSON:
     }
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -1177,9 +1296,11 @@ Response
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(a.Header("N0CALL", "APRS"), a.Capabilities((a.Capability("IGATE"),)))
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"), aprs.Capabilities((aprs.Capability("IGATE"),))
+)
 print(type(packet.payload).__name__)
 ```
 
@@ -1191,7 +1312,11 @@ Capabilities
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -1207,9 +1332,10 @@ Build the same packet from JSON:
     ]
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -1226,10 +1352,11 @@ Capabilities
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"), a.NMEA(a.GLL(a.Coordinates(49, -72), b"123000", "A"))
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.NMEA(aprs.GLL(aprs.Coordinates(49, -72), b"123000", "A")),
 )
 print(type(packet.payload).__name__)
 ```
@@ -1242,7 +1369,11 @@ NMEA
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -1262,9 +1393,10 @@ Build the same packet from JSON:
     }
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -1279,9 +1411,11 @@ NMEA
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(a.Header("N0CALL", "APRS"), a.RawWeather("ultw", b"$ULTW0000"))
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"), aprs.RawWeather("ultw", b"$ULTW0000")
+)
 print(type(packet.payload).__name__)
 ```
 
@@ -1293,7 +1427,11 @@ RawWeather
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -1306,9 +1444,10 @@ Build the same packet from JSON:
     "information": "$ULTW0000"
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -1323,9 +1462,9 @@ RawWeather
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(a.Header("N0CALL", "APRS"), a.Agrelo(123, 4))
+packet = aprs.Packet(aprs.Header("N0CALL", "APRS"), aprs.Agrelo(123, 4))
 print(type(packet.payload).__name__)
 ```
 
@@ -1337,7 +1476,11 @@ Agrelo
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -1350,9 +1493,10 @@ Build the same packet from JSON:
     "quality_code": 4
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -1367,9 +1511,11 @@ Agrelo
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(a.Header("N0CALL", "APRS"), a.Maidenhead(a.Grid("IO91SX")))
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"), aprs.Maidenhead(aprs.Grid("IO91SX"))
+)
 print(type(packet.payload).__name__)
 ```
 
@@ -1381,7 +1527,11 @@ Maidenhead
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -1395,9 +1545,10 @@ Build the same packet from JSON:
     }
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -1412,10 +1563,10 @@ Maidenhead
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"), a.LegacyPosition(b"X1J ", a.Position(49, -72))
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"), aprs.LegacyPosition(b"X1J ", aprs.Position(49, -72))
 )
 print(type(packet.payload).__name__)
 ```
@@ -1428,7 +1579,11 @@ LegacyPosition
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -1445,9 +1600,10 @@ Build the same packet from JSON:
     }
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -1462,9 +1618,9 @@ LegacyPosition
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(a.Header("N0CALL", "APRS"), a.Beacon(b"UIDIGI ready"))
+packet = aprs.Packet(aprs.Header("N0CALL", "APRS"), aprs.Beacon(b"UIDIGI ready"))
 print(type(packet.payload).__name__)
 ```
 
@@ -1476,7 +1632,11 @@ Beacon
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -1488,9 +1648,10 @@ Build the same packet from JSON:
     "text": "UIDIGI ready"
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -1505,10 +1666,10 @@ Beacon
 Build with Python:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.Packet(
-    a.Header("N0CALL", "APRS"), a.ExternalExtension("polygon_line", b"raw")
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"), aprs.ExternalExtension("polygon_line", b"raw")
 )
 print(type(packet.payload).__name__)
 ```
@@ -1521,7 +1682,11 @@ ExternalExtension
 
 Build the same packet from JSON:
 
-```json
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
 {
   "type": "packet",
   "header": {
@@ -1534,9 +1699,10 @@ Build the same packet from JSON:
     "information": "raw"
   }
 }
+"""
+)
+print(type(packet.payload).__name__)
 ```
-
-Run with the JSON above as `json_text`: `import hamkit.aprs as a; print(type(a.from_json(json_text).payload).__name__)`
 
 Output:
 
@@ -1550,13 +1716,13 @@ Unsupported payloads are preserved as Opaque by default. This weather packet's
 information field is retained, not decoded into Weather measurements:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
-packet = a.parse_packet(
+packet = aprs.parse_packet(
     b"N0CALL>APRS:_10090556c220s004g005t077r001p025P012h50b09900WRSW"
 )
 print(packet)
-print(a.to_json(packet, indent=2))
+print(aprs.to_json(packet, indent=2))
 ```
 
 Output:
@@ -1587,11 +1753,11 @@ Malformed supported payloads raise an error by default. This single input has an
 invalid position; the example prints the exception class:
 
 ```python
-import hamkit.aprs as a
+from hamkit import aprs
 
 try:
-    packet = a.parse_packet(b"N0CALL>APRS:!not a position")
-except a.APRSError as error:
+    packet = aprs.parse_packet(b"N0CALL>APRS:!not a position")
+except aprs.APRSError as error:
     print(type(error).__name__)
 ```
 
@@ -1615,7 +1781,7 @@ with a trailing newline. Do not strip arbitrary binary payload bytes.
   no automatic conversion is performed.
 - `to_json_dict` and `from_json_dict` work with dictionaries. Use
   `to_json(packet, indent=2, include_defaults=True)` to show optional defaults.
-- `from_json(json_text, expected_type=a.Packet)` checks the expected model.
+- `from_json(text, expected_type=aprs.Packet)` checks the expected model.
   Unknown fields, duplicate keys, and missing or incompatible tags raise
   `JSONModelError`.
 - JSON round trips preserve model values and raw evidence. They do not preserve

@@ -26,36 +26,38 @@ class ReadmeTests(unittest.TestCase):
         cls.examples = []
         for index in range(0, len(blocks), 2):
             source, output = blocks[index : index + 2]
-            if source[1] not in ("python", "json") or output[1] != "text":
+            if source[1] != "python" or output[1] != "text":
                 raise AssertionError(
-                    "Each input must immediately pair with text output"
+                    "Each runnable Python input must pair with text output"
                 )
-            between = document[source.end() : output.start()]
-            if source[1] == "python":
-                if between != "\n\nOutput:\n\n":
-                    raise AssertionError(
-                        "Python input must have immediate Output block"
-                    )
-                usage = source[2]
-            else:
-                match = re.fullmatch(
-                    r"\n\nRun with the JSON above as `json_text`: `([^`]+)`\n\nOutput:\n\n",
-                    between,
+            if document[source.end() : output.start()] != "\n\nOutput:\n\n":
+                raise AssertionError("Input must have an immediate Output block")
+            literals = [
+                node.args[0].value
+                for node in ast.walk(ast.parse(source[2]))
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "from_json"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ]
+            if len(literals) > 1:
+                raise AssertionError("Only one JSON input per block")
+            cls.examples.append(
+                (
+                    "json" if literals else "python",
+                    literals[0] if literals else source[2],
+                    source[2],
+                    output[2] + "\n",
                 )
-                if not match:
-                    raise AssertionError(
-                        "JSON input must pair with its call and output"
-                    )
-                usage = match[1]
-            cls.examples.append((source[1], source[2], usage, output[2] + "\n"))
+            )
 
     def run_example(
         self, language: str, source: str, code: str, expected: str
     ) -> dict[str, Any]:
         # Fresh namespace: examples cannot depend on a setup block or earlier packet.
         namespace: dict[str, Any] = {"__name__": "readme_example"}
-        if language == "json":
-            namespace["json_text"] = source
         ast.parse(code, feature_version=(3, 10))
         captured = io.StringIO()
         with contextlib.redirect_stdout(captured):
@@ -76,7 +78,7 @@ class ReadmeTests(unittest.TestCase):
             with self.subTest(source=source[:80]):
                 if language == "json":
                     self.assertIsInstance(a.from_json(source), a.Packet)
-                    continue
+                self.assertIn("from hamkit import aprs", code)
                 tree = ast.parse(code)
                 forbidden = (
                     ast.For,
@@ -103,7 +105,20 @@ class ReadmeTests(unittest.TestCase):
                 assert isinstance(value, ast.Call)
                 self.assertIsInstance(value.func, ast.Attribute)
                 assert isinstance(value.func, ast.Attribute)
-                self.assertIn(value.func.attr, ("Packet", "parse_packet"))
+                self.assertIn(value.func.attr, ("Packet", "parse_packet", "from_json"))
+                for call in ast.walk(tree):
+                    if (
+                        isinstance(call, ast.Call)
+                        and isinstance(call.func, ast.Attribute)
+                        and call.func.attr == "serialize_packet"
+                    ):
+                        self.assertEqual(len(call.args), 1)
+                        self.assertIsInstance(call.args[0], ast.Name)
+                        assert isinstance(call.args[0], ast.Name)
+                        self.assertEqual(call.args[0].id, "packet")
+                if language == "json":
+                    self.assertEqual(value.func.attr, "from_json")
+                    self.assertEqual(ast.literal_eval(value.args[0]), source)
                 if value.func.attr == "parse_packet":
                     self.assertEqual(len(value.args), 1)
                     self.assertIsInstance(value.args[0], ast.Constant)
@@ -139,11 +154,11 @@ class ReadmeTests(unittest.TestCase):
         for language, source, _, _ in self.examples:
             if (
                 language != "python"
-                or "a.parse_packet(" not in source
+                or "aprs.parse_packet(" not in source
                 or "try:" in source
             ):
                 continue
             self.assertIn("print(packet)", source)
-            self.assertIn("print(a.to_json(packet, indent=2))", source)
+            self.assertIn("print(aprs.to_json(packet, indent=2))", source)
             count += 1
         self.assertEqual(count, 3)
