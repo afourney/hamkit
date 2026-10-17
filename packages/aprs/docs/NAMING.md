@@ -2,7 +2,7 @@
 
 Python model names and JSON type tags describe APRS concepts. Short names are
 used where the meaning is clear; qualifiers distinguish different concepts.
-The [JSON reference](JSON_FORMAT.md) lists all 82 models, their tags and fields.
+The [JSON reference](JSON_FORMAT.md) lists all 83 models, their tags and fields.
 Attribute names such as `wind_speed` describe the value they hold.
 
 ## Weather and telemetry
@@ -69,3 +69,6 @@ These qualifiers distinguish packet formats, field meanings or operational roles
 | `LegacyPosition` / `legacy_position`            | Historical prefix/position wrapper differs from `Position`.                               |
 | `ExternalExtension` / `external_extension`      | External/vendor grammar and source evidence differ from standard `Extensions`.            |
 | `EncodedPacketFields` / `encoded_packet_fields` | Joint header/information encoding result differs from semantic `Packet` or a radio frame. |
+
+`Malformed` is a recovery result, separate from Packet and Payload. `Diagnostic.path`
+identifies affected fields; recovered values are ordinary JSON data.

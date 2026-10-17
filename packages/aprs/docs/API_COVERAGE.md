@@ -106,8 +106,8 @@ extending those examples and the capability registry.
   station-report timestamp/messaging flags. `Position.location` exposes that
   view of a station report. Object/item encoding and compression choices live
   on their wrappers; Mic-E has its own encoding metadata. Unsupported encoders
-  do not yet validate all field combinations. Models are construction values,
-  **not proofs of validity**. `validate_packet` means wire encodability and also
+  do not yet validate all field combinations. Constructors validate modeled types and semantic constraints,
+  independently of wire-codec availability. `validate_packet` means wire encodability and also
   raises when no codec exists.
 - Raw evidence fields never grant permission to override conflicting semantic
   values silently. Future codecs must validate consistency. `HeaderSemantics`
@@ -121,17 +121,34 @@ binary CR/LF inside information. `parse_tnc2_line` instead requires exactly one
 LF/CRLF terminator and rejects embedded delimiters; its `original_wire` excludes
 the terminator. `serialize_tnc2_line` emits CRLF and rejects non-line-safe data.
 All 256 byte values are tested in `UserDefined.data` in monitor mode; RF size
-limits still apply. Text input is only a reversible Latin-1 byte carrier.
+limits still apply. Wire str input is only a reversible Latin-1 byte carrier. Human-readable model
+text is printable ASCII str.
 
-`DecodeOptions` separates unsupported (`opaque` default / `raise`) from malformed
-supported fields (`raise` default / `opaque`). Recovered payloads include a typed
-diagnostic. Unknown input is not claimed to have a valid known representation.
-Invalid outer envelopes, wrong Python types, missing context and depth limits
-still raise. Empty information can be retained by malformed recovery, but its
-opaque model is not serializable as a valid APRS packet; retain `original_wire`
-for exact evidence. Known message validation can reject high-bit text; explicit
-malformed recovery retains it without endorsing it. This is **not universal
-lossless recovery or a complete conformance validator**.
+`parse_packet` returns Packet or one top-level Malformed when a header or
+implemented payload component is invalid. `decode_payload` uses the same boundary
+rule for a standalone payload. Malformed contains original_wire, diagnostics with
+field paths, and recovered ordinary JSON in the normal schema. It never appears
+inside Packet.payload. Reliable components are recovered independently; missing
+or undecodable values are not invented. Corrected recovered data must pass strict
+JSON construction before it becomes a normal Packet. Serialization rejects
+Malformed and always revalidates structured data.
+
+DecodeOptions separates unsupported (`opaque` / `raise`) from malformed
+(`return` / `raise`, default return). Unknown/unimplemented formats remain explicitly
+unsupported; they are not presumed malformed. Context and resource failures
+raise. A broken outer header can still recover supported inner fields. Nested
+third-party failures produce one outer Malformed with nested diagnostic paths.
+
+Protocol text uses printable ASCII str; binary content and exact evidence remain
+bytes, represented reversibly by Latin-1 code points in JSON. No replacement
+characters, guessed UTF-8 or surrogateescape strings are introduced. Constructors
+and JSON imports validate field types, finite numbers, coordinates/timestamps,
+mandatory components, address/symbol/message syntax and modeled quantity ranges.
+Packet Weather requires an MDHM timestamp; nested Weather can omit it. Classic
+Telemetry requires sequence and complete channels; active NMEA fixes need coordinates.
+These model invariants do not imply an available wire codec or implement unknown
+grammars. Raw evidence never overrides structured fields or supplies a missing
+value. Timestamp encoding ignores stale raw evidence and uses its structured time.
 
 `max_depth` counts third-party wrappers (default 4, configurable 0–32). The same
 bound is enforced in both directions. The outer validation profile does not

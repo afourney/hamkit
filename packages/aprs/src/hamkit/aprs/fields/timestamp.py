@@ -13,8 +13,6 @@ def encode_timestamp(value: Timestamp) -> bytes:
         raise CodecNotImplemented("MDHM weather timestamp")
     if value.month is not None:
         raise FieldError("month is only valid in MDHM timestamps")
-    if value.raw is not None:
-        raise CodecNotImplemented("timestamp raw evidence consistency validation")
     if not all(type(n) is int for n in (value.hour, value.minute)):
         raise FieldError("timestamp components must be integers")
     if not (0 <= value.hour <= 23 and 0 <= value.minute <= 59):

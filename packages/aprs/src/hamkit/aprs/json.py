@@ -31,6 +31,7 @@ from . import data as d
 from . import models as m
 from . import nmea as n
 from .errors import APRSError
+from .model_validation import ModelError, json_data, validate_model
 
 JSONValue: TypeAlias = (
     None | bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"]
@@ -118,6 +119,7 @@ JSONModel: TypeAlias = (
     | m.Diagnostic
     | m.Opaque
     | m.Packet
+    | m.Malformed
     | m.EncodedPacketFields
 )
 
@@ -232,6 +234,7 @@ _SCHEMAS = (
     _Schema(m.Diagnostic, "diagnostic"),
     _Schema(m.Opaque, "opaque"),
     _Schema(m.Packet, "packet"),
+    _Schema(m.Malformed, "malformed"),
     _Schema(m.EncodedPacketFields, "encoded_packet_fields"),
 )
 _BY_MODEL = {schema.model: schema for schema in _SCHEMAS}
@@ -305,6 +308,13 @@ def _decode(value: object, annotation: Any, path: str, depth: int, maximum: int)
             return None
         raise JSONModelError(f"{path}: expected null")
     origin, args = get_origin(annotation), get_args(annotation)
+    if origin is dict:
+        recovered = dict(_object(value, path))
+        try:
+            json_data(recovered, path)
+        except ModelError as exc:
+            raise JSONModelError(str(exc)) from exc
+        return json.loads(json.dumps(recovered, allow_nan=False))
     if origin in (Union, types.UnionType):
         models = tuple(t for t in args if t in _BY_MODEL)
         if isinstance(value, Mapping) and models:
@@ -401,7 +411,10 @@ def _decode_model(
         for f in fields(model)
         if schema.key(f.name) in value
     }
-    return model(**kwargs)
+    try:
+        return model(**kwargs)
+    except ModelError as exc:
+        raise JSONModelError(f"{path}{str(exc)[1:]}") from exc
 
 
 def _python_matches(value: object, annotation: Any) -> bool:
@@ -411,6 +424,8 @@ def _python_matches(value: object, annotation: Any) -> bool:
         return any(_python_matches(value, variant) for variant in args)
     if origin is Literal:
         return any(type(value) is type(v) and value == v for v in args)
+    if origin is dict:
+        return type(value) is dict
     if origin is tuple:
         if type(value) is not tuple:
             return False
@@ -441,10 +456,17 @@ def _encode(
         return value
     if type(value) is bytes:
         return value.decode("latin-1")
-    if type(value) is tuple:
+    if type(value) is dict:
+        return {
+            key: _encode(
+                child, include_defaults, path + "." + key, depth + 1, maximum, active
+            )
+            for key, child in value.items()
+        }
+    if type(value) in (tuple, list):
         return [
             _encode(item, include_defaults, f"{path}[{i}]", depth + 1, maximum, active)
-            for i, item in enumerate(value)
+            for i, item in enumerate(cast(tuple[object, ...] | list[object], value))
         ]
     if type(value) not in _BY_MODEL:
         raise JSONModelError(f"{path}: unsupported value {type(value).__name__}")
@@ -491,6 +513,10 @@ def to_json_dict(
         raise ValueError("include_defaults must be bool")
     if type(value) not in _BY_MODEL:
         raise JSONModelError("expected a supported APRS packet, payload or field model")
+    try:
+        validate_model(value)
+    except ModelError as exc:
+        raise JSONModelError(str(exc)) from exc
     result = _encode(value, include_defaults, "$", 0, max_depth, set())
     assert isinstance(result, dict)
     return result

@@ -6,7 +6,7 @@
 
 from .codec import parse_packet, serialize_packet
 from .errors import EnvelopeError
-from .models import DecodeOptions, EncodeOptions, Packet, ValidationProfile
+from .models import DecodeOptions, EncodeOptions, Malformed, Packet, ValidationProfile
 
 _DEFAULT_DECODE = DecodeOptions()
 _DEFAULT_ENCODE = EncodeOptions()
@@ -17,7 +17,7 @@ def parse_tnc2_line(
     *,
     profile: ValidationProfile = "monitor",
     options: DecodeOptions = _DEFAULT_DECODE,
-) -> Packet:
+) -> Packet | Malformed:
     """Require one LF or CRLF terminator and reject embedded line delimiters.
 
     original_wire on the result excludes the transport terminator.

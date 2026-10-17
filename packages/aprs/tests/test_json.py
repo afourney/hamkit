@@ -58,7 +58,7 @@ class JSONRoundTripTests(unittest.TestCase):
         for value in examples:
             self.round_trip(cast(a.JSONModel, value))
         for model in get_args(a.JSONModel):
-            if all(
+            if model is not a.Telemetry and all(
                 f.default is not dataclasses.MISSING
                 or f.default_factory is not dataclasses.MISSING
                 for f in dataclasses.fields(model)
@@ -67,7 +67,7 @@ class JSONRoundTripTests(unittest.TestCase):
 
     def test_stable_tags_and_context(self) -> None:
         self.assertEqual(
-            a.to_json_dict(a.Status(b"Ready")), {"type": "status", "text": "Ready"}
+            a.to_json_dict(a.Status("Ready")), {"type": "status", "text": "Ready"}
         )
         self.assertEqual(
             a.to_json_dict(a.Position(49, -72)),
@@ -111,9 +111,8 @@ class JSONRoundTripTests(unittest.TestCase):
         self.assertIn(r"\u00ff", text)
         self.assertIn(r"\u0000", text)
         self.round_trip(original)
-        self.assertEqual(
-            a.from_json('{"type":"status","text":"\\u00e9"}'), a.Status(b"\xe9")
-        )
+        with self.assertRaises(a.JSONModelError):
+            a.from_json('{"type":"status","text":"\\u00e9"}')
 
     def test_null_absent_and_zero(self) -> None:
         absent = a.from_json_dict({"type": "weather"})
@@ -161,7 +160,7 @@ class JSONRoundTripTests(unittest.TestCase):
         self.assertIsInstance(model, a.Object)
 
     def test_key_order_does_not_choose_type(self) -> None:
-        value = a.to_json_dict(a.Message("W1AW", b"Hello"))
+        value = a.to_json_dict(a.Message("W1AW", "Hello"))
         self.assertEqual(
             a.from_json_dict(dict(reversed(list(value.items())))),
             a.from_json_dict(value),
@@ -186,7 +185,7 @@ class JSONRoundTripTests(unittest.TestCase):
         weather = a.Weather(
             temperature=a.Measurement(None, "fahrenheit", b"..."),
             timestamp=a.Timestamp("mdhm_utc", 12, 30, day=17, month=10),
-            comment=b"weather\x00\xff",
+            comment="weather",
             raw=b"sensor bytes",
         )
         telemetry = a.Telemetry(
@@ -197,7 +196,7 @@ class JSONRoundTripTests(unittest.TestCase):
             sequence_raw=b"MIC",
             raw=b"channels",
             mic_comma=False,
-            comment=b"telemetry\xff",
+            comment="telemetry",
         )
         for model, tag in ((weather, "weather"), (telemetry, "telemetry")):
             self.round_trip(model)
@@ -300,19 +299,19 @@ class JSONNegativeTests(unittest.TestCase):
             with self.subTest(text=text), self.assertRaises(a.JSONModelError):
                 a.from_json(text)
         for value in (math.nan, math.inf, -math.inf):
-            with self.subTest(value=value), self.assertRaises(a.JSONModelError):
-                a.to_json(a.Measurement(value, "mph"))
+            with self.subTest(value=value), self.assertRaises(a.ModelError):
+                a.Measurement(value, "mph")
 
     def test_invalid_python_models_are_not_coerced(self) -> None:
-        for value in (
-            a.Status(cast(Any, "Hello")),
-            a.Position(True, 0),
-            a.Message("W1AW", message_id=cast(Any, 1)),
-            a.Telemetry(digital=cast(Any, (1,))),
-            a.Hop("D1", repeated=cast(Any, 1)),
+        for build in (
+            lambda: a.Status(cast(Any, b"Hello")),
+            lambda: a.Position(True, 0),
+            lambda: a.Message("W1AW", message_id=cast(Any, 1)),
+            lambda: a.Telemetry(digital=cast(Any, (1,))),
+            lambda: a.Hop("D1", repeated=cast(Any, 1)),
         ):
-            with self.subTest(value=value), self.assertRaises(a.JSONModelError):
-                a.to_json(value)
+            with self.assertRaises(a.ModelError):
+                build()
 
     def test_payload_union_does_not_accept_arbitrary_field_models(self) -> None:
         with self.assertRaises(a.JSONModelError):
@@ -329,7 +328,7 @@ class JSONNegativeTests(unittest.TestCase):
         variants = (
             (a.Definition("N0CALL", a.Units(("V",))), "definition"),
             (a.NMEA(a.VTG()), "sentence"),
-            (a.Radiogram("W1AW", a.Text(1, b"Hello")), "record"),
+            (a.Radiogram("W1AW", a.Text(1, "Hello")), "record"),
             (a.Response("W1AW", a.DirectStations(("N0CALL",))), "response"),
             (a.Packet(a.Header("N0CALL", "APRS"), a.Status()), "payload"),
         )

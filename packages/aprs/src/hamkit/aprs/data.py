@@ -15,6 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, TypeAlias
 
+from .model_validation import Validated
+
 TimestampKind: TypeAlias = Literal["dhm_utc", "dhm_local", "hms_utc", "mdhm_utc"]
 PositionEncoding: TypeAlias = Literal["uncompressed", "compressed"]
 Bounds: TypeAlias = tuple[float, float]
@@ -47,14 +49,14 @@ Unit: TypeAlias = Literal[
 
 
 @dataclass(frozen=True)
-class Measurement:
+class Measurement(Validated):
     value: float | None
     unit: Unit
     raw: bytes | None = None
 
 
 @dataclass(frozen=True)
-class Timestamp:
+class Timestamp(Validated):
     """Partial time; MDHM has month/day, never an inferred year or UTC offset."""
 
     kind: TimestampKind
@@ -67,26 +69,26 @@ class Timestamp:
 
 
 @dataclass(frozen=True)
-class Coordinates:
+class Coordinates(Validated):
     latitude_deg: float
     longitude_deg: float
 
 
 @dataclass(frozen=True)
-class Extent:
+class Extent(Validated):
     latitude: Bounds
     longitude: Bounds
 
 
 @dataclass(frozen=True)
-class Ambiguity:
+class Ambiguity(Validated):
     digits: int
     extent: Extent | None = None
     representative: Literal["center"] = "center"
 
 
 @dataclass(frozen=True)
-class Symbol:
+class Symbol(Validated):
     """Wire table/overlay byte plus symbol; lower-case compressed overlays retained."""
 
     table_id: str = "/"
@@ -94,14 +96,14 @@ class Symbol:
 
 
 @dataclass(frozen=True)
-class Grid:
+class Grid(Validated):
     locator: str
     bounds: Extent | None = None
     center: Coordinates | None = None
 
 
 @dataclass(frozen=True)
-class Motion:
+class Motion(Validated):
     course_deg: float | None = None
     speed_knots: float | None = None
     course_code: int | None = None
@@ -113,20 +115,20 @@ class Motion:
 
 
 @dataclass(frozen=True)
-class Altitude:
+class Altitude(Validated):
     measurement: Measurement
     encoding: Literal["feet_extension", "compressed", "mic_e", "nmea"]
     reference: Literal["unspecified", "MSL", "ellipsoid"] = "unspecified"
 
 
 @dataclass(frozen=True)
-class Range:
+class Range(Validated):
     miles: float
     raw: bytes | None = None
 
 
 @dataclass(frozen=True)
-class PHG:
+class PHG(Validated):
     power_w: float
     height_haat_ft: float
     gain_dbi: float
@@ -138,7 +140,7 @@ class PHG:
 
 
 @dataclass(frozen=True)
-class Signal:
+class Signal(Validated):
     s_units: int
     height_haat_ft: float
     gain_db: float
@@ -147,7 +149,7 @@ class Signal:
 
 
 @dataclass(frozen=True)
-class Bearing:
+class Bearing(Validated):
     bearing_deg: float
     hits_code: int
     range_code: int
@@ -160,7 +162,7 @@ class Bearing:
 
 
 @dataclass(frozen=True)
-class Compression:
+class Compression(Validated):
     """Raw csT plus semantic bits; c=space can explicitly ignore the remainder."""
 
     type_value: int
@@ -172,7 +174,7 @@ class Compression:
 
 
 @dataclass(frozen=True)
-class DAO:
+class DAO(Validated):
     datum_byte: str
     latitude_precision: int
     longitude_precision: int
@@ -181,7 +183,7 @@ class DAO:
 
 
 @dataclass(frozen=True)
-class Area:
+class Area(Validated):
     shape_code: int
     color_code: int
     latitude_offset_code: int
@@ -193,18 +195,18 @@ class Area:
 
 
 @dataclass(frozen=True)
-class Signpost:
-    label: bytes
+class Signpost(Validated):
+    label: str
 
 
 @dataclass(frozen=True)
-class WaterHeight:
+class WaterHeight(Validated):
     measurement: Measurement
     reference_datum: str | None = None
 
 
 @dataclass(frozen=True)
-class Weather:
+class Weather(Validated):
     """Weather observations, usable as a payload or a located extension."""
 
     wind_direction: Measurement | None = None
@@ -220,15 +222,15 @@ class Weather:
     luminosity: Measurement | None = None
     rain_counter: Measurement | None = None
     water_height: WaterHeight | None = None
-    software_code: bytes | None = None
-    device_code: bytes | None = None
+    software_code: str | None = None
+    device_code: str | None = None
     raw: bytes | None = None
     timestamp: Timestamp | None = None
-    comment: bytes = b""
+    comment: str = ""
 
 
 @dataclass(frozen=True)
-class Storm:
+class Storm(Validated):
     kind: Literal["HC", "TS", "TD"]
     predicted: bool
     sustained_wind_knots: float
@@ -248,7 +250,7 @@ TelemetryEncoding: TypeAlias = Literal[
 
 
 @dataclass(frozen=True)
-class Telemetry:
+class Telemetry(Validated):
     """Ordered raw channels, uncalibrated. Missing channels are None, not zero."""
 
     analog: AnalogChannels = ()
@@ -258,11 +260,11 @@ class Telemetry:
     sequence_raw: bytes | None = None
     raw: bytes | None = None
     mic_comma: bool = True
-    comment: bytes = b""
+    comment: str = ""
 
 
 @dataclass(frozen=True)
-class Extensions:
+class Extensions(Validated):
     motion: Motion | None = None
     altitude: Altitude | None = None
     phg: PHG | None = None
@@ -278,7 +280,7 @@ class Extensions:
 
 
 @dataclass(frozen=True)
-class Location:
+class Location(Validated):
     """Shared spatial content, without report-level timestamps or messaging flags."""
 
     latitude_deg: float
@@ -287,55 +289,55 @@ class Location:
     ambiguity: Ambiguity | None = None
     extensions: Extensions = field(default_factory=Extensions)
     tail: bytes = b""
-    comment: bytes = b""
+    comment: str = ""
 
 
 @dataclass(frozen=True)
-class Beam:
+class Beam(Validated):
     heading_deg: float
     erp_w: float
     raw: bytes | None = None
 
 
 @dataclass(frozen=True)
-class ReplyAck:
+class ReplyAck(Validated):
     message_number: str
     previous_ack: str | None = None
 
 
 @dataclass(frozen=True)
-class Parameters:
+class Parameters(Validated):
     channels: tuple[str | None, ...]
 
 
 @dataclass(frozen=True)
-class Units:
+class Units(Validated):
     channels: tuple[str | None, ...]
 
 
 @dataclass(frozen=True)
-class Calibration:
+class Calibration(Validated):
     a: float
     b: float
     c: float
 
 
 @dataclass(frozen=True)
-class Equations:
+class Equations(Validated):
     coefficients: tuple[Calibration | None, ...]
 
 
 @dataclass(frozen=True)
-class Bits:
+class Bits(Validated):
     sense: DigitalChannels
-    project_title: bytes = b""
+    project_title: str = ""
 
 
 DefinitionValue: TypeAlias = Parameters | Units | Equations | Bits
 
 
 @dataclass(frozen=True)
-class NTSHeader:
+class NTSHeader(Validated):
     number: str
     precedence: str
     handling: str
@@ -347,28 +349,28 @@ class NTSHeader:
 
 
 @dataclass(frozen=True)
-class Address:
+class Address(Validated):
     lines: tuple[str, str, str, str]
 
 
 @dataclass(frozen=True)
-class Phone:
+class Phone(Validated):
     number: str
 
 
 @dataclass(frozen=True)
-class Text:
+class Text(Validated):
     line: Literal[1, 2, 3, 4, 5, 6]
-    text: bytes
+    text: str
 
 
 @dataclass(frozen=True)
-class Signature:
-    text: bytes
+class Signature(Validated):
+    text: str
 
 
 @dataclass(frozen=True)
-class Routing:
+class Routing(Validated):
     received_from: str
     received_at: str
     sent_to: str
@@ -379,12 +381,12 @@ NTSRecord: TypeAlias = NTSHeader | Address | Phone | Text | Signature | Routing
 
 
 @dataclass(frozen=True)
-class Footprint:
+class Footprint(Validated):
     center: Coordinates
     radius_miles: float
 
 
 @dataclass(frozen=True)
-class Capability:
+class Capability(Validated):
     name: str
-    value: bytes | None = None
+    value: str | None = None

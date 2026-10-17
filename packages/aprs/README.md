@@ -13,7 +13,7 @@ models raises `CodecNotImplemented`.
 Install from a repository checkout with `python -m pip install -e packages/aprs`.
 Construction examples run independently, including those that embed JSON
 directly. After each parsing example, the JSON display block uses `packet` from
-the block immediately above it. Each block prints one result, followed by its
+the block immediately above it. The recovery example also uses the result immediately above it. Each block prints one result, followed by its
 exact output; the examples are checked by tests.
 Nothing here sends packets over a network or radio.
 
@@ -54,7 +54,7 @@ print(packet)
 Output:
 
 ```text
-Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Status(text=b'Ready', timestamp=None, grid=None, symbol=None, beam=None), header_semantics=None)
+Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Status(text='Ready', timestamp=None, grid=None, symbol=None, beam=None), header_semantics=None)
 ```
 
 Show that same packet as JSON:
@@ -96,7 +96,7 @@ Build with Python:
 ```python
 from hamkit import aprs
 
-packet = aprs.Packet(aprs.Header("N0CALL", "APRS"), aprs.Status(b"Ready"))
+packet = aprs.Packet(aprs.Header("N0CALL", "APRS"), aprs.Status("Ready"))
 print(aprs.serialize_packet(packet).decode("ascii"))
 ```
 
@@ -158,7 +158,7 @@ print(packet)
 Output:
 
 ```text
-Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Position(latitude_deg=49.05833333333333, longitude_deg=-72.02916666666667, symbol=Symbol(table_id='/', code='>'), messaging=False, timestamp=None, tail=b'', encoding='uncompressed', ambiguity=None, compression=None, extensions=Extensions(motion=None, altitude=None, phg=None, range=None, signal=None, bearing=None, dao=None, area=None, signpost=None, weather=None, storm=None, telemetry=None), comment=b''), header_semantics=None)
+Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Position(latitude_deg=49.05833333333333, longitude_deg=-72.02916666666667, symbol=Symbol(table_id='/', code='>'), messaging=False, timestamp=None, tail=b'', encoding='uncompressed', ambiguity=None, compression=None, extensions=Extensions(motion=None, altitude=None, phg=None, range=None, signal=None, bearing=None, dao=None, area=None, signpost=None, weather=None, storm=None, telemetry=None), comment=''), header_semantics=None)
 ```
 
 Show that same packet as JSON:
@@ -249,7 +249,7 @@ Build with Python:
 from hamkit import aprs
 
 packet = aprs.Packet(
-    aprs.Header("N0CALL", "APRS"), aprs.Message("W1AW", b"Hello", "003")
+    aprs.Header("N0CALL", "APRS"), aprs.Message("W1AW", "Hello", "003")
 )
 print(aprs.serialize_packet(packet).decode("ascii"))
 ```
@@ -351,7 +351,7 @@ from hamkit import aprs
 
 packet = aprs.Packet(
     aprs.Header("N0CALL", "APRS"),
-    aprs.ThirdParty(aprs.Packet(aprs.Header("W1AW", "APRS"), aprs.Status(b"Ready"))),
+    aprs.ThirdParty(aprs.Packet(aprs.Header("W1AW", "APRS"), aprs.Status("Ready"))),
 )
 print(aprs.serialize_packet(packet).decode("ascii"))
 ```
@@ -612,7 +612,10 @@ from hamkit import aprs
 
 packet = aprs.Packet(
     aprs.Header("N0CALL", "APRS"),
-    aprs.Weather(temperature=aprs.Measurement(68, "fahrenheit")),
+    aprs.Weather(
+        temperature=aprs.Measurement(68, "fahrenheit"),
+        timestamp=aprs.Timestamp("mdhm_utc", 12, 30, day=17, month=10),
+    ),
 )
 try:
     print(aprs.serialize_packet(packet).decode("ascii"))
@@ -672,7 +675,11 @@ packet = aprs.from_json(
       "latitude_deg": 49,
       "longitude_deg": -72
     },
-    "comment_bits": [true, false, true]
+    "comment_bits": [
+      true,
+      false,
+      true
+    ]
   }
 }
 """
@@ -819,6 +826,7 @@ packet = aprs.Packet(
         wind_speed=aprs.Measurement(12, "mph"),
         temperature=aprs.Measurement(68, "fahrenheit"),
         pressure=aprs.Measurement(1013.2, "hPa"),
+        timestamp=aprs.Timestamp("mdhm_utc", 12, 30, day=17, month=10),
     ),
 )
 print(type(packet.payload).__name__)
@@ -860,6 +868,13 @@ packet = aprs.from_json(
     "pressure": {
       "value": 1013.2,
       "unit": "hPa"
+    },
+    "timestamp": {
+      "kind": "mdhm_utc",
+      "hour": 12,
+      "minute": 30,
+      "day": 17,
+      "month": 10
     }
   }
 }
@@ -887,7 +902,11 @@ from hamkit import aprs
 
 packet = aprs.Packet(
     aprs.Header("N0CALL", "APRS"),
-    aprs.Telemetry((199, 0, 255), (False, True), sequence=1),
+    aprs.Telemetry(
+        (199, 0, 255, 73, 123),
+        (False, True, True, False, True, False, False, True),
+        sequence=1,
+    ),
 )
 print(type(packet.payload).__name__)
 ```
@@ -913,8 +932,23 @@ packet = aprs.from_json(
   },
   "payload": {
     "type": "telemetry",
-    "analog": [199, 0, 255],
-    "digital": [false, true],
+    "analog": [
+      199,
+      0,
+      255,
+      73,
+      123
+    ],
+    "digital": [
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true
+    ],
     "sequence": 1
   }
 }
@@ -969,7 +1003,10 @@ packet = aprs.from_json(
     "addressee": "N0CALL",
     "definition": {
       "type": "parameters",
-      "channels": ["Temperature", "Voltage"]
+      "channels": [
+        "Temperature",
+        "Voltage"
+      ]
     }
   }
 }
@@ -996,7 +1033,7 @@ Build with Python:
 from hamkit import aprs
 
 packet = aprs.Packet(
-    aprs.Header("N0CALL", "APRS"), aprs.AutoAnswer("W1AW", b"Away", "02")
+    aprs.Header("N0CALL", "APRS"), aprs.AutoAnswer("W1AW", "Away", "02")
 )
 print(type(packet.payload).__name__)
 ```
@@ -1048,7 +1085,7 @@ Build with Python:
 from hamkit import aprs
 
 packet = aprs.Packet(
-    aprs.Header("N0CALL", "APRS"), aprs.Bulletin("1", b"Meeting at 1900", "CLUB")
+    aprs.Header("N0CALL", "APRS"), aprs.Bulletin("1", "Meeting at 1900", "CLUB")
 )
 print(type(packet.payload).__name__)
 ```
@@ -1100,7 +1137,7 @@ Build with Python:
 from hamkit import aprs
 
 packet = aprs.Packet(
-    aprs.Header("N0CALL", "APRS"), aprs.NWSBulletin("NWS-WARN", b"Storm", "S9JbA")
+    aprs.Header("N0CALL", "APRS"), aprs.NWSBulletin("NWS-WARN", "Storm", "S9JbA")
 )
 print(type(packet.payload).__name__)
 ```
@@ -1152,7 +1189,7 @@ Build with Python:
 from hamkit import aprs
 
 packet = aprs.Packet(
-    aprs.Header("N0CALL", "APRS"), aprs.Radiogram("W1AW", aprs.Text(1, b"Hello"), "001")
+    aprs.Header("N0CALL", "APRS"), aprs.Radiogram("W1AW", aprs.Text(1, "Hello"), "001")
 )
 print(type(packet.payload).__name__)
 ```
@@ -1296,7 +1333,9 @@ packet = aprs.from_json(
     "addressee": "W1AW",
     "response": {
       "type": "direct_stations",
-      "stations": ["N0CALL"]
+      "stations": [
+        "N0CALL"
+      ]
     }
   }
 }
@@ -1378,7 +1417,7 @@ from hamkit import aprs
 
 packet = aprs.Packet(
     aprs.Header("N0CALL", "APRS"),
-    aprs.NMEA(aprs.GLL(aprs.Coordinates(49, -72), b"123000", "A")),
+    aprs.NMEA(aprs.GLL(aprs.Coordinates(49, -72), "123000", "A")),
 )
 print(type(packet.payload).__name__)
 ```
@@ -1642,7 +1681,7 @@ Build with Python:
 ```python
 from hamkit import aprs
 
-packet = aprs.Packet(aprs.Header("N0CALL", "APRS"), aprs.Beacon(b"UIDIGI ready"))
+packet = aprs.Packet(aprs.Header("N0CALL", "APRS"), aprs.Beacon("UIDIGI ready"))
 print(type(packet.payload).__name__)
 ```
 
@@ -1749,7 +1788,7 @@ print(packet)
 Output:
 
 ```text
-Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Opaque(information=b'_10090556c220s004g005t077r001p025P012h50b09900WRSW', reason='unsupported information field family', diagnostic=Diagnostic(code='unsupported', message='unsupported information field family')), header_semantics=None)
+Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Opaque(information=b'_10090556c220s004g005t077r001p025P012h50b09900WRSW', reason='unsupported information field family', diagnostic=Diagnostic(code='unsupported', message='unsupported information field family', path='$')), header_semantics=None)
 ```
 
 Show that same packet as JSON:
@@ -1781,33 +1820,107 @@ Output:
 ```
 
 To require an implemented decoder, pass `DecodeOptions(unsupported="raise")`.
-Malformed supported payloads raise an error by default. This single input has an
-invalid position; the example prints the exception class:
+Malformed headers or supported payload fields return a single `Malformed` for
+the entire input. Its `recovered` dictionary contains reliable values in the
+ordinary packet JSON shape; it is data, not a partially valid Packet. Diagnostics
+identify the fields that need attention. Unimplemented codecs remain Opaque (or
+raise when requested); unknown content is not assumed malformed.
+
+Here the latitude is valid, but the longitude is out of range:
 
 ```python
 from hamkit import aprs
 
-try:
-    packet = aprs.parse_packet(b"N0CALL>APRS:!not a position")
-except aprs.APRSError as error:
-    print(type(error).__name__)
+packet = aprs.parse_packet(b"N0CALL>APRS:!4903.50N/19000.00W-")
+print(packet)
 ```
 
 Output:
 
 ```text
-FieldError
+Malformed(original_wire=b'N0CALL>APRS:!4903.50N/19000.00W-', diagnostics=(Diagnostic(code='malformed', message='coordinate out of range', path='$.payload.longitude_deg'),), recovered={'type': 'packet', 'header': {'source': 'N0CALL', 'destination': 'APRS'}, 'payload': {'type': 'position', 'messaging': False, 'latitude_deg': 49.05833333333333, 'tail': '', 'symbol': {'table_id': '/', 'code': '-'}}})
 ```
 
-Use `DecodeOptions(malformed="opaque")` to retain a malformed payload with a
-diagnostic. Invalid outer headers and resource-limit violations still raise.
-`parse_packet` consumes unframed bytes; use `parse_tnc2_line` for a transport line
-with a trailing newline. Do not strip arbitrary binary payload bytes.
+Show that recovery result as JSON:
+
+```python
+print(aprs.to_json(packet, indent=2))
+```
+
+Output:
+
+```text
+{
+  "type": "malformed",
+  "original_wire": "N0CALL>APRS:!4903.50N/19000.00W-",
+  "diagnostics": [
+    {
+      "code": "malformed",
+      "message": "coordinate out of range",
+      "path": "$.payload.longitude_deg"
+    }
+  ],
+  "recovered": {
+    "type": "packet",
+    "header": {
+      "source": "N0CALL",
+      "destination": "APRS"
+    },
+    "payload": {
+      "type": "position",
+      "messaging": false,
+      "latitude_deg": 49.05833333333333,
+      "tail": "",
+      "symbol": {
+        "table_id": "/",
+        "code": "-"
+      }
+    }
+  }
+}
+```
+
+Correct the recovered longitude from the result immediately above, then build a
+strict Packet and reconstruct its wire bytes:
+
+```python
+import copy
+
+recovered = copy.deepcopy(packet.recovered)
+recovered["payload"]["longitude_deg"] = -72.0
+packet = aprs.from_json_dict(recovered, expected_type=aprs.Packet)
+print(aprs.serialize_packet(packet).decode("ascii"))
+```
+
+Output:
+
+```text
+N0CALL>APRS:!4903.50N/07200.00W-
+```
+
+`serialize_packet` rejects Malformed. Constructors and JSON import reject missing
+mandatory values, invalid types and modeled domain constraints; raw evidence
+cannot make an invalid model valid. `DecodeOptions(malformed="raise")` requests
+exceptions instead of recovery. Context and resource-limit failures still raise.
+
+`parse_packet` consumes unframed bytes. `parse_tnc2_line` requires one LF/CRLF
+terminator and returns Packet or Malformed; framing errors raise. Do not strip
+arbitrary binary payload bytes.
 
 ## Bytes, units and round trips
 
-- Python text fields that represent packet bytes use `b"..."`. JSON represents
-  those bytes as Latin-1 strings: `\u0000` is byte 0 and `\u00ff` is byte 255.
+- Human-readable protocol text and identifiers use Python `str` and printable
+  ASCII. Encoding does not guess UTF-8 or replace undecodable characters. Invalid
+  bytes in supported text fields yield Malformed with the exact original bytes.
+- Raw/binary content (UserDefined.data, Opaque.information, unsliced position tails
+  and archival evidence) uses bytes. JSON represents each raw byte as the same
+  Latin-1 code point: `\u0000` is byte 0 and `\u00ff` is byte 255. Export escapes
+  those bytes; no surrogateescape strings are used. A str supplied to parse_packet
+  is explicitly a Latin-1 wire-byte carrier, not decoded protocol text.
+- Constructors enforce types, finite values, coordinate/time bounds and modeled
+  field constraints before a normal model exists. The serializer revalidates
+  structured data. Original wire bytes and raw codes never override edits or
+  provide a fallback; explicit raw portions are encoded as their own content.
 - A missing weather measurement differs from `Measurement(None, "mph")`, which
   means an unavailable reading. Zero is an actual measurement. Units are explicit;
   no automatic conversion is performed.
@@ -1815,14 +1928,15 @@ with a trailing newline. Do not strip arbitrary binary payload bytes.
   `to_json(packet, indent=2, include_defaults=True)` to show optional defaults.
 - `from_json(text, expected_type=aprs.Packet)` checks the expected model.
   Unknown fields, duplicate keys, and missing or incompatible tags raise
-  `JSONModelError`.
+  `JSONModelError`. Direct invalid constructors raise `ModelError` (or TypeError
+  for missing arguments).
 - JSON round trips preserve model values and raw evidence. They do not preserve
   whitespace, key order, or whether an optional null was originally omitted.
   `serialize_packet` encodes the model; it does not replay `original_wire`.
 
 ## Full reference
 
-- [Illustrated JSON reference](docs/JSON_FORMAT.md): all 82 models, expanded nested
+- [Illustrated JSON reference](docs/JSON_FORMAT.md): all 83 models, expanded nested
   objects, every union variant, fields, defaults, tags, units and enums.
 - [Wire support by family](docs/API_COVERAGE.md): implemented subsets and gaps.
 - [Naming guide](docs/NAMING.md): short public names and why some qualifiers remain.

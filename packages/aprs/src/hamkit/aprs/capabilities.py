@@ -75,7 +75,7 @@ _CAPABILITIES: tuple[CodecCapability, ...] = (
         m.Opaque,
         "raw",
         "raw",
-        "Payload recovery only; invalid outer envelopes and resource limits still raise.",
+        "Unsupported raw content only; malformed input has a separate recovery result.",
     ),
     *(
         CodecCapability(

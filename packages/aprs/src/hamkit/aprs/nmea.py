@@ -13,10 +13,11 @@ from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
 from .data import Coordinates, RawFields
+from .model_validation import Validated
 
 
 @dataclass(frozen=True)
-class NMEAMetadata:
+class NMEAMetadata(Validated):
     talker: str = "GP"
     checksum_supplied: str | None = None
     checksum_valid: bool | None = None
@@ -24,29 +25,29 @@ class NMEAMetadata:
 
 
 @dataclass(frozen=True)
-class GGA:
-    time_utc: bytes
+class GGA(Validated):
+    time_utc: str
     coordinates: Coordinates | None
     fix_quality: int
     satellites: int | None = None
     hdop: float | None = None
     altitude_msl_m: float | None = None
     geoid_separation_m: float | None = None
-    dgps_age: bytes | None = None
-    dgps_station: bytes | None = None
+    dgps_age: str | None = None
+    dgps_station: str | None = None
 
 
 @dataclass(frozen=True)
-class GLL:
+class GLL(Validated):
     coordinates: Coordinates | None
-    time_utc: bytes
+    time_utc: str
     fix_status: Literal["A", "V"]
 
 
 @dataclass(frozen=True)
-class RMC:
-    time_utc: bytes
-    date_ddmmyy: bytes
+class RMC(Validated):
+    time_utc: str
+    date_ddmmyy: str
     fix_status: Literal["A", "V"]
     coordinates: Coordinates | None
     speed_knots: float | None = None
@@ -56,7 +57,7 @@ class RMC:
 
 
 @dataclass(frozen=True)
-class VTG:
+class VTG(Validated):
     course_true_deg: float | None = None
     course_magnetic_deg: float | None = None
     speed_knots: float | None = None
@@ -64,9 +65,9 @@ class VTG:
 
 
 @dataclass(frozen=True)
-class WPL:
+class WPL(Validated):
     coordinates: Coordinates
-    name: bytes
+    name: str
 
 
 NMEASentence: TypeAlias = GGA | GLL | RMC | VTG | WPL

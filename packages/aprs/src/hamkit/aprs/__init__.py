@@ -87,6 +87,7 @@ from .json import (
     to_json,
     to_json_dict,
 )
+from .model_validation import ModelError
 from .models import (
     NMEA,
     Acknowledgment,
@@ -111,6 +112,7 @@ from .models import (
     Item,
     LegacyPosition,
     Maidenhead,
+    Malformed,
     MalformedPolicy,
     Message,
     MicE,
@@ -215,10 +217,12 @@ __all__ = [
     "LegacyPosition",
     "Location",
     "Maidenhead",
+    "Malformed",
     "MalformedPolicy",
     "Measurement",
     "Message",
     "MicE",
+    "ModelError",
     "Motion",
     "NMEAMetadata",
     "NMEASentence",

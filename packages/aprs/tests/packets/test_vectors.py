@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from hamkit.aprs import parse_packet, serialize_packet
+from hamkit.aprs import Packet, parse_packet, serialize_packet
 from vector_adapter import load_vectors, semantic_fields
 
 
@@ -29,6 +29,7 @@ class VectorTests(unittest.TestCase):
             with self.subTest(id=case["id"]):
                 raw = case["packet"].encode("latin-1")
                 packet = parse_packet(raw)
+                assert isinstance(packet, Packet)
                 self.assert_subset(semantic_fields(packet), case["expected"])
                 self.assertEqual(serialize_packet(packet), raw)
 

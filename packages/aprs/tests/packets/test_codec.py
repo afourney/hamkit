@@ -7,10 +7,12 @@ from dataclasses import replace
 
 from hamkit.aprs import (
     Acknowledgment,
+    DecodeOptions,
     EnvelopeError,
     FieldError,
     Header,
     Hop,
+    Malformed,
     Message,
     Opaque,
     Packet,
@@ -61,9 +63,10 @@ class PacketTests(unittest.TestCase):
     def test_original_wire_is_archival(self) -> None:
         raw = b"n0call-0>APRS,qAR,igate:>radio: ready > listening"
         packet = parse_packet(raw)
+        assert isinstance(packet, Packet)
         self.assertEqual(packet.original_wire, raw)
         self.assertEqual(serialize_packet(packet), raw)
-        changed = replace(packet, payload=Status(b"Changed"))
+        changed = replace(packet, payload=Status("Changed"))
         self.assertEqual(changed.original_wire, raw)
         self.assertTrue(serialize_packet(changed).endswith(b":>Changed"))
         with self.assertRaises(EnvelopeError):
@@ -71,6 +74,7 @@ class PacketTests(unittest.TestCase):
 
     def test_path_markers(self) -> None:
         packet = parse_packet(b"N0CALL>APRS,D1,D2*,WIDE2-1:>Ready")
+        assert isinstance(packet, Packet)
         self.assertEqual(
             packet.header.path, (Hop("D1"), Hop("D2", True), Hop("WIDE2-1"))
         )
@@ -78,23 +82,23 @@ class PacketTests(unittest.TestCase):
     def test_message_and_ack_round_trips(self) -> None:
         for payload in (
             Message("W1AW"),
-            Message("W1AW", b" leading: trailing ", "003"),
+            Message("W1AW", " leading: trailing ", "003"),
             Acknowledgment("W1AW", "003"),
             Acknowledgment("W1AW", "Ab9Z0", True),
-            Message("W1AW", b"acknowledge this please"),
+            Message("W1AW", "acknowledge this please"),
         ):
             with self.subTest(payload=payload):
                 self.assertEqual(decode_payload(encode_payload(payload)), payload)
         self.assertEqual(
-            encode_payload(Message("W1AW", b"Hello", "003")), b":W1AW     :Hello{003"
+            encode_payload(Message("W1AW", "Hello", "003")), b":W1AW     :Hello{003"
         )
 
     def test_status_round_trip(self) -> None:
         for value in (
             Status(),
-            Status(b"  padded  "),
-            Status(b"Ready", Timestamp("dhm_utc", 23, 45, day=9)),
-            Status(b"1234567 not a timestamp"),
+            Status("  padded  "),
+            Status("Ready", Timestamp("dhm_utc", 23, 45, day=9)),
+            Status("1234567 not a timestamp"),
         ):
             self.assertEqual(decode_payload(encode_payload(value)), value)
 
@@ -111,6 +115,7 @@ class PacketTests(unittest.TestCase):
         ):
             with self.subTest(information=information):
                 packet = parse_packet(b"N0CALL>APRS:" + information)
+                assert isinstance(packet, Packet)
                 self.assertIsInstance(packet.payload, Opaque)
                 self.assertEqual(serialize_packet(packet), packet.original_wire)
 
@@ -132,8 +137,10 @@ class PacketTests(unittest.TestCase):
             b"N0CALL>APRS>BAD:>x",
             b"N0CALL >APRS:>x",
         ):
-            with self.subTest(wire=wire), self.assertRaises(EnvelopeError):
-                parse_packet(wire)
+            with self.subTest(wire=wire):
+                self.assertIsInstance(parse_packet(wire), Malformed)
+                with self.assertRaises(EnvelopeError):
+                    parse_packet(wire, options=DecodeOptions(malformed="raise"))
 
     def test_bad_fields(self) -> None:
         for information in (
@@ -149,21 +156,25 @@ class PacketTests(unittest.TestCase):
             b">" + b"x" * 63,
             b"@000000z4903.50N/07201.75W-",
         ):
-            with self.subTest(information=information), self.assertRaises(FieldError):
-                decode_payload(information)
+            with self.subTest(information=information):
+                self.assertIsInstance(decode_payload(information), Malformed)
+                with self.assertRaises(FieldError):
+                    decode_payload(
+                        information, options=DecodeOptions(malformed="raise")
+                    )
 
     def test_invalid_construction(self) -> None:
-        for value in (
-            Message("W1AW", b"ack003"),
-            Message("W1AW", b"bad{body"),
-            Message("W1AW", b"\xff"),
-            Status(b"092345zambiguous"),
-            Position(0, 0, Symbol("x", "-")),
+        for build in (
+            lambda: Message("W1AW", "ack003"),
+            lambda: Message("W1AW", "bad{body"),
+            lambda: Message("W1AW", "ÿ"),
+            lambda: Status("092345zambiguous"),
+            lambda: Position(0, 0, Symbol("x", "-")),
         ):
-            with self.subTest(value=value), self.assertRaises(FieldError):
-                encode_payload(value)
+            with self.assertRaises(FieldError):
+                build()
         with self.assertRaises(UnsupportedFormat):
-            encode_payload(Message("BLN0", b"Notice"))
+            encode_payload(Message("BLN0", "Notice"))
 
     def test_rf_limits(self) -> None:
         for source in ("N0CALL-16", "TOOLONG", "n0call"):

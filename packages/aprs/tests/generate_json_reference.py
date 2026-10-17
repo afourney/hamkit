@@ -116,7 +116,7 @@ This is the canonical JSON format for `hamkit-aprs`. Examples are
 pretty-printed, executable data, with nested values expanded. They illustrate
 values, not legal ranges or complete APRS wire support. The field tables are the
 shape contract: every field, requiredness, default, allowed enum, unit and nested
-model is listed. All 82 serializable models and all 29 payload families appear.
+model is listed. All 83 serializable models and all 29 payload families appear.
 
 ## Contents
 
@@ -161,8 +161,8 @@ required. Object property order is not meaningful.
   payloads or fixed nested values. Python and JSON both expose their fields
   directly. Weather carries optional timestamp/comment; telemetry carries a
   comment alongside its channels, sequence and encoding evidence. Nothing is
-  discarded when either model is nested. Empty payloads are `{"type":"weather"}`
-  and `{"type":"telemetry"}`. See the [naming guide](NAMING.md) for the meanings
+  discarded when either model is nested. A Weather field can have no observations;
+  a full positionless-weather Packet still needs a timestamp. See the [naming guide](NAMING.md) for the meanings
   of short names and the reasons for qualified names.
 - Third-party payloads contain `packet`, whose fixed Packet object is untagged;
   the inner `payload` has its own tag. See [ThirdParty](#thirdparty).
@@ -170,12 +170,19 @@ required. Object property order is not meaningful.
 
 ## Values, defaults and constraints
 
-- `bytes` are Latin-1 JSON strings: each U+0000–U+00FF code point represents one
+- Protocol text and identifiers are printable ASCII Python strings, including
+  status/message text, comments, names and NMEA time/date tokens. Constructors
+  reject control characters, high-bit text and surrogates. Wire decoding never
+  silently replaces characters or guesses an encoding: undecodable supported
+  text produces a Malformed recovery result with original bytes.
+- Genuinely raw `bytes` are Latin-1 JSON strings: each U+0000–U+00FF code point represents one
   byte. JSON escapes such as `\\u0000` and `\\u00ff` preserve arbitrary binary data;
   this is not base64 and does not decode bytes as UTF-8. `to_json` emits ASCII-safe
-  escapes. Ordinary string fields may contain Unicode outside Latin-1.
+  escapes. Diagnostic explanations and recovered JSON may contain Unicode scalar
+  values; protocol text fields use printable ASCII.
 - Tuples become arrays. Fixed tuples require the exact length in the table;
-  variadic tuples may be empty. Numbers are finite, booleans are not integers,
+  variadic tuples follow their model constraints (e.g. classic telemetry channel
+  counts). Numbers are finite, booleans are not integers,
   numeric strings are not numbers, and enums match exactly, including case.
 - Missing optional fields receive the listed Python defaults. Explicit null is
   accepted only where the type allows null. The model does not remember whether
@@ -193,10 +200,31 @@ required. Object property order is not meaningful.
 - Unknown fields, duplicate JSON keys, unknown/missing/incompatible tags and
   invalid scalar types raise `JSONModelError` (an `APRSError`/`ValueError`). There
   is no arbitrary class loading or fallback to a different family.
-- This layer validates shape and annotated types, not all APRS numeric ranges,
-  cross-field constraints or wire encodability. It neither guesses timestamps
-  nor quantizes coordinates. Consult [wire coverage](API_COVERAGE.md).
-  Weather JSON works even though weather wire encoding is unimplemented.
+- Normal constructors and JSON imports enforce annotated types plus modeled
+  domain invariants: coordinate and timestamp bounds, mandatory timestamp
+  components, symbol/address syntax, message widths/IDs, weather quantity units
+  and ranges, and fixed-format telemetry/NMEA constraints. Invalid normal models
+  raise ModelError; JSON import presents these as JSONModelError. Codec availability
+  is separate: an otherwise valid model can still raise CodecNotImplemented.
+- Classic Telemetry requires a sequence (integer or MIC), five integer analog
+  channels in 0..255 and eight binary channels. Other encodings retain their
+  own optional sequence/missing-channel semantics. Weather measurement absence
+  is meaningful; a full Packet with Weather requires an MDHM timestamp, while
+  a fixed nested Weather field need not have one. Active NMEA fixes require
+  coordinates. DHM needs day, HMS needs second, MDHM needs month/day.
+- Encoding reconstructs from structured fields and revalidates them. Original
+  wire bytes, raw evidence and redundant raw codes do not override edits or
+  satisfy required fields. Explicit raw models/portions use bytes as content.
+  Unsupported codecs and unspecified external grammars are not claimed valid
+  merely because an input can be preserved. See [wire coverage](API_COVERAGE.md).
+- `parse_packet` returns Packet or one top-level Malformed; `decode_payload`
+  returns a payload or Malformed at that boundary. Malformed has original_wire,
+  diagnostics with field paths, and recovered ordinary JSON data. Its recovered
+  value uses the normal packet/payload schema, with missing/unreadable fields
+  omitted rather than guessed. Correct and complete that data, then use
+  from_json_dict to construct a normal model. Malformed is never a Packet payload
+  and cannot be serialized to TNC2. Its JSON can be exported/imported for inspection.
+  The recovered dictionary does not bypass normal model validation.
 - `max_depth` defaults to 64 and accepts integers 1–128. Cycles and excessive
   nesting fail. This is not an input-size bound. `include_defaults` must be bool;
   `indent` is null or a nonnegative integer.

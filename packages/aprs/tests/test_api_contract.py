@@ -61,7 +61,7 @@ class ModelContractTests(unittest.TestCase):
             a.Position(49, -72, ambiguity=a.Ambiguity(1)),
             a.Position(49, -72, extensions=a.Extensions(motion=a.Motion(90, 10))),
             a.Status(grid=a.Grid("IO91SX")),
-            a.Message("W1AW", b"Reply", reply_ack=a.ReplyAck("01", "02")),
+            a.Message("W1AW", "Reply", reply_ack=a.ReplyAck("01", "02")),
             a.Acknowledgment("W1AW", "01", reply_ack=a.ReplyAck("01", "02")),
         )
         for value in values:
@@ -99,11 +99,12 @@ class ModelContractTests(unittest.TestCase):
                 options=a.DecodeOptions(unsupported="raise"),
             )
         parsed = a.parse_packet(b"N0CALL>490S5P:`12345678")
+        assert isinstance(parsed, a.Packet)
         self.assertEqual(parsed.header.destination, "490S5P")
         self.assertIsInstance(parsed.payload, a.Opaque)
 
     def test_joint_encoding_result(self) -> None:
-        packet = a.Packet(a.Header("N0CALL", "APRS"), a.Status(b"Ready"))
+        packet = a.Packet(a.Header("N0CALL", "APRS"), a.Status("Ready"))
         result = a.encode_packet_fields(packet)
         self.assertEqual(result, a.EncodedPacketFields(packet.header, b">Ready"))
         self.assertEqual(

@@ -52,6 +52,8 @@ class ReadmeTests(unittest.TestCase):
                     else (
                         "continuation"
                         if source[2] == "print(aprs.to_json(packet, indent=2))"
+                        else "repair"
+                        if source[2].startswith("import copy\n")
                         else "python"
                     ),
                     literals[0] if literals else source[2],
@@ -87,8 +89,8 @@ class ReadmeTests(unittest.TestCase):
         self,
     ) -> None:
         self.assertEqual(
-            len(self.examples), 66
-        )  # 29 construction pairs, 4 parsing inputs, 3 JSON displays, 1 unsupported encoding.
+            len(self.examples), 68
+        )  # 29 construction pairs, 4 parsing inputs, 4 JSON displays, 1 unsupported encoding, 1 repair.
         namespace: dict[str, Any] | None = None
         for index, example in enumerate(self.examples):
             with self.subTest(example=index + 1):
@@ -96,8 +98,12 @@ class ReadmeTests(unittest.TestCase):
                     self.assertGreater(index, 0)
                     self.assertIn("aprs.parse_packet(", self.examples[index - 1][2])
                     self.assertIsNotNone(namespace)
-                    self.run_example(*example, namespace=namespace)
-                    namespace = None
+                    namespace = self.run_example(*example, namespace=namespace)
+                elif example[0] == "repair":
+                    self.assertEqual(self.examples[index - 1][0], "continuation")
+                    assert namespace is not None
+                    self.assertIsInstance(namespace["packet"], a.Malformed)
+                    namespace = self.run_example(*example, namespace=namespace)
                 else:
                     namespace = self.run_example(*example)
 
@@ -109,7 +115,10 @@ class ReadmeTests(unittest.TestCase):
                     continue
                 if language == "json":
                     self.assertIsInstance(a.from_json(source), a.Packet)
-                self.assertIn("from hamkit import aprs", code)
+                if language == "repair":
+                    self.assertIn("copy.deepcopy(packet.recovered)", code)
+                else:
+                    self.assertIn("from hamkit import aprs", code)
                 tree = ast.parse(code)
                 forbidden = (
                     ast.For,
@@ -136,7 +145,10 @@ class ReadmeTests(unittest.TestCase):
                 assert isinstance(value, ast.Call)
                 self.assertIsInstance(value.func, ast.Attribute)
                 assert isinstance(value.func, ast.Attribute)
-                self.assertIn(value.func.attr, ("Packet", "parse_packet", "from_json"))
+                self.assertIn(
+                    value.func.attr,
+                    ("Packet", "parse_packet", "from_json", "from_json_dict"),
+                )
                 for call in ast.walk(tree):
                     if (
                         isinstance(call, ast.Call)
@@ -193,4 +205,4 @@ class ReadmeTests(unittest.TestCase):
             self.assertNotIn("aprs.to_json", source)
             self.assertEqual(self.examples[index + 1][0], "continuation")
             count += 1
-        self.assertEqual(count, 3)
+        self.assertEqual(count, 4)

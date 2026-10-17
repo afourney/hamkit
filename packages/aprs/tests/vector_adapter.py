@@ -50,14 +50,14 @@ def semantic_fields(packet: Packet) -> Vector:
     }
     payload = packet.payload
     if isinstance(payload, Status):
-        result.update(kind="status", status_text=payload.text.decode("latin-1"))
+        result.update(kind="status", status_text=payload.text)
     elif isinstance(payload, Message):
         result.update(
             kind="message",
             message={
                 "addressee": payload.addressee,
                 "addressee_raw": payload.addressee_raw,
-                "text": payload.text.decode("latin-1"),
+                "text": payload.text,
                 "message_id": payload.message_id,
             },
         )

@@ -27,6 +27,7 @@ from .data import (
     Timestamp,
     Weather,
 )
+from .model_validation import Validated
 from .nmea import NMEAMetadata, NMEASentence
 
 WireInput: TypeAlias = bytes | str
@@ -36,12 +37,12 @@ SpecificationProfile: TypeAlias = Literal[
     "core-1.1", "historical-1.0", "compatibility-fap"
 ]
 UnsupportedPolicy: TypeAlias = Literal["opaque", "raise"]
-MalformedPolicy: TypeAlias = Literal["raise", "opaque"]
+MalformedPolicy: TypeAlias = Literal["return", "raise"]
 
 
 @dataclass(frozen=True)
-class DecodeOptions:
-    """Payload recovery only; invalid outer envelopes always raise.
+class DecodeOptions(Validated):
+    """Malformed inputs return a top-level recovery result by default.
 
     max_depth counts third-party wrappers, not the outer packet. Resource-limit
     failures always raise. Non-core specification profiles are reserved and
@@ -49,20 +50,20 @@ class DecodeOptions:
     """
 
     unsupported: UnsupportedPolicy = "opaque"
-    malformed: MalformedPolicy = "raise"
+    malformed: MalformedPolicy = "return"
     max_depth: int = 4
     specification: SpecificationProfile = "core-1.1"
 
 
 @dataclass(frozen=True)
-class EncodeOptions:
+class EncodeOptions(Validated):
     max_depth: int = 4
     specification: SpecificationProfile = "core-1.1"
     destination: Literal["derive", "require_match"] = "derive"
 
 
 @dataclass(frozen=True)
-class Hop:
+class Hop(Validated):
     address: str
     repeated: bool = False
 
@@ -71,14 +72,14 @@ Path: TypeAlias = tuple[Hop, ...]
 
 
 @dataclass(frozen=True)
-class Header:
+class Header(Validated):
     source: str
     destination: str
     path: Path = ()
 
 
 @dataclass(frozen=True)
-class HeaderSemantics:
+class HeaderSemantics(Validated):
     """Optional interpretation, independent of the exact header tokens."""
 
     destination_grid: Grid | None = None
@@ -90,7 +91,7 @@ class HeaderSemantics:
 
 
 @dataclass(frozen=True)
-class Position:
+class Position(Validated):
     """Position report with its own encoding, timestamp and messaging flags.
 
     tail is the unsliced wire suffix when extensions are not decoded. For
@@ -108,7 +109,7 @@ class Position:
     ambiguity: Ambiguity | None = None
     compression: Compression | None = None
     extensions: Extensions = field(default_factory=Extensions)
-    comment: bytes = b""
+    comment: str = ""
 
     @property
     def location(self) -> Location:
@@ -132,7 +133,7 @@ class Position:
 
 
 @dataclass(frozen=True)
-class MicE:
+class MicE(Validated):
     """Header-dependent position. Destination is jointly encoded with payload."""
 
     position: Location
@@ -148,7 +149,7 @@ class MicE:
 
 
 @dataclass(frozen=True)
-class Object:
+class Object(Validated):
     name: str
     position: Location
     timestamp: Timestamp
@@ -161,7 +162,7 @@ class Object:
 
 
 @dataclass(frozen=True)
-class Item:
+class Item(Validated):
     name: str
     position: Location
     alive: bool = True
@@ -172,15 +173,15 @@ class Item:
 
 
 @dataclass(frozen=True)
-class Definition:
+class Definition(Validated):
     addressee: str
     definition: DefinitionValue
     values_raw: RawFields = ()
 
 
 @dataclass(frozen=True)
-class Status:
-    text: bytes = b""
+class Status(Validated):
+    text: str = ""
     timestamp: Timestamp | None = None
     grid: Grid | None = None
     symbol: Symbol | None = None
@@ -188,9 +189,9 @@ class Status:
 
 
 @dataclass(frozen=True)
-class Message:
+class Message(Validated):
     addressee: str
-    text: bytes = b""
+    text: str = ""
     message_id: str | None = None
     reply_ack: ReplyAck | None = None
 
@@ -200,7 +201,7 @@ class Message:
 
 
 @dataclass(frozen=True)
-class Acknowledgment:
+class Acknowledgment(Validated):
     addressee: str
     message_id: str
     rejected: bool = False
@@ -208,37 +209,37 @@ class Acknowledgment:
 
 
 @dataclass(frozen=True)
-class AutoAnswer:
+class AutoAnswer(Validated):
     addressee: str
-    text: bytes
+    text: str
     previous_ack: str | None = None
 
 
 @dataclass(frozen=True)
-class Bulletin:
+class Bulletin(Validated):
     identifier: str
-    text: bytes
+    text: str
     group: str | None = None
     announcement: bool = False
     legacy: bool = False
 
 
 @dataclass(frozen=True)
-class NWSBulletin:
+class NWSBulletin(Validated):
     addressee: str
-    text: bytes
+    text: str
     reference_id: str | None = None
 
 
 @dataclass(frozen=True)
-class Radiogram:
+class Radiogram(Validated):
     addressee: str
     record: NTSRecord
     message_id: str | None = None
 
 
 @dataclass(frozen=True)
-class Query:
+class Query(Validated):
     """General or directed; open query name preserves unrecognized requests."""
 
     name: str
@@ -250,18 +251,18 @@ class Query:
 
 
 @dataclass(frozen=True)
-class DirectStations:
+class DirectStations(Validated):
     stations: tuple[str, ...]
 
 
 @dataclass(frozen=True)
-class HeardStation:
+class HeardStation(Validated):
     station: str
     counts: tuple[int | None, ...]
 
 
 @dataclass(frozen=True)
-class Trace:
+class Trace(Validated):
     header: Header
 
 
@@ -269,39 +270,39 @@ ResponseValue: TypeAlias = DirectStations | HeardStation | Trace
 
 
 @dataclass(frozen=True)
-class Response:
+class Response(Validated):
     addressee: str
     response: ResponseValue
 
 
 @dataclass(frozen=True)
-class Capabilities:
+class Capabilities(Validated):
     tokens: tuple[Capability, ...]
 
 
 @dataclass(frozen=True)
-class NMEA:
+class NMEA(Validated):
     sentence: NMEASentence
     metadata: NMEAMetadata = field(default_factory=NMEAMetadata)
     position_usable: bool | None = None
     symbol: Symbol | None = None
-    comment: bytes = b""
+    comment: str = ""
 
 
 @dataclass(frozen=True)
-class ThirdParty:
+class ThirdParty(Validated):
     packet: Packet
 
 
 @dataclass(frozen=True)
-class UserDefined:
+class UserDefined(Validated):
     user_id: bytes
     user_type: bytes
     data: bytes
 
 
 @dataclass(frozen=True)
-class RawWeather:
+class RawWeather(Validated):
     """Vendor layout is not specified here; retain the complete information field."""
 
     format: Literal["ultimeter_ii", "ultimeter_2000", "ultw", "peet_logging"]
@@ -310,21 +311,21 @@ class RawWeather:
 
 
 @dataclass(frozen=True)
-class Agrelo:
+class Agrelo(Validated):
     bearing_deg: int
     quality_code: int
     raw: bytes | None = None
 
 
 @dataclass(frozen=True)
-class Maidenhead:
+class Maidenhead(Validated):
     grid: Grid
     symbol: Symbol | None = None
-    comment: bytes = b""
+    comment: str = ""
 
 
 @dataclass(frozen=True)
-class LegacyPosition:
+class LegacyPosition(Validated):
     """X1J prefix-position convention, only for the historical profile."""
 
     prefix: bytes
@@ -332,23 +333,23 @@ class LegacyPosition:
 
 
 @dataclass(frozen=True)
-class Beacon:
-    text: bytes
+class Beacon(Validated):
+    text: str
 
 
 @dataclass(frozen=True)
-class Invalid:
+class Invalid(Validated):
     data: bytes
 
 
 @dataclass(frozen=True)
-class Reserved:
+class Reserved(Validated):
     dti: int
     data: bytes
 
 
 @dataclass(frozen=True)
-class ExternalExtension:
+class ExternalExtension(Validated):
     """Named extension lacking an authoritative grammar in this baseline.
 
     This is deliberately raw, not a guessed polygon or vendor measurement API.
@@ -361,13 +362,23 @@ class ExternalExtension:
 
 
 @dataclass(frozen=True)
-class Diagnostic:
+class Diagnostic(Validated):
     code: Literal["unsupported", "malformed"]
     message: str
+    path: str = "$"
 
 
 @dataclass(frozen=True)
-class Opaque:
+class Malformed(Validated):
+    """Invalid wire input with repairable JSON data, never an invalid Packet."""
+
+    original_wire: bytes
+    diagnostics: tuple[Diagnostic, ...]
+    recovered: dict[str, object]
+
+
+@dataclass(frozen=True)
+class Opaque(Validated):
     information: bytes
     reason: str = field(default="unsupported data type", compare=False)
     diagnostic: Diagnostic | None = field(default=None, compare=False)
@@ -407,7 +418,7 @@ Payload: TypeAlias = (
 
 
 @dataclass(frozen=True)
-class Packet:
+class Packet(Validated):
     header: Header
     payload: Payload
     original_wire: bytes | None = field(default=None, compare=False, repr=False)
@@ -415,7 +426,7 @@ class Packet:
 
 
 @dataclass(frozen=True)
-class EncodedPacketFields:
+class EncodedPacketFields(Validated):
     """Joint encoding result: use this header, not the original template header."""
 
     header: Header

@@ -4,7 +4,7 @@ This is the canonical JSON format for `hamkit-aprs`. Examples are
 pretty-printed, executable data, with nested values expanded. They illustrate
 values, not legal ranges or complete APRS wire support. The field tables are the
 shape contract: every field, requiredness, default, allowed enum, unit and nested
-model is listed. All 82 serializable models and all 29 payload families appear.
+model is listed. All 83 serializable models and all 29 payload families appear.
 
 ## Contents
 
@@ -49,8 +49,8 @@ required. Object property order is not meaningful.
   payloads or fixed nested values. Python and JSON both expose their fields
   directly. Weather carries optional timestamp/comment; telemetry carries a
   comment alongside its channels, sequence and encoding evidence. Nothing is
-  discarded when either model is nested. Empty payloads are `{"type":"weather"}`
-  and `{"type":"telemetry"}`. See the [naming guide](NAMING.md) for the meanings
+  discarded when either model is nested. A Weather field can have no observations;
+  a full positionless-weather Packet still needs a timestamp. See the [naming guide](NAMING.md) for the meanings
   of short names and the reasons for qualified names.
 - Third-party payloads contain `packet`, whose fixed Packet object is untagged;
   the inner `payload` has its own tag. See [ThirdParty](#thirdparty).
@@ -58,12 +58,19 @@ required. Object property order is not meaningful.
 
 ## Values, defaults and constraints
 
-- `bytes` are Latin-1 JSON strings: each U+0000–U+00FF code point represents one
+- Protocol text and identifiers are printable ASCII Python strings, including
+  status/message text, comments, names and NMEA time/date tokens. Constructors
+  reject control characters, high-bit text and surrogates. Wire decoding never
+  silently replaces characters or guesses an encoding: undecodable supported
+  text produces a Malformed recovery result with original bytes.
+- Genuinely raw `bytes` are Latin-1 JSON strings: each U+0000–U+00FF code point represents one
   byte. JSON escapes such as `\u0000` and `\u00ff` preserve arbitrary binary data;
   this is not base64 and does not decode bytes as UTF-8. `to_json` emits ASCII-safe
-  escapes. Ordinary string fields may contain Unicode outside Latin-1.
+  escapes. Diagnostic explanations and recovered JSON may contain Unicode scalar
+  values; protocol text fields use printable ASCII.
 - Tuples become arrays. Fixed tuples require the exact length in the table;
-  variadic tuples may be empty. Numbers are finite, booleans are not integers,
+  variadic tuples follow their model constraints (e.g. classic telemetry channel
+  counts). Numbers are finite, booleans are not integers,
   numeric strings are not numbers, and enums match exactly, including case.
 - Missing optional fields receive the listed Python defaults. Explicit null is
   accepted only where the type allows null. The model does not remember whether
@@ -81,10 +88,31 @@ required. Object property order is not meaningful.
 - Unknown fields, duplicate JSON keys, unknown/missing/incompatible tags and
   invalid scalar types raise `JSONModelError` (an `APRSError`/`ValueError`). There
   is no arbitrary class loading or fallback to a different family.
-- This layer validates shape and annotated types, not all APRS numeric ranges,
-  cross-field constraints or wire encodability. It neither guesses timestamps
-  nor quantizes coordinates. Consult [wire coverage](API_COVERAGE.md).
-  Weather JSON works even though weather wire encoding is unimplemented.
+- Normal constructors and JSON imports enforce annotated types plus modeled
+  domain invariants: coordinate and timestamp bounds, mandatory timestamp
+  components, symbol/address syntax, message widths/IDs, weather quantity units
+  and ranges, and fixed-format telemetry/NMEA constraints. Invalid normal models
+  raise ModelError; JSON import presents these as JSONModelError. Codec availability
+  is separate: an otherwise valid model can still raise CodecNotImplemented.
+- Classic Telemetry requires a sequence (integer or MIC), five integer analog
+  channels in 0..255 and eight binary channels. Other encodings retain their
+  own optional sequence/missing-channel semantics. Weather measurement absence
+  is meaningful; a full Packet with Weather requires an MDHM timestamp, while
+  a fixed nested Weather field need not have one. Active NMEA fixes require
+  coordinates. DHM needs day, HMS needs second, MDHM needs month/day.
+- Encoding reconstructs from structured fields and revalidates them. Original
+  wire bytes, raw evidence and redundant raw codes do not override edits or
+  satisfy required fields. Explicit raw models/portions use bytes as content.
+  Unsupported codecs and unspecified external grammars are not claimed valid
+  merely because an input can be preserved. See [wire coverage](API_COVERAGE.md).
+- `parse_packet` returns Packet or one top-level Malformed; `decode_payload`
+  returns a payload or Malformed at that boundary. Malformed has original_wire,
+  diagnostics with field paths, and recovered ordinary JSON data. Its recovered
+  value uses the normal packet/payload schema, with missing/unreadable fields
+  omitted rather than guessed. Correct and complete that data, then use
+  from_json_dict to construct a normal model. Malformed is never a Packet payload
+  and cannot be serialized to TNC2. Its JSON can be exported/imported for inspection.
+  The recovered dictionary does not bypass normal model validation.
 - `max_depth` defaults to 64 and accepts integers 1–128. Cycles and excessive
   nesting fail. This is not an input-size bound. `include_defaults` must be bool;
   `indent` is null or a nonnegative integer.
@@ -179,6 +207,7 @@ to their own fully expanded object examples in the field table.
 | [Diagnostic](#diagnostic)                   | `diagnostic`            | field / container |
 | [Opaque](#opaque)                           | `opaque`                | payload           |
 | [Packet](#packet)                           | `packet`                | field / container |
+| [Malformed](#malformed)                     | `malformed`             | field / container |
 | [EncodedPacketFields](#encodedpacketfields) | `encoded_packet_fields` | field / container |
 
 ### Measurement
@@ -580,7 +609,7 @@ Standalone tag: `signpost`. [Back to type map](#type-map-and-object-catalog).
 | Field   | JSON value / allowed values | Presence / default                      |
 | ------- | --------------------------- | --------------------------------------- |
 | `type`  | `"signpost"`                | required standalone; nested rules above |
-| `label` | Latin-1 byte string         | **required**                            |
+| `label` | string                      | **required**                            |
 
 ### WaterHeight
 
@@ -674,11 +703,11 @@ Weather measurements are direct JSON properties; `weather` is not a JSON propert
 | `luminosity`          | [Measurement](#measurement) or null | optional; default `null`                |
 | `rain_counter`        | [Measurement](#measurement) or null | optional; default `null`                |
 | `water_height`        | [WaterHeight](#waterheight) or null | optional; default `null`                |
-| `software_code`       | Latin-1 byte string or null         | optional; default `null`                |
-| `device_code`         | Latin-1 byte string or null         | optional; default `null`                |
+| `software_code`       | string or null                      | optional; default `null`                |
+| `device_code`         | string or null                      | optional; default `null`                |
 | `raw`                 | Latin-1 byte string or null         | optional; default `null`                |
 | `timestamp`           | [Timestamp](#timestamp) or null     | optional; default `null`                |
-| `comment`             | Latin-1 byte string                 | optional; default `""`                  |
+| `comment`             | string                              | optional; default `''`                  |
 
 ### Storm
 
@@ -740,7 +769,7 @@ Standalone tag: `telemetry`. [Back to type map](#type-map-and-object-catalog).
 | `sequence_raw` | Latin-1 byte string or null                                                         | optional; default `null`                |
 | `raw`          | Latin-1 byte string or null                                                         | optional; default `null`                |
 | `mic_comma`    | boolean                                                                             | optional; default `true`                |
-| `comment`      | Latin-1 byte string                                                                 | optional; default `""`                  |
+| `comment`      | string                                                                              | optional; default `''`                  |
 
 ### Extensions
 
@@ -845,7 +874,7 @@ Standalone tag: `location`. [Back to type map](#type-map-and-object-catalog).
 | `ambiguity`     | [Ambiguity](#ambiguity) or null | optional; default `null`                                      |
 | `extensions`    | [Extensions](#extensions)       | optional; default [Extensions](#extensions) with its defaults |
 | `tail`          | Latin-1 byte string             | optional; default `""`                                        |
-| `comment`       | Latin-1 byte string             | optional; default `""`                                        |
+| `comment`       | string                          | optional; default `''`                                        |
 
 ### Beam
 
@@ -976,7 +1005,7 @@ Standalone tag: `bits`. [Back to type map](#type-map-and-object-catalog).
 | --------------- | --------------------------- | --------------------------------------- |
 | `type`          | `"bits"`                    | required standalone; nested rules above |
 | `sense`         | array of boolean or null    | **required**                            |
-| `project_title` | Latin-1 byte string         | optional; default `""`                  |
+| `project_title` | string                      | optional; default `''`                  |
 
 ### NTSHeader
 
@@ -1056,7 +1085,7 @@ Standalone tag: `text`. [Back to type map](#type-map-and-object-catalog).
 | ------ | ---------------------------- | --------------------------------------- |
 | `type` | `"text"`                     | required standalone; nested rules above |
 | `line` | `1`, `2`, `3`, `4`, `5`, `6` | **required**                            |
-| `text` | Latin-1 byte string          | **required**                            |
+| `text` | string                       | **required**                            |
 
 ### Signature
 
@@ -1072,7 +1101,7 @@ Standalone tag: `signature`. [Back to type map](#type-map-and-object-catalog).
 | Field  | JSON value / allowed values | Presence / default                      |
 | ------ | --------------------------- | --------------------------------------- |
 | `type` | `"signature"`               | required standalone; nested rules above |
-| `text` | Latin-1 byte string         | **required**                            |
+| `text` | string                      | **required**                            |
 
 ### Routing
 
@@ -1133,7 +1162,7 @@ Standalone tag: `capability`. [Back to type map](#type-map-and-object-catalog).
 | ------- | --------------------------- | --------------------------------------- |
 | `type`  | `"capability"`              | required standalone; nested rules above |
 | `name`  | string                      | **required**                            |
-| `value` | Latin-1 byte string or null | optional; default `null`                |
+| `value` | string or null              | optional; default `null`                |
 
 ### NMEAMetadata
 
@@ -1182,15 +1211,15 @@ Standalone tag: `gga`. [Back to type map](#type-map-and-object-catalog).
 | Field                | JSON value / allowed values         | Presence / default                      |
 | -------------------- | ----------------------------------- | --------------------------------------- |
 | `type`               | `"gga"`                             | required standalone; nested rules above |
-| `time_utc`           | Latin-1 byte string                 | **required**                            |
+| `time_utc`           | string                              | **required**                            |
 | `coordinates`        | [Coordinates](#coordinates) or null | **required**                            |
 | `fix_quality`        | integer                             | **required**                            |
 | `satellites`         | integer or null                     | optional; default `null`                |
 | `hdop`               | finite number or null               | optional; default `null`                |
 | `altitude_msl_m`     | finite number or null               | optional; default `null`                |
 | `geoid_separation_m` | finite number or null               | optional; default `null`                |
-| `dgps_age`           | Latin-1 byte string or null         | optional; default `null`                |
-| `dgps_station`       | Latin-1 byte string or null         | optional; default `null`                |
+| `dgps_age`           | string or null                      | optional; default `null`                |
+| `dgps_station`       | string or null                      | optional; default `null`                |
 
 ### GLL
 
@@ -1212,7 +1241,7 @@ Standalone tag: `gll`. [Back to type map](#type-map-and-object-catalog).
 | ------------- | ----------------------------------- | --------------------------------------- |
 | `type`        | `"gll"`                             | required standalone; nested rules above |
 | `coordinates` | [Coordinates](#coordinates) or null | **required**                            |
-| `time_utc`    | Latin-1 byte string                 | **required**                            |
+| `time_utc`    | string                              | **required**                            |
 | `fix_status`  | `'A'`, `'V'`                        | **required**                            |
 
 ### RMC
@@ -1239,8 +1268,8 @@ Standalone tag: `rmc`. [Back to type map](#type-map-and-object-catalog).
 | Field                          | JSON value / allowed values         | Presence / default                      |
 | ------------------------------ | ----------------------------------- | --------------------------------------- |
 | `type`                         | `"rmc"`                             | required standalone; nested rules above |
-| `time_utc`                     | Latin-1 byte string                 | **required**                            |
-| `date_ddmmyy`                  | Latin-1 byte string                 | **required**                            |
+| `time_utc`                     | string                              | **required**                            |
+| `date_ddmmyy`                  | string                              | **required**                            |
 | `fix_status`                   | `'A'`, `'V'`                        | **required**                            |
 | `coordinates`                  | [Coordinates](#coordinates) or null | **required**                            |
 | `speed_knots`                  | finite number or null               | optional; default `null`                |
@@ -1289,7 +1318,7 @@ Standalone tag: `wpl`. [Back to type map](#type-map-and-object-catalog).
 | ------------- | --------------------------- | --------------------------------------- |
 | `type`        | `"wpl"`                     | required standalone; nested rules above |
 | `coordinates` | [Coordinates](#coordinates) | **required**                            |
-| `name`        | Latin-1 byte string         | **required**                            |
+| `name`        | string                      | **required**                            |
 
 ### DecodeOptions
 
@@ -1299,7 +1328,7 @@ Standalone tag: `decode_options`. [Back to type map](#type-map-and-object-catalo
 {
   "type": "decode_options",
   "unsupported": "opaque",
-  "malformed": "raise",
+  "malformed": "return",
   "max_depth": 4,
   "specification": "core-1.1"
 }
@@ -1309,7 +1338,7 @@ Standalone tag: `decode_options`. [Back to type map](#type-map-and-object-catalo
 | --------------- | ------------------------------------------------------- | --------------------------------------- |
 | `type`          | `"decode_options"`                                      | required standalone; nested rules above |
 | `unsupported`   | `'opaque'`, `'raise'`                                   | optional; default `'opaque'`            |
-| `malformed`     | `'raise'`, `'opaque'`                                   | optional; default `'raise'`             |
+| `malformed`     | `'return'`, `'raise'`                                   | optional; default `'return'`            |
 | `max_depth`     | integer                                                 | optional; default `4`                   |
 | `specification` | `'core-1.1'`, `'historical-1.0'`, `'compatibility-fap'` | optional; default `'core-1.1'`          |
 
@@ -1457,7 +1486,7 @@ Standalone tag: `position`. [Back to type map](#type-map-and-object-catalog).
 | `ambiguity`     | [Ambiguity](#ambiguity) or null     | optional; default `null`                                      |
 | `compression`   | [Compression](#compression) or null | optional; default `null`                                      |
 | `extensions`    | [Extensions](#extensions)           | optional; default [Extensions](#extensions) with its defaults |
-| `comment`       | Latin-1 byte string                 | optional; default `""`                                        |
+| `comment`       | string                              | optional; default `''`                                        |
 
 ### MicE
 
@@ -1670,7 +1699,7 @@ Standalone tag: `status`. [Back to type map](#type-map-and-object-catalog).
 | Field       | JSON value / allowed values     | Presence / default                      |
 | ----------- | ------------------------------- | --------------------------------------- |
 | `type`      | `"status"`                      | required standalone; nested rules above |
-| `text`      | Latin-1 byte string             | optional; default `""`                  |
+| `text`      | string                          | optional; default `''`                  |
 | `timestamp` | [Timestamp](#timestamp) or null | optional; default `null`                |
 | `grid`      | [Grid](#grid) or null           | optional; default `null`                |
 | `symbol`    | [Symbol](#symbol) or null       | optional; default `null`                |
@@ -1694,7 +1723,7 @@ Standalone tag: `message`. [Back to type map](#type-map-and-object-catalog).
 | ------------ | ----------------------------- | --------------------------------------- |
 | `type`       | `"message"`                   | required standalone; nested rules above |
 | `addressee`  | string                        | **required**                            |
-| `text`       | Latin-1 byte string           | optional; default `""`                  |
+| `text`       | string                        | optional; default `''`                  |
 | `message_id` | string or null                | optional; default `null`                |
 | `reply_ack`  | [ReplyAck](#replyack) or null | optional; default `null`                |
 
@@ -1737,7 +1766,7 @@ Standalone tag: `auto_answer`. [Back to type map](#type-map-and-object-catalog).
 | -------------- | --------------------------- | --------------------------------------- |
 | `type`         | `"auto_answer"`             | required standalone; nested rules above |
 | `addressee`    | string                      | **required**                            |
-| `text`         | Latin-1 byte string         | **required**                            |
+| `text`         | string                      | **required**                            |
 | `previous_ack` | string or null              | optional; default `null`                |
 
 ### Bulletin
@@ -1759,7 +1788,7 @@ Standalone tag: `bulletin`. [Back to type map](#type-map-and-object-catalog).
 | -------------- | --------------------------- | --------------------------------------- |
 | `type`         | `"bulletin"`                | required standalone; nested rules above |
 | `identifier`   | string                      | **required**                            |
-| `text`         | Latin-1 byte string         | **required**                            |
+| `text`         | string                      | **required**                            |
 | `group`        | string or null              | optional; default `null`                |
 | `announcement` | boolean                     | optional; default `false`               |
 | `legacy`       | boolean                     | optional; default `false`               |
@@ -1781,7 +1810,7 @@ Standalone tag: `nws_bulletin`. [Back to type map](#type-map-and-object-catalog)
 | -------------- | --------------------------- | --------------------------------------- |
 | `type`         | `"nws_bulletin"`            | required standalone; nested rules above |
 | `addressee`    | string                      | **required**                            |
-| `text`         | Latin-1 byte string         | **required**                            |
+| `text`         | string                      | **required**                            |
 | `reference_id` | string or null              | optional; default `null`                |
 
 ### Radiogram
@@ -1971,7 +2000,7 @@ Standalone tag: `nmea`. [Back to type map](#type-map-and-object-catalog).
 | `metadata`        | [NMEAMetadata](#nmeametadata)                                           | optional; default [NMEAMetadata](#nmeametadata) with its defaults |
 | `position_usable` | boolean or null                                                         | optional; default `null`                                          |
 | `symbol`          | [Symbol](#symbol) or null                                               | optional; default `null`                                          |
-| `comment`         | Latin-1 byte string                                                     | optional; default `""`                                            |
+| `comment`         | string                                                                  | optional; default `''`                                            |
 
 ### ThirdParty
 
@@ -2087,7 +2116,7 @@ Standalone tag: `maidenhead`. [Back to type map](#type-map-and-object-catalog).
 | `type`    | `"maidenhead"`              | required standalone; nested rules above |
 | `grid`    | [Grid](#grid)               | **required**                            |
 | `symbol`  | [Symbol](#symbol) or null   | optional; default `null`                |
-| `comment` | Latin-1 byte string         | optional; default `""`                  |
+| `comment` | string                      | optional; default `''`                  |
 
 ### LegacyPosition
 
@@ -2150,7 +2179,7 @@ Standalone tag: `beacon`. [Back to type map](#type-map-and-object-catalog).
 | Field  | JSON value / allowed values | Presence / default                      |
 | ------ | --------------------------- | --------------------------------------- |
 | `type` | `"beacon"`                  | required standalone; nested rules above |
-| `text` | Latin-1 byte string         | **required**                            |
+| `text` | string                      | **required**                            |
 
 ### Invalid
 
@@ -2214,7 +2243,8 @@ Standalone tag: `diagnostic`. [Back to type map](#type-map-and-object-catalog).
 {
   "type": "diagnostic",
   "code": "unsupported",
-  "message": "codec pending"
+  "message": "codec pending",
+  "path": "$"
 }
 ```
 
@@ -2223,6 +2253,7 @@ Standalone tag: `diagnostic`. [Back to type map](#type-map-and-object-catalog).
 | `type`    | `"diagnostic"`                 | required standalone; nested rules above |
 | `code`    | `'unsupported'`, `'malformed'` | **required**                            |
 | `message` | string                         | **required**                            |
+| `path`    | string                         | optional; default `'$'`                 |
 
 ### Opaque
 
@@ -2298,6 +2329,42 @@ Standalone tag: `packet`. [Back to type map](#type-map-and-object-catalog).
 | `payload`          | [Position](#position) or [MicE](#mice) or [Object](#object) or [Item](#item) or [Weather](#weather) or [Telemetry](#telemetry) or [Definition](#definition) or [Status](#status) or [Message](#message) or [Acknowledgment](#acknowledgment) or [AutoAnswer](#autoanswer) or [Bulletin](#bulletin) or [NWSBulletin](#nwsbulletin) or [Radiogram](#radiogram) or [Query](#query) or [Response](#response) or [Capabilities](#capabilities) or [NMEA](#nmea) or [ThirdParty](#thirdparty) or [UserDefined](#userdefined) or [RawWeather](#rawweather) or [Agrelo](#agrelo) or [Maidenhead](#maidenhead) or [LegacyPosition](#legacyposition) or [Beacon](#beacon) or [Invalid](#invalid) or [Reserved](#reserved) or [ExternalExtension](#externalextension) or [Opaque](#opaque) | **required**                            |
 | `original_wire`    | Latin-1 byte string or null                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | optional; default `null`                |
 | `header_semantics` | [HeaderSemantics](#headersemantics) or null                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | optional; default `null`                |
+
+### Malformed
+
+Standalone tag: `malformed`. [Back to type map](#type-map-and-object-catalog).
+
+```json
+{
+  "type": "malformed",
+  "original_wire": "N0CALL>APRS:!4903.50N",
+  "diagnostics": [
+    {
+      "code": "malformed",
+      "message": "missing longitude",
+      "path": "$.payload.longitude_deg"
+    }
+  ],
+  "recovered": {
+    "type": "packet",
+    "header": {
+      "source": "N0CALL",
+      "destination": "APRS"
+    },
+    "payload": {
+      "type": "position",
+      "latitude_deg": 49.05833333333333
+    }
+  }
+}
+```
+
+| Field           | JSON value / allowed values         | Presence / default                      |
+| --------------- | ----------------------------------- | --------------------------------------- |
+| `type`          | `"malformed"`                       | required standalone; nested rules above |
+| `original_wire` | Latin-1 byte string                 | **required**                            |
+| `diagnostics`   | array of [Diagnostic](#diagnostic)  | **required**                            |
+| `recovered`     | `<class 'str'>`, `<class 'object'>` | **required**                            |
 
 ### EncodedPacketFields
 

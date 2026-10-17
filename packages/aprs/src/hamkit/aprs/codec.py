@@ -22,8 +22,11 @@ from .fields import (
     encode_coordinate,
     encode_timestamp,
 )
+from .json import to_json_dict
+from .model_validation import ModelError, validate_model
 from .models import (
     Acknowledgment,
+    CoordinateAxis,
     DecodeOptions,
     Diagnostic,
     EncodedPacketFields,
@@ -31,6 +34,7 @@ from .models import (
     Header,
     Hop,
     Invalid,
+    Malformed,
     Message,
     MicE,
     Opaque,
@@ -41,10 +45,13 @@ from .models import (
     Status,
     Symbol,
     ThirdParty,
+    Timestamp,
     UserDefined,
     ValidationProfile,
     WireInput,
 )
+from .recovery import payload_data
+from .recovery import text as wire_text
 from .validation import validate_header
 
 _DEFAULT_DECODE = DecodeOptions()
@@ -64,7 +71,7 @@ def _wire(value: WireInput) -> bytes:
 
 def _information(raw: bytes) -> None:
     if not isinstance(raw, bytes):
-        raise TypeError("information and text fields must be bytes")
+        raise TypeError("information must be bytes")
     if not raw:
         raise FieldError("information must be nonempty")
 
@@ -138,10 +145,10 @@ def _decode_payload(
     if dti == b"}":
         if depth >= options.max_depth:
             raise ResourceLimitError("third-party nesting limit reached")
-        try:
-            return ThirdParty(_parse_packet(body, "monitor", options, depth + 1))
-        except EnvelopeError as exc:
-            raise FieldError(f"invalid third-party envelope: {exc}") from exc
+        inner = _parse_packet(body, "monitor", options, depth + 1)
+        if isinstance(inner, Malformed):
+            raise _NestedMalformed(inner)
+        return ThirdParty(inner)
     if dti == b"{":
         if len(body) < 2:
             raise FieldError("user-defined payload needs user ID and type")
@@ -153,7 +160,7 @@ def _decode_payload(
     if dti in (b"!", b"=", b"/", b"@"):
         timestamp = None
         if dti in (b"/", b"@"):
-            timestamp, body = decode_timestamp(body[:7]), body[7:]
+            timestamp, body = _timestamp(body[:7]), body[7:]
         if body and body[:1] in b"/\\ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij":
             raise CodecNotImplemented("compressed positions")
         # Compressed numeric overlays can start with a digit, but not a DDMM. field.
@@ -168,25 +175,30 @@ def _decode_payload(
         if len(body) < 19:
             raise FieldError("truncated uncompressed position")
         try:
-            lat = decode_coordinate(body[:8], "latitude")
-            lon = decode_coordinate(body[9:18], "longitude")
+            lat = _coordinate(body[:8], "latitude")
+            lon = _coordinate(body[9:18], "longitude")
         except UnsupportedFormat as exc:
             raise CodecNotImplemented(str(exc)) from exc
-        symbol = Symbol(chr(body[8]), chr(body[18]))
+        try:
+            symbol = Symbol(chr(body[8]), chr(body[18]))
+        except ModelError as exc:
+            raise ModelError("$.symbol" + exc.path[1:], str(exc)) from exc
         _symbol(symbol)
         return Position(lat, lon, symbol, dti in (b"=", b"@"), timestamp, body[19:])
     if dti == b">":
         timestamp = None
         if len(body) >= 7 and body[:6].isdigit() and body[6:7] == b"z":
-            timestamp, body = decode_timestamp(body[:7]), body[7:]
+            timestamp, body = _timestamp(body[:7]), body[7:]
             if timestamp.kind != "dhm_utc":
                 raise FieldError("status timestamp must be DHM UTC")
         if len(information) > 63:
-            raise FieldError("status body exceeds 62 bytes")
-        return Status(body, timestamp)
+            raise ModelError("$.text", "status body exceeds 62 bytes")
+        return Status(_text(body, "$.text"), timestamp)
     if dti == b":":
         if len(body) < 10 or body[9:10] != b":":
-            raise FieldError("message requires a nine-byte addressee and colon")
+            raise ModelError(
+                "$.addressee", "message requires a nine-byte addressee and colon"
+            )
         address = body[:9].decode("latin-1").rstrip(" ")
         _addressee(address)
         body = body[10:]
@@ -197,7 +209,7 @@ def _decode_payload(
             return Acknowledgment(address, ack[2].decode("ascii"), ack[1] == b"rej")
         text, separator, identifier = body.partition(b"{")
         message_id = identifier.decode("latin-1") if separator else None
-        result = Message(address, text, message_id)
+        result = Message(address, _text(text, "$.text"), message_id)
         encode_payload(result)
         return result
     raise CodecNotImplemented("unsupported information field family")
@@ -251,7 +263,7 @@ def _encode_payload(
         raw += (
             encode_coordinate(payload.longitude_deg, "longitude")
             + symbol[1:]
-            + (payload.tail or payload.comment)
+            + (payload.tail if payload.tail else payload.comment.encode("ascii"))
         )
     elif isinstance(payload, Status):
         if (
@@ -265,11 +277,11 @@ def _encode_payload(
             if payload.timestamp.kind != "dhm_utc":
                 raise FieldError("status timestamp must be DHM UTC")
             raw += encode_timestamp(payload.timestamp)
-        elif re.match(rb"[0-9]{6}z", payload.text):
+        elif re.match(r"[0-9]{6}z", payload.text):
             raise FieldError("status text would be interpreted as a timestamp")
-        raw += payload.text
+        raw += payload.text.encode("ascii")
         if len(raw) > 63:
-            raise FieldError("status body exceeds 62 bytes")
+            raise ModelError("$.text", "status body exceeds 62 bytes")
     elif isinstance(payload, (Message, Acknowledgment)):
         if payload.reply_ack is not None:
             raise CodecNotImplemented("reply-ack message/acknowledgment")
@@ -281,22 +293,22 @@ def _encode_payload(
                 payload.message_id
             )
         else:
-            if _special_message(payload.addressee, payload.text):
+            if _special_message(payload.addressee, payload.text.encode("ascii")):
                 raise CodecNotImplemented("specialized message")
             if len(payload.text) > 67 or any(
-                c < 32 or c > 126 or c in b"{|~" for c in payload.text
+                ord(c) < 32 or ord(c) > 126 or c in "{|~" for c in payload.text
             ):
                 raise FieldError(
                     "message text requires up to 67 printable bytes excluding { | ~"
                 )
             if (
-                re.fullmatch(rb"(ack|rej)[A-Za-z0-9]{1,5}", payload.text)
+                re.fullmatch(r"(ack|rej)[A-Za-z0-9]{1,5}", payload.text)
                 and payload.message_id is None
             ):
                 raise FieldError(
                     "message text would be interpreted as an acknowledgment"
                 )
-            raw += payload.text
+            raw += payload.text.encode("ascii")
             if payload.message_id is not None:
                 raw += b"{" + _message_id(payload.message_id)
     else:
@@ -316,7 +328,7 @@ def _check_options(options: DecodeOptions | EncodeOptions) -> None:
         raise CodecNotImplemented(f"specification profile {options.specification}")
     if isinstance(options, DecodeOptions):
         if options.unsupported not in ("opaque", "raise") or options.malformed not in (
-            "opaque",
+            "return",
             "raise",
         ):
             raise ValueError("invalid payload recovery policy")
@@ -324,11 +336,49 @@ def _check_options(options: DecodeOptions | EncodeOptions) -> None:
         raise ValueError("invalid destination policy")
 
 
+class _NestedMalformed(Exception):
+    def __init__(self, result: Malformed):
+        self.result = result
+
+
+def _timestamp(raw: bytes) -> Timestamp:
+    try:
+        return decode_timestamp(raw)
+    except ModelError as exc:
+        raise ModelError("$.timestamp" + exc.path[1:], str(exc)) from exc
+    except FieldError as exc:
+        raise ModelError("$.timestamp", str(exc)) from exc
+
+
+def _coordinate(raw: bytes, axis: CoordinateAxis) -> float:
+    try:
+        return decode_coordinate(raw, axis)
+    except FieldError as exc:
+        raise ModelError("$." + axis + "_deg", str(exc)) from exc
+
+
+def _text(raw: bytes, path: str) -> str:
+    try:
+        return wire_text(raw)
+    except ValueError as exc:
+        raise ModelError(path, str(exc)) from exc
+
+
 def _recover_payload(
     information: bytes, header: Header | None, options: DecodeOptions, depth: int
-) -> Payload:
+) -> Payload | Malformed:
     try:
         return _decode_payload(information, header, options, depth)
+    except _NestedMalformed as exc:
+        inner = exc.result
+        return Malformed(
+            information,
+            tuple(
+                Diagnostic(d.code, d.message, "$.packet" + d.path[1:])
+                for d in inner.diagnostics
+            ),
+            {"type": "third_party", "packet": inner.recovered},
+        )
     except CodecNotImplemented as exc:
         if options.unsupported == "raise":
             raise
@@ -336,7 +386,11 @@ def _recover_payload(
     except FieldError as exc:
         if options.malformed == "raise":
             raise
-        return Opaque(information, str(exc), Diagnostic("malformed", str(exc)))
+        data, diagnostics = payload_data(information)
+        path = exc.path if isinstance(exc, ModelError) else "$"
+        if not any(d.path == path for d in diagnostics):
+            diagnostics.insert(0, Diagnostic("malformed", str(exc), path))
+        return Malformed(information, tuple(diagnostics), data)
 
 
 def decode_payload(
@@ -344,7 +398,7 @@ def decode_payload(
     *,
     header: Header | None = None,
     options: DecodeOptions = _DEFAULT_DECODE,
-) -> Payload:
+) -> Payload | Malformed:
     """Decode bytes with optional outer context; Mic-E always requires header.
 
     Unimplemented formats follow options.unsupported; malformed supported fields
@@ -368,6 +422,9 @@ def encode_payload(
     convenience API never silently discards a destination produced by a codec.
     """
     _check_options(options)
+    validate_model(payload)
+    if isinstance(payload, Malformed):
+        raise FieldError("Malformed cannot be serialized; correct recovered data first")
     if header is None:
         return _encode_payload(payload, None, options, 0)
     result = encode_packet_fields(Packet(header, payload), options=options)
@@ -378,24 +435,90 @@ def encode_payload(
 
 def _parse_packet(
     wire: WireInput, profile: ValidationProfile, options: DecodeOptions, depth: int
-) -> Packet:
+) -> Packet | Malformed:
     raw = _wire(wire)
+    if profile not in ("monitor", "rf"):
+        raise ValueError("profile must be 'monitor' or 'rf'")
     envelope, separator, information = raw.partition(b":")
+    diagnostics: list[Diagnostic] = []
+    recovered: dict[str, object] = {"type": "packet", "header": {}, "payload": {}}
+    header_data: dict[str, object] = {}
+    recovered["header"] = header_data
+
+    def issue(path: str, message: str) -> None:
+        if options.malformed == "raise":
+            raise EnvelopeError(f"{path}: {message}")
+        diagnostics.append(Diagnostic("malformed", message, path))
+
     if not separator:
-        raise EnvelopeError("missing information separator")
-    source, separator, route = envelope.partition(b">")
-    if not separator:
-        raise EnvelopeError("missing source separator")
-    tokens = route.decode("latin-1").split(",")
-    header = Header(
-        source.decode("latin-1"),
-        tokens[0],
-        tuple(Hop(t.removesuffix("*"), t.endswith("*")) for t in tokens[1:]),
+        issue("$.payload", "missing information separator")
+    source, arrow, route = envelope.partition(b">")
+    if not arrow:
+        issue("$.header", "missing source separator")
+    tokens = route.split(b",") if arrow else []
+    header_tokens = [("source", source)]
+    if tokens:
+        header_tokens.append(("destination", tokens[0]))
+    for key, token in header_tokens:
+        try:
+            header_data[key] = wire_text(token)
+            # Validate each token independently so diagnostics include all bad fields.
+            Hop(str(header_data[key]))
+        except (ValueError, FieldError) as exc:
+            issue("$.header." + key, str(exc))
+    path_data: list[object] = []
+    for i, token in enumerate(tokens[1:]):
+        item: dict[str, object] = {"repeated": token.endswith(b"*")}
+        try:
+            item["address"] = wire_text(token.removesuffix(b"*"))
+            Hop(str(item["address"]))
+        except (ValueError, FieldError) as exc:
+            issue(f"$.header.path[{i}].address", str(exc))
+        path_data.append(item)
+    if path_data:
+        header_data["path"] = path_data
+    header: Header | None = None
+    if not diagnostics:
+        header = Header(
+            str(header_data["source"]),
+            str(header_data["destination"]),
+            tuple(
+                Hop(str(item["address"]), bool(item["repeated"]))
+                for item in path_data
+                if isinstance(item, dict)
+            ),
+        )
+        try:
+            validate_header(header, profile=profile)
+        except EnvelopeError as exc:
+            issue("$.header", str(exc))
+    if separator and profile == "rf" and len(information) > 256:
+        issue("$.payload", "RF information exceeds 256 bytes")
+    payload: Payload | Malformed | None = None
+    if separator:
+        try:
+            payload = _recover_payload(information, header, options, depth)
+        except ContextRequired as exc:
+            # A broken outer header does not prove an unimplemented Mic-E body invalid.
+            if not diagnostics:
+                raise
+            payload = Opaque(information, str(exc), Diagnostic("unsupported", str(exc)))
+        if isinstance(payload, Malformed):
+            recovered["payload"] = payload.recovered
+            diagnostics.extend(
+                Diagnostic(d.code, d.message, "$.payload" + d.path[1:])
+                for d in payload.diagnostics
+            )
+        else:
+            recovered["payload"] = to_json_dict(payload)
+    if diagnostics:
+        return Malformed(raw, tuple(diagnostics), recovered)
+    assert (
+        header is not None
+        and payload is not None
+        and not isinstance(payload, Malformed)
     )
-    validate_header(header, profile=profile)
-    if profile == "rf" and len(information) > 256:
-        raise EnvelopeError("RF information exceeds 256 bytes")
-    return Packet(header, _recover_payload(information, header, options, depth), raw)
+    return Packet(header, payload, raw)
 
 
 def parse_packet(
@@ -403,11 +526,11 @@ def parse_packet(
     *,
     profile: ValidationProfile = "monitor",
     options: DecodeOptions = _DEFAULT_DECODE,
-) -> Packet:
+) -> Packet | Malformed:
     """Parse one unframed TNC2 byte sequence, including binary payload bytes.
 
     No stripping of CR/LF. Use parse_tnc2_line for line-oriented transport.
-    Envelope validation is independent of payload recovery/specification policy.
+    Invalid header/payload fields yield one top-level Malformed by default.
     """
     _check_options(options)
     return _parse_packet(wire, profile, options, 0)
@@ -416,6 +539,11 @@ def parse_packet(
 def _encode_packet_fields(
     packet: Packet, profile: ValidationProfile, options: EncodeOptions, depth: int
 ) -> EncodedPacketFields:
+    if not isinstance(packet, Packet):
+        raise FieldError(
+            "serialization requires Packet; Malformed recovery data must be corrected first"
+        )
+    validate_model(packet)
     validate_header(packet.header, profile=profile)
     # Header-dependent encoders belong HERE. Mic-E will return a derived
     # destination plus information atomically; require_match rejects conflicts.
