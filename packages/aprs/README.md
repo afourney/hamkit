@@ -2186,7 +2186,8 @@ decisions.
 - [Naming guide](docs/NAMING.md): public names and why some qualifiers remain.
 - [Compliance vectors](docs/APRS_COMPLIANCE_VECTORS.md): specification references
   and the complete packet/field test corpus. Every row is tested, including
-  profile-specific source assertions and sequence behavior.
+  the individual packets from archived application sequences. Accumulated
+  receiver-state assertions remain provenance only, outside this stateless codec.
 
 Run the examples and unit tests with
 `python -m pytest packages/aprs/tests -q` from the repository root.

@@ -136,7 +136,12 @@ Exact conversions used: 1 knot = 1.852 km/h = 1852/3600 m/s; 1 mph = 0.44704 m/s
 | `opaque`          | Classify and preserve without inventing a detailed decoder. Ignoring an unsupported payload safely is acceptable. |
 | `reject`          | FAP returned an error in the captured compatibility run. This is not a normative APRS verdict.                    |
 
-Stateful records have `steps` instead of a single `packet` and `outcome`. Reset state before each sequence, apply the stated initial condition, and evaluate the listed state assertions in order. The sequence vectors do not simulate RF transmission, timers, retransmission queues, or an interactive operator.
+Stateful source records have `steps` instead of a single `packet` and `outcome`.
+Their original accumulated-state assertions and initial conditions are archived
+application-level provenance, not executable tests of this stateless codec.
+The JSONL suite keeps all 23 packet inputs and tests their transmitted fields
+independently using hand-authored packet expectations. It does not replay prior
+steps, simulate a receiver, or assert application-state transitions.
 
 <a id="coverage"></a>
 

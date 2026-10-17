@@ -22,6 +22,7 @@ ROOT = Path(__file__).parents[1]
 SOURCE = ROOT / "docs/APRS_COMPLIANCE_VECTORS.md"
 DEST = ROOT / "tests/vectors"
 DIVERGENCES = ROOT / "tests/fap_divergences.json"
+SEQUENCE_PACKETS = ROOT / "tests/sequence_packet_expectations.json"
 JSON = dict[str, Any]
 
 
@@ -832,6 +833,7 @@ def records() -> list[JSON]:
     result = []
     defaults: JSON = {}
     divergences = json.loads(DIVERGENCES.read_text())
+    sequence_packets = json.loads(SEQUENCE_PACKETS.read_text())["rows"]
     for block in re.findall(r"```json\n(.*?)\n```", SOURCE.read_text(), re.DOTALL):
         case = json.loads(block)
         if "fap_field_defaults" in case:
@@ -874,8 +876,12 @@ def records() -> list[JSON]:
                 if key in case:
                     row[key] = case[key]
             if "steps" in case:
-                row["expected"] = {"type": "packet"}
-                row["state_expected"] = copy.deepcopy(step["expected"])
+                assertion = sequence_packets[row["id"]]
+                assert assertion["packet"] == row["packet"], row["id"]
+                row["expected"] = copy.deepcopy(assertion["expected"])
+                row[
+                    "source_expected_scope"
+                ] = "application-state provenance only; not executed"
             elif row["outcome"].startswith("reject"):
                 row["expected"] = {"original_wire": row["packet"]}
                 row[
@@ -899,6 +905,7 @@ def records() -> list[JSON]:
                 diverge(row, divergences)
             result.append(row)
     assert set(divergences["rows"]) <= {row["id"] for row in result}
+    assert set(sequence_packets) == {row["id"] for row in result if "sequence" in row}
     return result
 
 

@@ -71,15 +71,21 @@ with its reasons.
 
 Each JSONL row stores a complete serialized `EnvelopePolicy` under `policy`
 (28 RF and 1,536 APRS-IS), plus an explicit `legacy_positions` boolean. Corpus,
-sequence and round-trip runners reconstruct that policy directly. Source
+individual-packet and round-trip runners reconstruct that policy directly. Source
 `profile` and `options` remain provenance, not runtime envelope-policy hints.
 The generator resolves the historical hints once; contract tests verify unchanged
 effective parsing, including diagnostics, for every row.
 
-The 23 sequence occurrences run through a test application receiver using public
-models. Ownership, deduplication, acknowledgment construction, calibration,
-bulletin replacement, status fallback and station-specific weather association
-are verified. The codec itself remains stateless.
+The 23 packet occurrences from the archived application sequences are tested
+independently. Hand-authored expectations in `tests/sequence_packet_expectations.json`
+describe only transmitted headers and payload fields, using the documented packet
+bytes and cited APRS layouts. No decoder output is used to generate expectations.
+The original `source_expected` values remain non-executable application-state
+provenance, explicitly labeled by `source_expected_scope`. There is no test
+receiver, replay of earlier steps, or accumulated-state assertion. Ownership,
+deduplication, acknowledgment scheduling, calibration application, bulletin
+replacement, status precedence and weather-location inheritance belong to a
+consuming application, outside this stateless codec.
 
 ## Composition and precision
 
@@ -148,7 +154,7 @@ warnings alone do not prevent encoding: Latin-1 input can become valid UTF-8.
 ## Verification
 
 All 1,564 decode cases pass without skips or expected failures. Public JSON
-projections and source assertions outside the projections are both checked,
+projections and documented core packet/field assertions outside the projections are checked,
 including partial values recovered before a rejection.
 All original packet bytes, semantic expectations, options and provenance have a
 frozen integrity hash tied to PR #4's head commit.

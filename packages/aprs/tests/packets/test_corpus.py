@@ -103,18 +103,6 @@ def check(row: dict[str, Any]) -> None:
             errors.extend(check_core(row))
         elif public_phg_row(row):
             errors.extend(check_public_phg(row, packet))
-    if row.get("sequence"):
-        from receiver import Receiver
-
-        receiver = Receiver()
-        for step in rows():
-            if step.get("sequence") == row["sequence"]:
-                state = receiver.receive(
-                    parse_row(step, step["packet"].encode("latin1"))
-                )
-                if step["id"] == row["id"]:
-                    errors.extend(differences(state, row["state_expected"]))
-                    break
     assert not errors, "\n".join(errors)
 
 

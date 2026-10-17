@@ -53,7 +53,7 @@ at runtime. Profiles still identify source/specification expectations. Historica
 and FAP rows store `legacy_positions: true`; all other rows store `false`.
 Contract tests compare complete public output, including diagnostics and evidence,
 with the previous settings for every row, and prove custom stored policies work
-independently of source hints. Sequence steps and supplemental source checks use
+independently of source hints. Individual sequence packets and supplemental source checks use
 the same explicit row configuration.
 
 ## Expectations and provenance
@@ -89,9 +89,9 @@ position cases): equivalent weather units, compressed weather wind nesting,
 `LegacyPosition`/`RawWeather` wrappers, four flattened NMEA observations, and four Mic-E device markers split from comments.
 Offline conversion tests reverse unit changes back to the captured measurements
 and verify stored fields against source values. The original `source_expected`
-snapshots remain immutable provenance; their supplemental observations without
-public model fields remain explicitly asserted, not discarded or silently added
-to the packet schema.
+snapshots remain immutable provenance. Mapped packet facts and the documented
+core supplemental assertions are executed; FAP-only output fields and
+application-state facts are not codec assertions.
 
 All 29 PHG/PHGR projections (including 15 FAP vectors) exercise the public
 API directly. Their comment separators, whitespace, and numeric/alphabetic rates are
@@ -99,8 +99,22 @@ handled by the public codec. FAP's legacy-position wrapper and omitted trailing
 telemetry channels are expressed using the existing JSON schema; original source
 values remain unchanged and are also checked.
 
-Sequence rows contain `state_expected` and run all preceding steps through a test
-receiver implemented using public packet models. State is not added to the codec.
+The 23 sequence packet occurrences are ordinary stateless tests, with substantive
+`expected.header` and `expected.payload` assertions. The hand-authored
+`../sequence_packet_expectations.json` derives them from the documented packet
+bytes and cited APRS layouts, not parser snapshots. It checks names and alive
+markers, coordinates/timestamps, message ID/reply-ack fields, raw telemetry and
+definitions, bulletin text, beacon/status text, and positionless weather fields.
+The generator guards each assertion with its exact input packet.
+
+`sequence`, `profile: stateful`, `outcome: stateful`, titles and notes retain the
+original source context. For these rows, `source_expected_scope` explicitly marks
+`source_expected` as application-state provenance only; it is not executed.
+There is no `state_expected`, test receiver, sequence replay, or assertion of
+ownership, visibility, deduplication, pending acknowledgments, applied calibration,
+bulletin replacement, status precedence or inherited weather coordinates.
+Every sequence packet still participates in parsing, serialization and JSON
+round trips independently of the preceding packets.
 
 ## Round trips
 

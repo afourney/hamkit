@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from dataclasses import asdict, fields, replace
 from pathlib import Path
@@ -35,6 +36,55 @@ def test_complete_source_extraction() -> None:
         records(), key=lambda r: r["id"]
     )
     assert len({row.get("sequence", row["id"]) for row in rows}) == 1548
+
+
+def test_sequence_packets_are_independent_and_state_is_only_provenance(monkeypatch):
+    from packets import test_corpus
+
+    selected = [r for r in all_rows() if "sequence" in r]
+    assert len(selected) == 23
+    parse = a.parse_packet
+    calls = []
+
+    def record_parse(raw, **kwargs):
+        calls.append(raw)
+        return parse(raw, **kwargs)
+
+    def no_sequence_replay():
+        raise AssertionError("A packet check must not load earlier sequence steps")
+
+    monkeypatch.setattr(a, "parse_packet", record_parse)
+    monkeypatch.setattr(test_corpus, "rows", no_sequence_replay)
+    for row in reversed(selected):
+        assert "state_expected" not in row
+        assert row["expected"]["header"] and row["expected"]["payload"]
+        assert (
+            row["source_expected_scope"]
+            == "application-state provenance only; not executed"
+        )
+        modified = copy.deepcopy(row)
+        modified["source_expected"] = {"not_an_executable_state_assertion": True}
+        check(modified)
+    assert calls == [r["packet"].encode("latin1") for r in reversed(selected)]
+
+
+@pytest.mark.parametrize(
+    "identifier,field,wrong",
+    [
+        ("SEQ-001.3", "alive", True),
+        ("SEQ-002.3", "name", "LEADER"),
+        ("SEQ-003.2", "reply_ack", "99"),
+        ("SEQ-004.5", "analog", [0, 0, 0, 0, 0]),
+        ("SEQ-005.3", "text", "Road open"),
+        ("SEQ-006.3", "text", "Operational"),
+        ("SEQ-007.2", "temperature", {"value": 25, "unit": "fahrenheit"}),
+    ],
+)
+def test_sequence_packet_fields_are_asserted(identifier, field, wrong):
+    row = next(r for r in all_rows() if r["id"] == identifier)
+    row["expected"]["payload"][field] = wrong
+    with pytest.raises(AssertionError, match=field):
+        check(row)
 
 
 def test_every_row_has_complete_policy_and_preserves_effective_behavior() -> None:

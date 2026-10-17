@@ -9,7 +9,6 @@ import random
 import pytest
 from packets.test_corpus import rows
 from packets.test_roundtrip_corpus import same_semantics, without_evidence
-from receiver import Receiver
 
 from hamkit import aprs as a
 
@@ -80,15 +79,6 @@ def test_mic_e_uses_edited_semantics_and_checks_destination():
 def test_structured_query_response_roundtrip(response):
     p = a.Response("W1AW", response)
     assert a.parse_payload(a.serialize_payload(p)) == p
-
-
-def test_station_weather_association_survives_interleaved_station():
-    receiver = Receiver()
-    receiver.receive(packet(b"N0CALL>APRS:!4903.50N/07201.75W_"))
-    receiver.receive(packet(b"W1AW>APRS:!5100.00N/00100.00W_"))
-    state = receiver.receive(packet(b"N0CALL>APRS:_10151800c220s004g005t077"))
-    assert state["weather_latitude_deg"] == pytest.approx(49.058333333333)
-    assert state["weather_longitude_deg"] == pytest.approx(-72.029166666667)
 
 
 def test_truncation_and_mutation_do_not_escape_recovery():
