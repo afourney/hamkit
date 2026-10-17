@@ -47,14 +47,18 @@ class ReadmeTests(unittest.TestCase):
                 raise AssertionError("Only one JSON input per block")
             cls.examples.append(
                 (
-                    "json"
-                    if literals
-                    else (
-                        "continuation"
-                        if source[2] == "print(aprs.to_json(packet, indent=2))"
-                        else "repair"
-                        if source[2].startswith("import copy\n")
-                        else "python"
+                    (
+                        "json"
+                        if literals
+                        else (
+                            "continuation"
+                            if source[2] == "print(aprs.to_json(packet, indent=2))"
+                            else (
+                                "repair"
+                                if source[2].startswith("import copy\n")
+                                else "python"
+                            )
+                        )
                     ),
                     literals[0] if literals else source[2],
                     source[2],
@@ -180,16 +184,12 @@ class ReadmeTests(unittest.TestCase):
                 dataclasses.asdict(python_packet), dataclasses.asdict(json_packet)
             )
             families.add(type(json_packet.payload))
-            # Model-only examples really are unencodable. Working ones must emit
-            # the displayed TNC2 line, not a hypothetical future encoding.
-            if a.codec_support_for(json_packet.payload).encode == "unimplemented":
-                with self.assertRaises(a.CodecNotImplementedError):
-                    a.serialize_packet(json_packet)
-            else:
-                self.assertEqual(
-                    a.serialize_packet(json_packet).decode("utf-8") + "\n",
-                    self.examples[index][3],
-                )
+            wire = a.serialize_packet(json_packet)
+            # Construction examples print the model name; wire examples print
+            # the encoded line. Both must be valid compositions now.
+            if self.examples[index][3] != type(json_packet.payload).__name__ + "\n":
+                self.assertEqual(wire.decode("utf-8") + "\n", self.examples[index][3])
+
         self.assertEqual(families, set(get_args(a.Payload)))
 
     def test_successful_parsing_shows_both_object_and_pretty_json(self) -> None:

@@ -3,6 +3,7 @@
 """Best-effort extraction into ordinary JSON data, never partially valid models."""
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -43,12 +44,7 @@ def payload_data(raw: bytes) -> tuple[dict[str, object], list[Diagnostic]]:
             message = getattr(exc, "message", str(exc))
             diagnostics.append(Diagnostic("malformed", message, "$." + key))
 
-    dti, body = raw[:1], raw[1:]
-    if dti in (b"!", b"=", b"/", b"@"):
-        data = {"type": "position", "messaging": dti in (b"=", b"@")}
-        if dti in (b"/", b"@"):
-            data["timestamp"] = _timestamp(body[:7])
-            body = body[7:]
+    def located(body: bytes) -> None:
         for field, needed in (
             ("latitude_deg", 8),
             ("longitude_deg", 18),
@@ -71,6 +67,27 @@ def payload_data(raw: bytes) -> tuple[dict[str, object], list[Diagnostic]]:
             data["comment"] = free_text(body[19:], "$.comment", ignored)
         if symbol:
             data["symbol"] = symbol
+
+    dti, body = raw[:1], raw[1:]
+    if dti in (b"!", b"=", b"/", b"@"):
+        data = {"type": "position", "messaging": dti in (b"=", b"@")}
+        if dti in (b"/", b"@"):
+            data["timestamp"] = _timestamp(body[:7])
+            body = body[7:]
+        located(body)
+    elif (
+        dti == b";"
+        and body[9:10] in (b"*", b"_")
+        and re.fullmatch(rb"\d{6}[zh/]", body[10:17])
+    ):
+        # Name and live/killed flag are fixed-width; the rest follows a timestamp.
+        data = {
+            "type": "object",
+            "name": body[:9].decode("latin-1").rstrip(" "),
+            "alive": body[9:10] == b"*",
+            "timestamp": _timestamp(body[10:17]),
+        }
+        located(body[17:])
     elif dti == b">":
         data["type"] = "status"
         if len(body) >= 7 and body[:6].isdigit() and body[6:7] == b"z":

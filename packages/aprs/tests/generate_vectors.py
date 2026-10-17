@@ -5,6 +5,7 @@
 Run from any directory. Unmapped assertions remain verbatim beside the projection;
 they are deliberately not claimed as tested public-model fields.
 """
+
 from __future__ import annotations
 
 import copy
@@ -17,6 +18,7 @@ from typing import Any
 ROOT = Path(__file__).parents[1]
 SOURCE = ROOT / "docs/APRS_COMPLIANCE_VECTORS.md"
 DEST = ROOT / "tests/vectors"
+DIVERGENCES = ROOT / "tests/fap_divergences.json"
 JSON = dict[str, Any]
 
 
@@ -69,9 +71,11 @@ def header(data: JSON) -> JSON:
 
 def stamp(data: JSON) -> JSON:
     kind = {
-        "DHM": "dhm_local"
-        if str(data.get("zone")).lower() in ("local", "sender-local")
-        else "dhm_utc",
+        "DHM": (
+            "dhm_local"
+            if str(data.get("zone")).lower() in ("local", "sender-local")
+            else "dhm_utc"
+        ),
         "HMS": "hms_utc",
         "MDHM": "mdhm_utc",
     }[data["format"]]
@@ -89,6 +93,8 @@ def telemetry(data: JSON) -> JSON:
     if "digital_bits" in data:
         result["digital"] = [c == "1" for c in data["digital_bits"]]
     result["encoding"] = data.get("encoding", "classic").replace("-", "_")
+    if result.get("sequence_raw") == "MIC":
+        result["sequence"] = "MIC"
     return result
 
 
@@ -109,6 +115,15 @@ def weather(data: JSON) -> JSON:
     for key, (name, unit) in units.items():
         if key in data:
             result[name] = {"value": data[key], "unit": unit}
+    if "water_height" in data:
+        w = data["water_height"]
+        result["water_height"] = {
+            "measurement": {
+                "value": w["value"],
+                "unit": {"ft": "feet", "m": "meters"}[w["unit"]],
+            },
+            "reference_datum": w["reference_datum"],
+        }
     # Rain is sent in hundredths of an inch. Project that wire unit, like every
     # other reading; the source's millimetre conversions stay unmapped.
     for name in ("rain_1h", "rain_24h", "rain_since_midnight"):
@@ -183,8 +198,23 @@ def translate(e: JSON) -> JSON:
         }
         if m.get("position_comment") in names:
             p["message"] = names[m["position_comment"]]
+        if str(m.get("position_comment", "")).startswith("Custom-"):
+            p["message"] = m["position_comment"].lower().replace("-", "_")
+        if str(m.get("position_comment")).lower() == "unknown":
+            p["message"] = "unknown"
         if m.get("dti_fix") in ("current", "old"):
             p["fix"] = m["dti_fix"]
+        if "grid_locator" in e:
+            # The public model retains the optional grid as status text, not
+            # inside the device identifier. Preserve the captured trailing text.
+            grid_symbol = e["grid_symbol"]
+            p["comment"] = (
+                e["grid_locator"]
+                + grid_symbol["table_id_raw"]
+                + grid_symbol["code"]
+                + p.get("comment", "")
+            )
+            p["device_code"] = m["type_marker"]
     ext: JSON = {}
     for old, new, fields in (
         ("motion", "motion", "course_deg speed_knots course_code speed_code zero_pair"),
@@ -204,7 +234,7 @@ def translate(e: JSON) -> JSON:
         (
             "area",
             "area",
-            "shape_code color_code latitude_offset_code longitude_offset_code",
+            "shape_code color_code latitude_offset_code longitude_offset_code corridor_half_width_miles",
         ),
         ("signpost", "signpost", "label"),
     ):
@@ -274,6 +304,8 @@ def translate(e: JSON) -> JSON:
     if kind == "query":
         q = e["query"]
         p["name"] = q["type"]
+        if "heard_station" in q:
+            p["heard_station"] = q["heard_station"]
         if "message" in e:
             p["addressee"] = e["message"]["addressee"]
         if "radius_miles" in q:
@@ -294,7 +326,8 @@ def translate(e: JSON) -> JSON:
         }
         definition: JSON = {"type": tags[d["type"]]}
         if "channels" in d:
-            definition["channels"] = d["channels"]
+            channels = d["channels"]
+            definition["channels"] = channels + [None] * (13 - len(channels))
         if "coefficients_abc" in d:
             definition["coefficients"] = [
                 dict(zip(("a", "b", "c"), x)) for x in d["coefficients_abc"]
@@ -335,7 +368,13 @@ def translate(e: JSON) -> JSON:
             "dgps_age_raw": "dgps_age",
             "dgps_station_raw": "dgps_station",
         }
-        sentence.update({v: n[k] for k, v in renames.items() if k in n})
+        sentence.update(
+            {
+                v: (n[k] or None) if k.startswith("dgps_") else n[k]
+                for k, v in renames.items()
+                if k in n
+            }
+        )
         sentence.update(
             select(
                 n,
@@ -356,7 +395,12 @@ def translate(e: JSON) -> JSON:
         if "altitude" in e:
             sentence["altitude_msl_m"] = e["altitude"]["meters"]
         if "motion" in e:
-            sentence.update(select(e["motion"], "speed_knots course_deg"))
+            sentence.update(
+                select(
+                    e["motion"],
+                    "speed_knots course_deg course_true_deg course_magnetic_deg speed_kmh_reported",
+                )
+            )
         p.pop("extensions", None)
         p.update(
             sentence=sentence,
@@ -406,6 +450,35 @@ def translate(e: JSON) -> JSON:
                 "record": record,
                 "message_id": e["message"].get("message_id"),
             }
+    if p.get("type") == "message" and p.get("message_id") is None:
+        text = p.get("text", "")
+        response = None
+        if text.startswith("Directs= "):
+            response = {"type": "direct_stations", "stations": text[9:].split()}
+        elif match := re.fullmatch(
+            r"([A-Za-z0-9-]+) HEARD: ((?:[0-9]+|\.)(?: (?:[0-9]+|\.)){7})", text
+        ):
+            response = {
+                "type": "heard_station",
+                "station": match[1],
+                "counts": [None if c == "." else int(c) for c in match[2].split()],
+            }
+        elif re.fullmatch(r"[A-Za-z0-9-]+>[A-Za-z0-9,*-]+:", text):
+            source, route = text[:-1].split(">")
+            dest, *hops = route.split(",")
+            response = {
+                "type": "trace",
+                "header": {
+                    "source": source,
+                    "destination": dest,
+                    "path": [
+                        {"address": h.rstrip("*"), "repeated": h.endswith("*")}
+                        for h in hops
+                    ],
+                },
+            }
+        if response is not None:
+            p = {"type": "response", "addressee": p["addressee"], "response": response}
     result["payload"] = p
     return result
 
@@ -438,9 +511,11 @@ def fap_projection(e: JSON, packet: str) -> JSON:
         "Status": "status_text",
     }
     normal.update({v: f[k] for k, v in renames.items() if f.get(k) is not None})
+    if normal.get("format") == "mice":
+        normal["format"] = "mic-e"
     name_key = "ObjectName" if normal["kind"] == "object" else "ItemName"
     if f.get(name_key):
-        normal["name"] = f[name_key]
+        normal["name"] = f[name_key].rstrip(" ")
     if f.get("Latitude") is not None or f.get("Longitude") is not None:
         normal["position"] = {
             v: f[k]
@@ -498,6 +573,15 @@ def fap_projection(e: JSON, packet: str) -> JSON:
         normal["telemetry_definition"] = definition
     result = translate(normal)
     payload = result.get("payload", {})
+    comment = payload.get("comment", "")
+    if (
+        payload.get("type") == "mic_e"
+        and comment[:1] in ("]", ">")
+        and packet.partition(":")[2][9:10] == comment[:1]
+    ):
+        # Split the captured marker into its public field without losing text.
+        # A broken fixed-width body must not be reinterpreted by this migration.
+        payload["device_code"], payload["comment"] = comment[0], comment[1:]
     if payload.get("type") not in (
         "position",
         "mic_e",
@@ -524,14 +608,22 @@ def fap_projection(e: JSON, packet: str) -> JSON:
         }
     if f.get("TelemetryData") is not None:
         t = f["TelemetryData"]
-        mapped = {"sequence": t["Seq"], "analog": t["Vals"]}
+        analog = list(t["Vals"])
+        if payload.get("type") != "telemetry" and re.search(
+            r"\|(?:[\x21-\x7b]{2}){2,7}\|", packet.partition(":")[2]
+        ):
+            # FAP pads omitted base91 channels to five null-capable slots;
+            # the public schema stores only the transmitted analog channels.
+            while analog and analog[-1] is None:
+                analog.pop()
+        mapped = {"sequence": t["Seq"], "analog": analog}
         if t["Bits"]:
             mapped["digital"] = [x == "1" for x in t["Bits"]]
         if payload.get("type") == "telemetry":
             payload.update(mapped)
         else:
             payload.setdefault("extensions", {})["telemetry"] = mapped
-    if f.get("PHG") and re.fullmatch(r"[0-9][0-9:;][0-9][0-8][0-9]?", f["PHG"]):
+    if f.get("PHG") and re.fullmatch(r"[0-9][0-9:;][0-9][0-8][0-9A-Z]?", f["PHG"]):
         code = f["PHG"]
         phg: JSON = {
             "power_w": int(code[0]) ** 2,
@@ -540,17 +632,19 @@ def fap_projection(e: JSON, packet: str) -> JSON:
             "directivity_deg": int(code[3]) * 45 if code[3] != "0" else None,
         }
         if len(code) == 5:
-            phg["rate_per_hour"] = int(code[4])
+            phg["rate_per_hour"] = int(code[4], 36)
         payload.setdefault("extensions", {})["phg"] = phg
     if f.get("Altitude") is not None and f.get("Format") in (
         "uncompressed",
         "compressed",
         "mic-e",
+        "mice",
     ):
         encoding = {
             "uncompressed": "feet_extension",
             "compressed": "compressed",
             "mic-e": "mic_e",
+            "mice": "mic_e",
         }[f["Format"]]
         unit = "meters" if encoding == "mic_e" else "feet"
         altitude = f["Altitude"] if unit == "meters" else f["Altitude"] / 0.3048
@@ -561,35 +655,180 @@ def fap_projection(e: JSON, packet: str) -> JSON:
     if f.get("Wx") is not None:
         wx = f["Wx"]
         mapped_wx = {}
-        for key, target, unit in (
-            ("WindDirection", "wind_direction", "degrees"),
-            ("WindSpeed", "wind_speed", "m/s"),
-            ("WindGust", "gust", "m/s"),
-            ("Temp", "temperature", "celsius"),
-            ("Humidity", "humidity", "percent"),
-            ("Pressure", "pressure", "hPa"),
-            ("Rain1h", "rain_1h", "mm"),
-            ("Rain24h", "rain_24h", "mm"),
-            ("RainMidnight", "rain_since_midnight", "mm"),
-            ("Snow24h", "snow_24h", "mm"),
-            ("Luminosity", "luminosity", "W/m2"),
+        vendor = packet.partition(":")[2].startswith(("$ULTW", "!!"))
+        for key, target, unit, scale, offset in (
+            ("WindDirection", "wind_direction", "degrees", 1, 0),
+            (
+                "WindSpeed",
+                "wind_speed",
+                "m/s" if vendor else "mph",
+                1 if vendor else 1 / 0.44704,
+                0,
+            ),
+            (
+                "WindGust",
+                "gust",
+                "m/s" if vendor else "mph",
+                1 if vendor else 1 / 0.44704,
+                0,
+            ),
+            (
+                "Temp",
+                "temperature",
+                "celsius" if vendor else "fahrenheit",
+                1 if vendor else 1.8,
+                0 if vendor else 32,
+            ),
+            ("Humidity", "humidity", "percent", 1, 0),
+            ("Pressure", "pressure", "hPa", 1, 0),
+            (
+                "Rain1h",
+                "rain_1h",
+                "mm" if vendor else "inches",
+                1 if vendor else 1 / 25.4,
+                0,
+            ),
+            (
+                "Rain24h",
+                "rain_24h",
+                "mm" if vendor else "inches",
+                1 if vendor else 1 / 25.4,
+                0,
+            ),
+            (
+                "RainMidnight",
+                "rain_since_midnight",
+                "mm" if vendor else "inches",
+                1 if vendor else 1 / 25.4,
+                0,
+            ),
+            (
+                "Snow24h",
+                "snow_24h",
+                "mm" if vendor else "inches",
+                1 if vendor else 1 / 25.4,
+                0,
+            ),
+            ("Luminosity", "luminosity", "W/m2", 1, 0),
+            ("Radiation", "radiation", "nSv/h", 1, 0),
+            ("BatteryVoltage", "battery_voltage", "volts", 1, 0),
         ):
             if wx.get(key) is not None:
-                mapped_wx[target] = {"value": wx[key], "unit": unit}
+                # Convert captured expectations, never values from the decoder.
+                # No rounding: the original physical measurement is preserved.
+                mapped_wx[target] = {"value": wx[key] * scale + offset, "unit": unit}
+        if wx.get("WaterLevel") is not None:
+            # FAP reports metres; the APRS wire field is feet.
+            mapped_wx["water_height"] = {
+                "measurement": {"value": wx["WaterLevel"] / 0.3048, "unit": "feet"}
+            }
+        if normal.get("format") == "compressed":
+            # FAP flattens the compressed weather wind pair into Course/Speed.
+            # Our schema places that same pair inside extensions.weather.
+            motion = payload.get("extensions", {}).pop("motion", {})
+            for key, target, unit in (
+                ("course_deg", "wind_direction", "degrees"),
+                ("speed_knots", "wind_speed", "knots"),
+            ):
+                if key in motion:
+                    mapped_wx[target] = {"value": motion[key], "unit": unit}
         if payload.get("type") == "weather":
             payload.update(mapped_wx)
         else:
             payload.setdefault("extensions", {})["weather"] = mapped_wx
+        if vendor:
+            payload.pop("type")
+            result["payload"] = {
+                "type": "raw_weather",
+                "format": "ultimeter_2000",
+                "information": packet.partition(":")[2],
+                "weather": payload,
+            }
     if f.get("Format") == "nmea":
-        # The snapshot does not capture individual NMEA sentence fields; do not
-        # invent them from FAP's flattened station fix. Assert the public family.
-        result["payload"] = {"type": "nmea"}
+        # Keep the snapshot's values (including rounded course and absent symbol)
+        # in typed NMEA fields. Missing time/fix fields are not invented.
+        sentence: JSON = {"type": packet.partition(":")[2][3:6].lower()}
+        if normal.get("position"):
+            sentence["coordinates"] = select(
+                normal["position"], "latitude_deg longitude_deg"
+            )
+        for key, target, scale in (
+            ("Altitude", "altitude_msl_m", 1),
+            ("Speed", "speed_knots", 1 / 1.852),
+            ("Course", "course_deg", 1),
+        ):
+            if f.get(key) is not None:
+                sentence[target] = f[key] * scale
+        table, code = f.get("SymbolTable"), f.get("SymbolCode")
+        result["payload"] = {
+            "type": "nmea",
+            "sentence": sentence,
+            "symbol": (
+                {"table_id": table, "code": code}
+                if table is not None and code is not None
+                else None
+            ),
+            "metadata": {"checksum_valid": f["ChecksumOK"]},
+        }
     return result
+
+
+def diverge(row: JSON, divergences: JSON) -> None:
+    """Replace FAP-specific interpretations with the reviewed public expectation.
+
+    Each override names its reasons; source_expected keeps FAP's own values.
+    """
+    assert row["profile"] == "compatibility-fap", row["id"]
+    entry = divergences["rows"][row["id"]]
+    row["divergence"] = [divergences["reasons"][key] for key in entry["reasons"]]
+    if "replace" in entry:
+        row["expected"] = {"original_wire": row["packet"], **entry["replace"]}
+    if "accept" in entry:
+        assert row.pop("rejection"), row["id"]
+        row["expected"] = {
+            "type": "packet",
+            "original_wire": row["packet"],
+            **entry["accept"],
+        }
+        return
+    for path, value in entry.get("set", {}).items():
+        *parents, key = path.removeprefix("$.").split(".")
+        target = row["expected"]
+        for name in parents:
+            target = target[name]
+        target[key] = value
+    for prefix in entry.get("drop_unmapped", []):
+        # Facts from FAP's interpretation that the public expectation rejects.
+        row["unmapped"] = [p for p in row["unmapped"] if not p.startswith(prefix)]
+    for path in entry.get("remove", []):
+        *parents, key = path.removeprefix("$.").split(".")
+        target = row["expected"]
+        for name in parents:
+            target = target[name]
+        del target[key]
+
+
+def nest_legacy_position(result: JSON, packet: str) -> None:
+    """Use the existing wrapper for source assertions identifying a position."""
+    payload = result.get("payload", {})
+    if payload.get("type") == "position":
+        body = packet.partition(":")[2]
+        prefix, marker, _ = body.partition("!")
+        if marker and prefix and not body.startswith(("!", "=", "/", "@")):
+            # The source supplies all position values. The wire supplies only
+            # the literal prefix, which the finalized public schema preserves.
+            payload.pop("type")
+            result["payload"] = {
+                "type": "legacy_position",
+                "prefix": prefix,
+                "position": payload,
+            }
 
 
 def records() -> list[JSON]:
     result = []
     defaults: JSON = {}
+    divergences = json.loads(DIVERGENCES.read_text())
     for block in re.findall(r"```json\n(.*?)\n```", SOURCE.read_text(), re.DOTALL):
         case = json.loads(block)
         if "fap_field_defaults" in case:
@@ -622,10 +861,8 @@ def records() -> list[JSON]:
                 if key in case:
                     row[key] = case[key]
             if "steps" in case:
-                row["expected"] = None
-                row[
-                    "unresolved"
-                ] = "State assertions are not decoded packet outputs; a packet-model expectation needs separate review."
+                row["expected"] = {"type": "packet"}
+                row["state_expected"] = copy.deepcopy(step["expected"])
             elif row["outcome"].startswith("reject"):
                 row["expected"] = {"original_wire": row["packet"]}
                 row[
@@ -639,20 +876,16 @@ def records() -> list[JSON]:
                     if row["profile"] == "compatibility-fap"
                     else translate(tracked)
                 )
+                nest_legacy_position(row["expected"], row["packet"])
                 row["unmapped"] = sorted(leaf_paths(step["expected"]) - used)
                 if "payload" not in row["expected"]:
                     row[
                         "unresolved"
                     ] = "Source has no mapped payload expectation; retain the original assertions for adapter completion."
+            if row["id"] in divergences["rows"]:
+                diverge(row, divergences)
             result.append(row)
-    gaps = json.loads((ROOT / "tests/vector_gaps.json").read_text())
-    by_id = {r["id"]: r for r in result}
-    for group in gaps:
-        for identity, allowed in group["cases"].items():
-            assert "gap" not in by_id[identity], identity
-            by_id[identity]["gap"] = {"kind": group["kind"], "reason": group["reason"]}
-            if allowed:
-                by_id[identity]["gap"]["allowed_actual"] = allowed
+    assert set(divergences["rows"]) <= {row["id"] for row in result}
     return result
 
 

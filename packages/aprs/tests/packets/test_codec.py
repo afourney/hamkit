@@ -6,10 +6,12 @@ import unittest
 from dataclasses import replace
 
 from hamkit.aprs import (
+    RF,
     Acknowledgment,
     Altitude,
     CodecNotImplementedError,
     EnvelopeError,
+    EnvelopePolicy,
     Extensions,
     FieldError,
     Header,
@@ -43,7 +45,7 @@ class PacketTests(unittest.TestCase):
         wire = b"N0CALL>APRS,WIDE1-1:!4903.50N/07201.75W-Test"
         self.assertEqual(serialize_packet(packet), wire)
         self.assertEqual(parse_packet(wire), packet)
-        validate_packet(packet, profile="rf")
+        validate_packet(packet, policy=RF)
 
     def test_null_position_convention(self) -> None:
         value = parse_payload(b"!0000.00N\\00000.00W.")
@@ -93,14 +95,17 @@ class PacketTests(unittest.TestCase):
                 self.assertEqual(serialize_packet(packet), wire)
 
     def test_original_wire_is_archival(self) -> None:
+        # Unusual tokens (lowercase, SSID -0) show nothing is normalized; the
+        # permissive policy keeps envelope rules out of this archival check.
+        loose = EnvelopePolicy(".*", ".*", ".*")
         raw = b"n0call-0>APRS,qAR,igate:>radio: ready > listening"
         packet = parse_packet(raw)
         assert isinstance(packet, Packet)
         self.assertEqual(packet.original_wire, raw)
-        self.assertEqual(serialize_packet(packet), raw)
+        self.assertEqual(serialize_packet(packet, policy=loose), raw)
         changed = replace(packet, payload=Status("Changed"))
         self.assertEqual(changed.original_wire, raw)
-        self.assertTrue(serialize_packet(changed).endswith(b":>Changed"))
+        self.assertTrue(serialize_packet(changed, policy=loose).endswith(b":>Changed"))
 
     def test_path_markers(self) -> None:
         packet = parse_packet(b"N0CALL>APRS,D1,D2*,WIDE2-1:>Ready")
@@ -141,13 +146,9 @@ class PacketTests(unittest.TestCase):
 
     def test_unsupported_preserved(self) -> None:
         for information in (
-            b"`\x1c\x7f\xff",
-            b";object",
-            b"T#001,1,2,3,4,5,00000000",
-            b"!4903.5 N/07201.7 W-",
-            b"!/5L!!<*e7>7P[",
-            b":BLN0     :Notice",
-            b":NWS-WARN :Warning{123",
+            b"~unknown",
+            b"&reserved",
+            b"$GPXYZ,unknown",
         ):
             with self.subTest(information=information):
                 packet = parse_packet(b"N0CALL>APRS:" + information)
@@ -163,7 +164,7 @@ class PacketTests(unittest.TestCase):
             b">APRS:>x",
             b"N0CALL>APRS,:>x",
             b"N0CALL>APRS,D1**:>x",
-            b"N0CALL>APRS>BAD:>x",
+            b"N0CALL>APRS>>BAD:>x",
             b"N0CALL >APRS:>x",
         ):
             with self.subTest(wire=wire):

@@ -2,15 +2,17 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Seven-byte APRS DHM and HMS timestamps (APRS101 pp. 22–23)."""
+"""APRS DHM, HMS and eight-byte MDHM weather timestamps."""
 
 from .._data import Timestamp
-from .._errors import CodecNotImplementedError, FieldError
+from .._errors import FieldError
 
 
 def encode_timestamp(value: Timestamp) -> bytes:
     if value.kind == "mdhm_utc":
-        raise CodecNotImplementedError("MDHM weather timestamp")
+        return (
+            f"{value.month:02}{value.day:02}{value.hour:02}{value.minute:02}".encode()
+        )
     if value.month is not None:
         raise FieldError("month is only valid in MDHM timestamps")
     if not all(type(n) is int for n in (value.hour, value.minute)):
@@ -39,7 +41,7 @@ def encode_timestamp(value: Timestamp) -> bytes:
 
 def decode_timestamp(raw: bytes) -> Timestamp:
     if len(raw) == 8 and raw.isdigit():
-        raise CodecNotImplementedError("MDHM weather timestamp")
+        return Timestamp.mdhm(int(raw[:2]), int(raw[2:4]), int(raw[4:6]), int(raw[6:8]))
     if len(raw) != 7 or not raw[:6].isdigit():
         raise FieldError("timestamp must contain six digits and a suffix")
     a, b, c = int(raw[:2]), int(raw[2:4]), int(raw[4:6])

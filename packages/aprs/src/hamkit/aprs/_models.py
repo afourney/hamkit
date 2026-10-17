@@ -29,7 +29,6 @@ from ._errors import APRSError, EnvelopeError
 from ._nmea import NMEAMetadata, NMEASentence
 from ._validation import ANY_TEXT, FREE_TEXT, Validated
 
-EnvelopeProfile: TypeAlias = Literal["monitor", "rf"]
 UnsupportedPolicy: TypeAlias = Literal["opaque", "raise"]
 MalformedPolicy: TypeAlias = Literal["return", "raise"]
 DiagnosticCode: TypeAlias = Literal["unsupported", "malformed", "nonconforming"]
@@ -154,7 +153,11 @@ class Position(_Located, Validated):
 
 @dataclass(frozen=True)
 class MicE(_Located, Validated):
-    """Header-dependent position: the destination address carries latitude."""
+    """Header-dependent position: the destination address carries latitude.
+
+    device_code contains the type byte and declared manufacturer suffix only.
+    Optional legacy grid/status text is preserved in comment.
+    """
 
     latitude_deg: float
     longitude_deg: float

@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
 # SPDX-License-Identifier: MIT
 """Weather and telemetry values: absence, units and channel shapes."""
+
 from __future__ import annotations
 
 import unittest
@@ -20,7 +21,7 @@ class WeatherInvariantTests(unittest.TestCase):
         packet = a.Packet(a.Header("N0CALL", "APRS"), empty)
         self.assertEqual(a.from_json(a.to_json(packet)), packet)
         self.assertTrue(a.check_packet(packet))
-        with self.assertRaises(a.CodecNotImplementedError):
+        with self.assertRaises(a.ConformanceError):
             a.serialize_packet(packet)
 
     def test_units_describe_the_quantity(self) -> None:

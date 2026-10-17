@@ -255,8 +255,8 @@ class JSONRoundTripTests(unittest.TestCase):
             self.round_trip(model)
             self.round_trip(a.Packet(HEADER, model))
             self.assertEqual(a.to_json_dict(model)["type"], tag)
-            with self.assertRaises(a.CodecNotImplementedError):
-                a.serialize_packet(a.Packet(HEADER, model))
+            packet = a.Packet(HEADER, model)
+            self.assertEqual(a.parse_packet(a.serialize_packet(packet)), packet)
         extensions = a.Extensions(
             weather=dataclasses.replace(weather, timestamp=None),
             telemetry=a.Telemetry((1, 2), sequence=1, encoding="base91_comment"),
@@ -267,7 +267,7 @@ class JSONRoundTripTests(unittest.TestCase):
             self.assertNotIn("type", cast(dict[str, a.JSONValue], nested[field]))
         self.round_trip(a.Position(49, -72, a.Symbol("/", "_"), extensions=extensions))
 
-    def test_json_does_not_require_working_wire_codec(self) -> None:
+    def test_json_does_not_require_encodable_header(self) -> None:
         mic_e = a.MicE(
             49,
             -72,
@@ -276,7 +276,7 @@ class JSONRoundTripTests(unittest.TestCase):
             extensions=a.Extensions(motion=a.Motion()),
         )
         self.round_trip(mic_e)
-        with self.assertRaises(a.CodecNotImplementedError):
+        with self.assertRaises(a.FieldError):
             a.serialize_packet(a.Packet(HEADER, mic_e))
 
 
