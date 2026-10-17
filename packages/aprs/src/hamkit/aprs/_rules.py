@@ -79,7 +79,7 @@ from ._models import (
     Trace,
     UserDefined,
 )
-from ._nmea import GGA, GLL, RMC, VTG, WPL, NMEAMetadata
+from ._nmea import GGA, GLL, RMC, VTG, WPL, NMEADate, NMEAMetadata, UTCTime
 from ._validation import fail, invariant
 
 _ID = re.compile(r"[A-Za-z0-9]{1,5}")
@@ -261,22 +261,8 @@ def _compression(v: Compression) -> None:
 
 @invariant(DAO)
 def _dao(v: DAO) -> None:
-    _length(v, "datum_byte", 1, 1)
-    if (v.latitude_precision is None) != (v.longitude_precision is None):
-        fail("longitude_precision", "precisions are present or absent together")
-    if v.latitude_precision is None:
-        if v.encoding is not None:
-            fail("encoding", "datum-only DAO has no precision encoding")
-        return
-    if v.encoding is None:
-        fail("encoding", "required when precision is present")
-    if v.datum_byte.isalpha() and v.encoding != (
-        "decimal" if v.datum_byte.isupper() else "base91"
-    ):
-        fail("encoding", "precision encoding must agree with datum letter case")
-    limit = 9 if v.encoding == "decimal" else 90
-    _bounds(v, "latitude_precision", 0, limit)
-    _bounds(v, "longitude_precision", 0, limit)
+    if not re.fullmatch("[A-Z]", v.datum):
+        fail("datum", "requires an uppercase datum identifier A..Z")
 
 
 @invariant(Area)
@@ -579,10 +565,6 @@ def _nmea_token(v: Any, name: str) -> None:
 
 @invariant(GGA, GLL, RMC)
 def _nmea_fix(v: Any) -> None:
-    if not re.fullmatch(
-        r"(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9](?:\.[0-9]+)?", v.time_utc
-    ):
-        fail("time_utc", "requires HHMMSS with optional fraction")
     active = v.fix_quality > 0 if isinstance(v, GGA) else v.fix_status == "A"
     if active and v.coordinates is None:
         fail("coordinates", "a valid fix requires coordinates")
@@ -590,6 +572,10 @@ def _nmea_fix(v: Any) -> None:
 
 @invariant(GGA)
 def _gga(v: GGA) -> None:
+    for name in ("altitude_msl", "geoid_separation"):
+        reading = getattr(v, name)
+        if reading is not None and reading.unit not in ("feet", "meters"):
+            fail(name + ".unit", "height requires feet or meters")
     _bounds(v, "fix_quality", 0, 8)
     _bounds(v, "satellites", 0, 99)
     _nonnegative(v, "hdop")
@@ -614,13 +600,6 @@ def _nmea_motion(v: Any) -> None:
 
 @invariant(RMC)
 def _rmc(v: RMC) -> None:
-    date = v.date_ddmmyy
-    if not re.fullmatch(r"(?:0[1-9]|[12][0-9]|3[01])(?:0[1-9]|1[0-2])[0-9]{2}", date):
-        fail("date_ddmmyy", "requires DDMMYY")
-    # Year 00 permits February 29 without inventing the sender's century.
-    day, month, year = int(date[:2]), int(date[2:4]), int(date[4:])
-    if day > calendar.monthrange(2000 + year, month)[1]:
-        fail("date_ddmmyy", "day does not exist in the supplied month/year")
     _bounds(v, "magnetic_variation", 0, 180)
     if (v.magnetic_variation is None) != (v.magnetic_variation_direction is None):
         fail("magnetic_variation_direction", "magnitude and direction occur together")
@@ -657,3 +636,25 @@ def _packet_destination(v: Packet) -> None:
 def _trace_header(v: Trace) -> None:
     if v.header.destination is None:
         fail("header.destination", "trace headers require an explicit destination")
+
+
+@invariant(UTCTime)
+def _utc_time(v: UTCTime) -> None:
+    _bounds(v, "hour", 0, 23)
+    _bounds(v, "minute", 0, 59)
+    if v.second is not None and not 0 <= v.second < 61:
+        fail("second", "requires seconds in [0, 61), allowing a leap second")
+    if v.second is not None and v.second >= 60 and (v.hour, v.minute) != (23, 59):
+        fail("second", "a UTC leap second belongs to 23:59")
+
+
+@invariant(NMEADate)
+def _nmea_date(v: NMEADate) -> None:
+    _bounds(v, "day", 1, 31)
+    _bounds(v, "month", 1, 12)
+    _bounds(v, "year_mod_100", 0, 99)
+    if v.day is not None and v.month is not None:
+        # 00 might belong to a leap century; never resolve that century here.
+        year = 2000 + (v.year_mod_100 or 0)
+        if v.day > calendar.monthrange(year, v.month)[1]:
+            fail("day", "day does not exist in the supplied month/year")

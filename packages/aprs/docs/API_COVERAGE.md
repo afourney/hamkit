@@ -1,6 +1,7 @@
 # APRS codec coverage
 
-Packet dataclasses, payload unions and the packet JSON schema are unchanged.
+Packet dataclasses and JSON use semantic fields; the alpha API changes described
+below replace DAO codes and NMEA string/unit-specific fields.
 Packet and payload entry points accept `policy=EnvelopePolicy(...)`.
 `RF()` and `APRS_IS()` are factories with explicit extension defaults; direct
 construction and fully specified JSON are supported. See
@@ -48,8 +49,8 @@ library's output rather than this schema, so they remain source provenance
 without assertions. The pinned reference implementation was consulted; it is
 not a runtime dependency.
 
-Incomplete historical GLL reports and invalid timestamps remain `Malformed` when
-required facts cannot be constructed; `Malformed.recovered` keeps the intact
+Incomplete historical GLL layouts and undecodable timestamps remain `Malformed`.
+Decodable partial NMEA times/dates remain structured with diagnostics; `Malformed.recovered` keeps the intact
 fields of positions, objects and status reports. No missing time, coordinate or
 calibration coefficient is fabricated.
 
@@ -96,8 +97,16 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
 
 - Uncompressed coordinates round to hundredths of minutes; ambiguity transmits
   the requested cell. Compressed coordinates round to their base91 grid. DAO
-  precision is removed from the reported coordinate before encoding the base
-  coordinate, preventing a second application of the offset.
+  now stores `datum` and `encoding`, without latitude/longitude codes. The refined
+  coordinate is rounded once, then split into hundredth-minute and DAO parts,
+  including carry across minute/degree boundaries. Parsing applies supported
+  offsets once; later edits recompute codes. Added precision with ambiguity or
+  compressed coordinates is refused on send. On receive these unsupported
+  combinations retain baseline coordinates and DAO evidence with diagnostics.
+- Altitude accepts `Measurement` in feet or meters for `/A=`, compressed, Mic-E
+  and GGA. Conversion precedes quantization and range checks. GGA uses
+  `altitude_msl` and `geoid_separation`, replacing the `_m` scalar fields. Decoding
+  retains each format's native unit; no vertical datum transformation is implied.
 - Compressed motion, range and altitude use their specified logarithmic codes.
   Field overflow is rejected. No saturation or text truncation is performed.
   Numeric overlays use table IDs `a`–`j`; sending compressed positions with
@@ -120,7 +129,17 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   Sending rejects models incompatible with the selected interpretation and
   comments that would read back as different fields. Extended high-speed
   reinterpretation is not implemented.
-- NMEA uses semantic numeric fields and recomputes a supplied checksum. Checksum
+- NMEA uses `UTCTime(hour, minute, second)` and
+  `NMEADate(day, month, year_mod_100)` in `RMC.date`, replacing formatted strings.
+  Null means missing; unknown components stay null. A four-digit received clock
+  or date retains its known components with a diagnostic, but sending requires
+  seconds and a complete DDMMYY date when present. Void fixes may omit these
+  observations; active fixes require time, and RMC also requires a date. No
+  century, date or timezone is inferred. Year 00 permits February 29 because
+  its unresolved century might be a leap century; leap seconds are accepted only
+  at 23:59, without inventing a leap-second calendar. Fractional seconds use a
+  numeric value; lexical trailing zeros are not preserved.
+- NMEA recomputes a supplied checksum. Checksum
   characters can change when equivalent numeric spellings change. A sentence
   received with a bad checksum (`checksum_valid=False`) is a conformance finding:
   it is reported when parsed and refused when sending, so corrupt data is never
@@ -163,24 +182,52 @@ All original packet bytes, semantic expectations, options and provenance have a
 frozen integrity hash tied to PR #4's head commit.
 
 Every vector also has an encoding test. With an explicit permissive envelope
-policy (the row policy with its envelope patterns and limits relaxed), 1,305 occurrences encode and stabilize
+policy (the row policy with its envelope patterns and limits relaxed), 1,304 occurrences encode and stabilize
 through semantic decode/encode round trips with all raw evidence removed. The
-other 259 have explicit refusal records: 176 malformed public packets and 83
+other 260 have explicit refusal records: 172 malformed public packets and 88
 violations of the existing transmit-conformance rules. Those refusal tests assert
 the reason; they are not broad exception catches or skipped tests. Three NMEA
 sentences with bad checksums are first refused, then encode after an explicit
-repair; they are counted among the 1,305.
+repair; they are counted among the 1,304.
 
-Of those 1,305, 15 have addresses rejected by the `APRS_IS()` envelope constraints,
+Of those 1,304, 15 have addresses rejected by the `APRS_IS()` envelope constraints,
 including two with SSID `-0`; the tests independently require those
-envelope refusals and validate the other 1,290 with the row’s interpretation settings. The permissive policy changes no decoded
+envelope refusals and validate the other 1,289 with the row’s interpretation settings. The permissive policy changes no decoded
 fields, packet bytes or payload conformance checks. Dedicated policy tests cover
 custom patterns, optional and zero limits, boundary sizes including CRLF,
 repeated markers, and consistent outer-envelope handling of third-party packets.
 
 The round-trip runner also checks each row's stored policy separately: 25 of the
-1,305 representable packets have envelope refusals under that policy, and 1,280
+1,304 representable packets have envelope refusals under that policy, and 1,280
 validate. The additional 10 refusals exercise RF address/path constraints.
 
 PHG/PHGR vectors exercise the public API directly. The PHGR rate character and required slash, ordinary PHG separators,
 and PHG comment whitespace are handled by the shared public decoder/encoder.
+
+## Specification boundaries and migration
+
+The [DAO proposal](https://www.aprs.org/datum.txt) defines decimal and base-91
+refinements of hundredth-minute coordinates, and datum-only spaces. Its base-91
+explanation uses an approximate 1.10 scale and contains a terminal-character
+inconsistency. This codec retains the established corpus convention: integer
+codes 0..90, ASCII 33..123, with an increment of 1/(91 × 6000) degrees. Rounding
+uses Python's nearest/ties-to-even rule, as in the other coordinate encoders.
+Local numeric datum identifiers lack a specified precision mode here and remain
+uninterpreted comment text; no datum transformation or added precision on
+compressed positions is claimed. FAP-035 now records the compressed-position
+DAO limitation explicitly; its source assertion and packet remain unchanged.
+
+The NMEA models follow the component layouts illustrated by the primary
+[Trimble RMC documentation](https://receiverhelp.trimble.com/alloy-gnss/en-us/NMEA-0183messages_RMC.html)
+and [GGA documentation](https://receiverhelp.trimble.com/alloy-gnss/en-us/NMEA-0183messages_GGA.html).
+Partial four-digit clocks/dates are a permissive receive representation, not a
+new valid wire layout. Arbitrary vendor partial-field conventions remain outside
+this grammar. The four formerly malformed partial/missing NMEA corpus cases
+(FAP-384, 386, 393 and 395) now retain structured data with send-conformance
+findings. Other raw packet and source/provenance assertions are unchanged.
+
+Alpha callers must replace `DAO.datum_byte` and precision codes with an uppercase
+`datum` identifier plus `encoding`; replace NMEA time/date strings with the new
+component objects; and wrap GGA heights in `Measurement`. JSON uses the same
+fields, with standalone tags `utc_time` and `nmea_date`. Original DAO bytes and
+NMEA `fields_raw` remain optional evidence, never a serialization source.

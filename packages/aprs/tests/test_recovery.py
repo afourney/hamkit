@@ -273,7 +273,7 @@ class StrictConstructionTests(unittest.TestCase):
             lambda: a.Extent((50, 49), (-73, -72)),
             lambda: a.Weather(temperature=a.Measurement(10, "mph")),
             lambda: a.Telemetry((1,) * 6),
-            lambda: a.GLL(None, "123000", "A"),
+            lambda: a.GLL(None, a.UTCTime(12, 30, 0), "A"),
             lambda: a.NTSAddress(("é", "street", "city", "zip")),
             lambda: a.Grid("not a grid"),
             lambda: a.UserDefined(b"", b"1", b"data"),
@@ -327,5 +327,5 @@ class StrictConstructionTests(unittest.TestCase):
         self.assertNotEqual(absent, unavailable)
         self.assertEqual(a.Message("W1AW", "").message_id, None)
         self.assertEqual(a.Position(49, -72, SYMBOL).timestamp, None)
-        self.assertEqual(a.GLL(None, "123000", "V").coordinates, None)
+        self.assertEqual(a.GLL(None, a.UTCTime(12, 30, 0), "V").coordinates, None)
         self.assertEqual(dataclasses.replace(unavailable, wind_speed=None), absent)

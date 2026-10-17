@@ -11,7 +11,7 @@ import re
 from typing import Literal, cast
 
 from . import _nmea as n
-from ._data import Coordinates, Symbol
+from ._data import Coordinates, Measurement, Symbol
 from ._errors import CodecNotImplementedError, FieldError
 from ._models import NMEA, Diagnostic, Header
 from ._policy import _DEFAULT_POLICY, EnvelopePolicy
@@ -107,13 +107,13 @@ def read(
             if f[9] != "M" or f[11] != "M":
                 raise FieldError("GGA height units must be meters")
             s = n.GGA(
-                f[0],
+                read_time(f[0]),
                 _coordinates(f[1:5]),
                 int(f[5]),
                 satellites=int(f[6]) if f[6] else None,
                 hdop=number(7),
-                altitude_msl_m=number(8),
-                geoid_separation_m=number(10),
+                altitude_msl=Measurement(number(8), "meters") if f[8] else None,
+                geoid_separation=Measurement(number(10), "meters") if f[10] else None,
                 dgps_age=f[12] or None,
                 dgps_station=f[13] or None,
             )
@@ -121,14 +121,16 @@ def read(
         elif kind == "GLL":
             if len(f) < 6:
                 raise FieldError("GLL requires six fields")
-            s = n.GLL(_coordinates(f[:4]), f[4], cast(Literal["A", "V"], f[5]))
+            s = n.GLL(
+                _coordinates(f[:4]), read_time(f[4]), cast(Literal["A", "V"], f[5])
+            )
             usable = s.fix_status == "A"
         elif kind == "RMC":
             if len(f) < 11:
                 raise FieldError("RMC requires eleven fields")
             s = n.RMC(
-                f[0],
-                f[8],
+                read_time(f[0]),
+                read_date(f[8]),
                 cast(Literal["A", "V"], f[1]),
                 _coordinates(f[2:6]),
                 speed_knots=number(6),
@@ -210,28 +212,28 @@ def write(p: NMEA) -> bytes:
     num = lambda v: "" if v is None else f"{v:.12g}"
     if isinstance(s, n.GGA):
         f = [
-            s.time_utc,
+            write_time(s.time_utc),
             *_coord_fields(s.coordinates),
             str(s.fix_quality),
             num(s.satellites),
             num(s.hdop),
-            num(s.altitude_msl_m),
+            height_field(s.altitude_msl),
             "M",
-            num(s.geoid_separation_m),
+            height_field(s.geoid_separation),
             "M",
             s.dgps_age or "",
             s.dgps_station or "",
         ]
     elif isinstance(s, n.GLL):
-        f = [*_coord_fields(s.coordinates), s.time_utc, s.fix_status]
+        f = [*_coord_fields(s.coordinates), write_time(s.time_utc), s.fix_status]
     elif isinstance(s, n.RMC):
         f = [
-            s.time_utc,
+            write_time(s.time_utc),
             s.fix_status,
             *_coord_fields(s.coordinates),
             num(s.speed_knots),
             num(s.course_deg),
-            s.date_ddmmyy,
+            write_date(s.date),
             num(s.magnetic_variation),
             s.magnetic_variation_direction or "",
         ]
@@ -252,3 +254,55 @@ def write(p: NMEA) -> bytes:
     if p.metadata.checksum_supplied is not None:
         raw += b"*" + f"{functools.reduce(operator.xor,raw,0):02X}".encode()
     return b"$" + raw + p.comment.encode()
+
+
+def read_time(raw: str) -> n.UTCTime | None:
+    if not raw:
+        return None
+    if not re.fullmatch(r"[0-9]{4}(?:[0-9]{2}(?:\.[0-9]+)?)?", raw):
+        raise FieldError("invalid NMEA UTC time")
+    return n.UTCTime(int(raw[:2]), int(raw[2:4]), float(raw[4:]) if raw[4:] else None)
+
+
+def write_time(value: n.UTCTime | None) -> str:
+    if value is None:
+        return ""
+    if value.second is None:
+        raise FieldError(
+            "NMEA time requires seconds; unknown seconds cannot be invented"
+        )
+    from decimal import Decimal
+
+    whole, dot, fraction = format(Decimal(str(value.second)), "f").partition(".")
+    seconds = f"{int(whole):02d}"
+    if dot and fraction.rstrip("0"):
+        seconds += "." + fraction.rstrip("0")
+    return f"{value.hour:02d}{value.minute:02d}" + seconds
+
+
+def read_date(raw: str) -> n.NMEADate | None:
+    if not raw:
+        return None
+    if not re.fullmatch(r"[0-9]{4}(?:[0-9]{2})?", raw):
+        raise FieldError("invalid NMEA calendar date")
+    return n.NMEADate(int(raw[:2]), int(raw[2:4]), int(raw[4:]) if raw[4:] else None)
+
+
+def write_date(value: n.NMEADate | None) -> str:
+    if value is None:
+        return ""
+    if value.day is None or value.month is None or value.year_mod_100 is None:
+        raise FieldError(
+            "NMEA RMC needs day, month and two-digit year; partial date cannot be encoded"
+        )
+    return f"{value.day:02d}{value.month:02d}{value.year_mod_100:02d}"
+
+
+def height_field(value: Measurement | None) -> str:
+    from ._units import height
+
+    if value is None or value.value is None:
+        return ""
+    from decimal import Decimal
+
+    return format(Decimal(f'{height(value, "meters"):.12g}'), "f")

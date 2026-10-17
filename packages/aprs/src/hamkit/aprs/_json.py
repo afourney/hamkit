@@ -74,6 +74,8 @@ JSONModel: TypeAlias = (
     | d.NTSRouting
     | d.Footprint
     | d.Capability
+    | n.UTCTime
+    | n.NMEADate
     | n.NMEAMetadata
     | n.GGA
     | n.GLL
@@ -179,6 +181,8 @@ _SCHEMAS = (
     _Schema(d.NTSRouting, "nts_routing"),
     _Schema(d.Footprint, "footprint"),
     _Schema(d.Capability, "capability"),
+    _Schema(n.UTCTime, "utc_time"),
+    _Schema(n.NMEADate, "nmea_date"),
     _Schema(n.NMEAMetadata, "nmea_metadata"),
     _Schema(n.GGA, "gga"),
     _Schema(n.GLL, "gll"),

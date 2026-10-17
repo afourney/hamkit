@@ -94,7 +94,7 @@ class ReadmeTests(unittest.TestCase):
     ) -> None:
         # 29 construction pairs, 5 parsing inputs with 5 JSON displays, then one
         # each of unsupported encoding, repair and refusal to send.
-        self.assertEqual(len(self.examples), 75)
+        self.assertEqual(len(self.examples), 81)
         namespace: dict[str, Any] | None = None
         for index, example in enumerate(self.examples):
             with self.subTest(example=index + 1):

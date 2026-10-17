@@ -306,8 +306,8 @@ def _decode_position(
             )
             extensions = replace(extensions, motion=None, weather=weather)
         return Position(
-            pc.dao_offset(latitude, extensions.dao, "latitude"),
-            pc.dao_offset(longitude, extensions.dao, "longitude"),
+            latitude,
+            longitude,
             symbol,
             compression=compression,
             extensions=extensions,
@@ -324,8 +324,12 @@ def _decode_position(
         raise ModelError("$.symbol" + exc.path[1:], exc.message) from exc
     extensions, rest = _extensions.read(body[19:], symbol, policy)
     return Position(
-        pc.dao_offset(latitude, extensions.dao, "latitude"),
-        pc.dao_offset(longitude, extensions.dao, "longitude"),
+        pc.dao_offset(latitude, extensions.dao, "latitude")
+        if not ambiguity
+        else latitude,
+        pc.dao_offset(longitude, extensions.dao, "longitude")
+        if not ambiguity
+        else longitude,
         symbol,
         comment=free_text(rest, "$.comment", diagnostics, policy),
         messaging=dti in (b"=", b"@"),
@@ -658,15 +662,11 @@ def _encode_payload(
 
         symbol = payload.symbol
         extensions = payload.extensions
-        payload = replace(
-            payload,
-            latitude_deg=pc.dao_offset(
-                payload.latitude_deg, extensions.dao, "latitude", -1
-            ),
-            longitude_deg=pc.dao_offset(
-                payload.longitude_deg, extensions.dao, "longitude", -1
-            ),
-        )
+        from ._dao import base_coordinates
+
+        semantic_coordinates = (payload.latitude_deg, payload.longitude_deg)
+        latitude, longitude = base_coordinates(payload)
+        payload = replace(payload, latitude_deg=latitude, longitude_deg=longitude)
         if payload.compression is not None:
             position_wire, extensions = pc.compressed_bytes(payload)
         else:
@@ -682,7 +682,11 @@ def _encode_payload(
             raw
             + position_wire
             + _extensions.write(
-                extensions, symbol, payload.comment.encode("utf-8"), policy
+                extensions,
+                symbol,
+                payload.comment.encode("utf-8"),
+                policy,
+                coordinates=semantic_coordinates,
             )
             + payload.comment.encode("utf-8")
         )

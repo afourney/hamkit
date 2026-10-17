@@ -4,7 +4,7 @@ This is the canonical JSON format for `hamkit-aprs`. Examples are
 pretty-printed, executable data, with nested values expanded. They illustrate
 values, not legal ranges or complete APRS wire support. The field tables are the
 shape contract: every field, requiredness, default, allowed enum, unit and nested
-model is listed. All 76 serializable models and all 29 payload families appear.
+model is listed. All 78 serializable models and all 29 payload families appear.
 
 ## Contents
 
@@ -126,6 +126,8 @@ their own fully expanded examples in the field table.
 | [NTSRouting](#ntsrouting)                   | `nts_routing`          | field / container |
 | [Footprint](#footprint)                     | `footprint`            | field / container |
 | [Capability](#capability)                   | `capability`           | field / container |
+| [UTCTime](#utctime)                         | `utc_time`             | field / container |
+| [NMEADate](#nmeadate)                       | `nmea_date`            | field / container |
 | [NMEAMetadata](#nmeametadata)               | `nmea_metadata`        | field / container |
 | [GGA](#gga)                                 | `gga`                  | field / container |
 | [GLL](#gll)                                 | `gll`                  | field / container |
@@ -481,25 +483,23 @@ Standalone tag: `compression`. [Back to type map](#type-map-and-object-catalog).
 
 Standalone tag: `dao`. [Back to type map](#type-map-and-object-catalog).
 
+DAO precision codes are derived from the enclosing semantic coordinates; datum is an uppercase identifier and encoding chooses decimal, base91 or datum-only (null). Raw bytes are receive evidence only.
+
 ```json
 {
   "type": "dao",
-  "datum_byte": "W",
-  "latitude_precision": 1,
-  "longitude_precision": 2,
+  "datum": "W",
   "encoding": "decimal",
   "raw": null
 }
 ```
 
-| Field                 | JSON value / allowed values     | Presence / default       |
-| --------------------- | ------------------------------- | ------------------------ |
-| `type`                | `"dao"`                         | see [Tags](#tags)        |
-| `datum_byte`          | string                          | **required**             |
-| `latitude_precision`  | integer or null                 | optional; default `null` |
-| `longitude_precision` | integer or null                 | optional; default `null` |
-| `encoding`            | `'decimal'`, `'base91'` or null | optional; default `null` |
-| `raw`                 | Latin-1 byte string or null     | optional; default `null` |
+| Field      | JSON value / allowed values     | Presence / default       |
+| ---------- | ------------------------------- | ------------------------ |
+| `type`     | `"dao"`                         | see [Tags](#tags)        |
+| `datum`    | string                          | optional; default `'W'`  |
+| `encoding` | `'decimal'`, `'base91'` or null | optional; default `null` |
+| `raw`      | Latin-1 byte string or null     | optional; default `null` |
 
 ### Area
 
@@ -1040,6 +1040,50 @@ Standalone tag: `capability`. [Back to type map](#type-map-and-object-catalog).
 | `name`  | string                      | **required**             |
 | `value` | string or null              | optional; default `null` |
 
+### UTCTime
+
+Standalone tag: `utc_time`. [Back to type map](#type-map-and-object-catalog).
+
+UTC clock components without an inferred date. Fractional seconds are numeric; null seconds remain unknown and cannot be sent as a complete NMEA clock.
+
+```json
+{
+  "type": "utc_time",
+  "hour": 12,
+  "minute": 30,
+  "second": 0.25
+}
+```
+
+| Field    | JSON value / allowed values | Presence / default       |
+| -------- | --------------------------- | ------------------------ |
+| `type`   | `"utc_time"`                | see [Tags](#tags)        |
+| `hour`   | integer                     | **required**             |
+| `minute` | integer                     | **required**             |
+| `second` | finite number or null       | optional; default `null` |
+
+### NMEADate
+
+Standalone tag: `nmea_date`. [Back to type map](#type-map-and-object-catalog).
+
+Partial calendar components; year_mod_100 retains 00..99 without a century. Missing components remain null; a present RMC date needs all three components to serialize.
+
+```json
+{
+  "type": "nmea_date",
+  "day": 17,
+  "month": 10,
+  "year_mod_100": 26
+}
+```
+
+| Field          | JSON value / allowed values | Presence / default       |
+| -------------- | --------------------------- | ------------------------ |
+| `type`         | `"nmea_date"`               | see [Tags](#tags)        |
+| `day`          | integer or null             | optional; default `null` |
+| `month`        | integer or null             | optional; default `null` |
+| `year_mod_100` | integer or null             | optional; default `null` |
+
 ### NMEAMetadata
 
 Standalone tag: `nmea_metadata`. [Back to type map](#type-map-and-object-catalog).
@@ -1069,7 +1113,11 @@ Standalone tag: `gga`. [Back to type map](#type-map-and-object-catalog).
 ```json
 {
   "type": "gga",
-  "time_utc": "123000",
+  "time_utc": {
+    "hour": 12,
+    "minute": 30,
+    "second": 0
+  },
   "coordinates": {
     "latitude_deg": 49,
     "longitude_deg": -72
@@ -1077,25 +1125,33 @@ Standalone tag: `gga`. [Back to type map](#type-map-and-object-catalog).
   "fix_quality": 0,
   "satellites": null,
   "hdop": null,
-  "altitude_msl_m": 12,
-  "geoid_separation_m": 3,
+  "altitude_msl": {
+    "value": 12,
+    "unit": "meters",
+    "raw": null
+  },
+  "geoid_separation": {
+    "value": 3,
+    "unit": "meters",
+    "raw": null
+  },
   "dgps_age": null,
   "dgps_station": null
 }
 ```
 
-| Field                | JSON value / allowed values         | Presence / default       |
-| -------------------- | ----------------------------------- | ------------------------ |
-| `type`               | `"gga"`                             | see [Tags](#tags)        |
-| `time_utc`           | string                              | **required**             |
-| `coordinates`        | [Coordinates](#coordinates) or null | **required**             |
-| `fix_quality`        | integer                             | **required**             |
-| `satellites`         | integer or null                     | optional; default `null` |
-| `hdop`               | finite number or null               | optional; default `null` |
-| `altitude_msl_m`     | finite number or null               | optional; default `null` |
-| `geoid_separation_m` | finite number or null               | optional; default `null` |
-| `dgps_age`           | string or null                      | optional; default `null` |
-| `dgps_station`       | string or null                      | optional; default `null` |
+| Field              | JSON value / allowed values         | Presence / default       |
+| ------------------ | ----------------------------------- | ------------------------ |
+| `type`             | `"gga"`                             | see [Tags](#tags)        |
+| `time_utc`         | [UTCTime](#utctime) or null         | **required**             |
+| `coordinates`      | [Coordinates](#coordinates) or null | **required**             |
+| `fix_quality`      | integer                             | **required**             |
+| `satellites`       | integer or null                     | optional; default `null` |
+| `hdop`             | finite number or null               | optional; default `null` |
+| `altitude_msl`     | [Measurement](#measurement) or null | optional; default `null` |
+| `geoid_separation` | [Measurement](#measurement) or null | optional; default `null` |
+| `dgps_age`         | string or null                      | optional; default `null` |
+| `dgps_station`     | string or null                      | optional; default `null` |
 
 ### GLL
 
@@ -1108,7 +1164,11 @@ Standalone tag: `gll`. [Back to type map](#type-map-and-object-catalog).
     "latitude_deg": 49,
     "longitude_deg": -72
   },
-  "time_utc": "123000",
+  "time_utc": {
+    "hour": 12,
+    "minute": 30,
+    "second": 0
+  },
   "fix_status": "V"
 }
 ```
@@ -1117,7 +1177,7 @@ Standalone tag: `gll`. [Back to type map](#type-map-and-object-catalog).
 | ------------- | ----------------------------------- | ------------------ |
 | `type`        | `"gll"`                             | see [Tags](#tags)  |
 | `coordinates` | [Coordinates](#coordinates) or null | **required**       |
-| `time_utc`    | string                              | **required**       |
+| `time_utc`    | [UTCTime](#utctime) or null         | **required**       |
 | `fix_status`  | `'A'`, `'V'`                        | **required**       |
 
 ### RMC
@@ -1127,8 +1187,16 @@ Standalone tag: `rmc`. [Back to type map](#type-map-and-object-catalog).
 ```json
 {
   "type": "rmc",
-  "time_utc": "123000",
-  "date_ddmmyy": "171026",
+  "time_utc": {
+    "hour": 12,
+    "minute": 30,
+    "second": 0
+  },
+  "date": {
+    "day": 17,
+    "month": 10,
+    "year_mod_100": 26
+  },
   "fix_status": "A",
   "coordinates": {
     "latitude_deg": 49,
@@ -1144,8 +1212,8 @@ Standalone tag: `rmc`. [Back to type map](#type-map-and-object-catalog).
 | Field                          | JSON value / allowed values         | Presence / default       |
 | ------------------------------ | ----------------------------------- | ------------------------ |
 | `type`                         | `"rmc"`                             | see [Tags](#tags)        |
-| `time_utc`                     | string                              | **required**             |
-| `date_ddmmyy`                  | string                              | **required**             |
+| `time_utc`                     | [UTCTime](#utctime) or null         | **required**             |
+| `date`                         | [NMEADate](#nmeadate) or null       | **required**             |
 | `fix_status`                   | `'A'`, `'V'`                        | **required**             |
 | `coordinates`                  | [Coordinates](#coordinates) or null | **required**             |
 | `speed_knots`                  | finite number or null               | optional; default `null` |
@@ -1757,7 +1825,11 @@ Standalone tag: `nmea`. [Back to type map](#type-map-and-object-catalog).
       "latitude_deg": 49,
       "longitude_deg": -72
     },
-    "time_utc": "123000",
+    "time_utc": {
+      "hour": 12,
+      "minute": 30,
+      "second": 0
+    },
     "fix_status": "A"
   },
   "metadata": {
@@ -2207,7 +2279,11 @@ Each allowed member is shown in its actual container, where it carries its tag.
   "type": "nmea",
   "sentence": {
     "type": "gga",
-    "time_utc": "123000",
+    "time_utc": {
+      "hour": 12,
+      "minute": 30,
+      "second": 0
+    },
     "coordinates": {
       "latitude_deg": 49,
       "longitude_deg": -72
@@ -2215,8 +2291,16 @@ Each allowed member is shown in its actual container, where it carries its tag.
     "fix_quality": 0,
     "satellites": null,
     "hdop": null,
-    "altitude_msl_m": 12,
-    "geoid_separation_m": 3,
+    "altitude_msl": {
+      "value": 12,
+      "unit": "meters",
+      "raw": null
+    },
+    "geoid_separation": {
+      "value": 3,
+      "unit": "meters",
+      "raw": null
+    },
     "dgps_age": null,
     "dgps_station": null
   },
@@ -2243,7 +2327,11 @@ Each allowed member is shown in its actual container, where it carries its tag.
       "latitude_deg": 49,
       "longitude_deg": -72
     },
-    "time_utc": "123000",
+    "time_utc": {
+      "hour": 12,
+      "minute": 30,
+      "second": 0
+    },
     "fix_status": "V"
   },
   "metadata": {
@@ -2265,8 +2353,16 @@ Each allowed member is shown in its actual container, where it carries its tag.
   "type": "nmea",
   "sentence": {
     "type": "rmc",
-    "time_utc": "123000",
-    "date_ddmmyy": "171026",
+    "time_utc": {
+      "hour": 12,
+      "minute": 30,
+      "second": 0
+    },
+    "date": {
+      "day": 17,
+      "month": 10,
+      "year_mod_100": 26
+    },
     "fix_status": "A",
     "coordinates": {
       "latitude_deg": 49,

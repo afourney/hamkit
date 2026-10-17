@@ -144,7 +144,7 @@ def test_unrepresentable_annotations_and_field_overflow_are_not_dropped():
     with pytest.raises(a.FieldError, match="query response"):
         a.serialize_payload(a.Message("W1AW", "Directs= N0CALL"))
     report = a.NMEA(
-        a.GLL(a.Coordinates(49, -72), "120000", "A"),
+        a.GLL(a.Coordinates(49, -72), a.UTCTime(12, 0, 0), "A"),
         a.NMEAMetadata("GP"),
         symbol=a.Symbol("/", "-"),
     )

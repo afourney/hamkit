@@ -252,9 +252,9 @@ class Compression(Validated):
 
 @dataclass(frozen=True)
 class DAO(Validated):
-    datum_byte: str
-    latitude_precision: int | None = field(default=None, kw_only=True)
-    longitude_precision: int | None = field(default=None, kw_only=True)
+    """Datum identifier and precision selection; codes are derived from coordinates."""
+
+    datum: str = "W"
     encoding: Literal["decimal", "base91"] | None = field(default=None, kw_only=True)
     raw: bytes | None = evidence()
 

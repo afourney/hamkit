@@ -22,7 +22,8 @@
     "telemetry_short": "A short telemetry report decodes with only the channels transmitted and is marked nonconforming; FAP pads it to five channels.",
     "telemetry_invalid": "A non-numeric telemetry channel cannot be decoded, so the report is Malformed; FAP keeps the channels before it.",
     "telemetry_comment": "Text after the telemetry digital bits is kept as the comment; FAP discards it.",
-    "weather_unknown_field": "'O' is not a weather field in APRS101, the APRS 1.1 clarification or the APRS 1.2 proposal, so the report ends there and the rest stays in the comment; FAP skips it."
+    "weather_unknown_field": "'O' is not a weather field in APRS101, the APRS 1.1 clarification or the APRS 1.2 proposal, so the report ends there and the rest stays in the comment; FAP skips it.",
+    "compressed_dao": "DAO precision describes refinements of DDMM.hh/DDDMM.hh fields, not compressed coordinates. Preserve the DAO evidence and baseline compressed coordinates with a diagnostic; do not apply an invented correction."
   },
   "rows": {
     "FAP-005": {
@@ -69,9 +70,11 @@
       }
     },
     "FAP-035": {
-      "reasons": ["whitespace"],
+      "reasons": ["whitespace", "compressed_dao"],
       "set": {
-        "$.payload.comment": " http://aprs.fi/"
+        "$.payload.comment": " http://aprs.fi/",
+        "$.payload.latitude_deg": 60.15270157458404,
+        "$.payload.longitude_deg": 24.662191606768772
       }
     },
     "FAP-346": {

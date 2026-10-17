@@ -127,8 +127,8 @@ def read(
     device, extra, tail = read_status(b[8:], symbol, policy)
     e = replace(extra, motion=motion)
     return MicE(
-        dao_offset(lat, e.dao, "latitude"),
-        dao_offset(lon, e.dao, "longitude"),
+        dao_offset(lat, e.dao, "latitude") if not n else lat,
+        dao_offset(lon, e.dao, "longitude") if not n else lon,
         symbol,
         message=message,
         fix="current" if information[:1] in (b"`", b"\x1c") else "old",
@@ -159,10 +159,9 @@ def _longitude_degrees_byte(degrees: int, offset: bool) -> int:
 
 
 def _base_coordinates(p: MicE) -> tuple[float, float]:
-    return (
-        dao_offset(p.latitude_deg, p.extensions.dao, "latitude", -1),
-        dao_offset(p.longitude_deg, p.extensions.dao, "longitude", -1),
-    )
+    from ._dao import base_coordinates
+
+    return base_coordinates(p)
 
 
 def destination_for(p: MicE) -> str:
@@ -345,6 +344,7 @@ def read_status(
 
 def write_status(p: MicE, policy: EnvelopePolicy = _DEFAULT_POLICY) -> bytes:
     """Encode the status text after the symbol; the inverse of read_status."""
+    _base_coordinates(p)
     head, suffix = device_parts(p.device_code, policy)
     e = replace(p.extensions, motion=None)
     first = b""
@@ -389,17 +389,20 @@ def write_status(p: MicE, policy: EnvelopePolicy = _DEFAULT_POLICY) -> bytes:
             raise FieldError(
                 "Mic-E altitude reference is not an independent wire field"
             )
-        a = e.altitude.measurement
-        if a.unit != "meters" or a.value is None:
-            raise FieldError("Mic-E altitude requires meters")
-        first += pack91(round(a.value) + 10000, 3) + b"}"
+        from ._units import height
+
+        first += (
+            pack91(round(height(e.altitude.measurement, "meters")) + 10000, 3) + b"}"
+        )
         e = replace(e, altitude=None)
     from . import _extensions
 
     comment = p.comment.encode()
     return (
         first
-        + _extensions.write(e, p.symbol, comment, policy)
+        + _extensions.write(
+            e, p.symbol, comment, policy, coordinates=(p.latitude_deg, p.longitude_deg)
+        )
         + comment
         + suffix.encode()
     )

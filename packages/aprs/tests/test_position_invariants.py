@@ -52,18 +52,13 @@ class PositionInvariantTests(unittest.TestCase):
     def test_dao_absent_and_present_precision(self) -> None:
         for value in (
             a.DAO("W"),
-            a.DAO("W", latitude_precision=1, longitude_precision=2, encoding="decimal"),
-            a.DAO("w", latitude_precision=90, longitude_precision=0, encoding="base91"),
+            a.DAO("W", encoding="decimal"),
+            a.DAO("W", encoding="base91"),
         ):
             self.assertEqual(a.from_json(a.to_json(value)), value)
-        for kwargs in (
-            {"latitude_precision": 1, "encoding": "decimal"},
-            {"latitude_precision": 1, "longitude_precision": 2},
-            {"encoding": "decimal"},
-            {"latitude_precision": 10, "longitude_precision": 2, "encoding": "decimal"},
-        ):
+        for datum in ("w", "WW", "1", "é"):
             with self.assertRaises(a.ModelError):
-                a.DAO("W", **kwargs)
+                a.DAO(datum)
         self.reject_json(
             {
                 "type": "dao",

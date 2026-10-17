@@ -4,15 +4,15 @@
 
 """Typed values for the five NMEA sentence kinds cited by the APRS corpus.
 
-Raw time/date/fields are retained; no host clock, checksum success or trusted
-fix is inferred from coordinates. Other NMEA sentences need their own grammar.
+Partial UTC times and century-less dates remain structured. No host clock,
+century or trusted fix is inferred. Other sentences need their own grammar.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Literal, TypeAlias
 
-from ._data import Coordinates
+from ._data import Coordinates, Measurement
 from ._validation import Validated, evidence
 
 
@@ -25,14 +25,32 @@ class NMEAMetadata(Validated):
 
 
 @dataclass(frozen=True)
+class UTCTime(Validated):
+    """UTC clock components, without a date; None second means unknown, not zero."""
+
+    hour: int
+    minute: int
+    second: float | None = None
+
+
+@dataclass(frozen=True)
+class NMEADate(Validated):
+    """Calendar components with an unresolved century (00..99, never a full year)."""
+
+    day: int | None = None
+    month: int | None = None
+    year_mod_100: int | None = None
+
+
+@dataclass(frozen=True)
 class GGA(Validated):
-    time_utc: str
+    time_utc: UTCTime | None
     coordinates: Coordinates | None
     fix_quality: int
     satellites: int | None = field(default=None, kw_only=True)
     hdop: float | None = field(default=None, kw_only=True)
-    altitude_msl_m: float | None = field(default=None, kw_only=True)
-    geoid_separation_m: float | None = field(default=None, kw_only=True)
+    altitude_msl: Measurement | None = field(default=None, kw_only=True)
+    geoid_separation: Measurement | None = field(default=None, kw_only=True)
     dgps_age: str | None = field(default=None, kw_only=True)
     dgps_station: str | None = field(default=None, kw_only=True)
 
@@ -40,14 +58,14 @@ class GGA(Validated):
 @dataclass(frozen=True)
 class GLL(Validated):
     coordinates: Coordinates | None
-    time_utc: str
+    time_utc: UTCTime | None
     fix_status: Literal["A", "V"]
 
 
 @dataclass(frozen=True)
 class RMC(Validated):
-    time_utc: str
-    date_ddmmyy: str
+    time_utc: UTCTime | None
+    date: NMEADate | None
     fix_status: Literal["A", "V"]
     coordinates: Coordinates | None
     speed_knots: float | None = field(default=None, kw_only=True)

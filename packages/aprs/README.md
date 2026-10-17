@@ -1576,7 +1576,7 @@ from hamkit import aprs
 packet = aprs.Packet(
     aprs.Header("N0CALL", "APRS"),
     aprs.NMEA(
-        aprs.GLL(aprs.Coordinates(49, -72), "123000", "A"), aprs.NMEAMetadata("GP")
+        aprs.GLL(aprs.Coordinates(49, -72), aprs.UTCTime(12, 30, 0), "A"), aprs.NMEAMetadata("GP")
     ),
 )
 print(type(packet.payload).__name__)
@@ -1609,7 +1609,11 @@ packet = aprs.from_json(
         "latitude_deg": 49,
         "longitude_deg": -72
       },
-      "time_utc": "123000",
+      "time_utc": {
+        "hour": 12,
+        "minute": 30,
+        "second": 0
+      },
       "fix_status": "A"
     },
     "metadata": {
@@ -1626,6 +1630,217 @@ Output:
 
 ```text
 NMEA
+```
+
+#### DAO precision from coordinates
+
+Choose `DAO(encoding="decimal")` for thousandths of a minute or `"base91"` for 1/91 of a hundredth-minute. `datum="W"` is WGS84; letter case is packed automatically. `encoding=None` sends datum only. Parsed coordinates already include supported DAO precision. Editing those coordinates recomputes the codes, without using the received `raw` evidence. Added precision with ambiguity or compressed positions is refused; received combinations retain their baseline coordinates and DAO evidence with diagnostics.
+
+Build with Python:
+
+```python
+from hamkit import aprs
+
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.Position(
+        49.05837, -72.029215, aprs.Symbol("/", ">"),
+        extensions=aprs.Extensions(dao=aprs.DAO(encoding="decimal")),
+    ),
+)
+print(aprs.serialize_packet(packet).decode())
+```
+
+Output:
+
+```text
+N0CALL>APRS:!4903.50N/07201.75W>!W23!
+```
+
+Build the same packet from JSON:
+
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
+{
+  "type": "packet",
+  "header": {
+    "source": "N0CALL",
+    "destination": "APRS"
+  },
+  "payload": {
+    "type": "position",
+    "latitude_deg": 49.05837,
+    "longitude_deg": -72.029215,
+    "symbol": {
+      "table_id": "/",
+      "code": ">"
+    },
+    "extensions": {
+      "dao": {
+        "encoding": "decimal"
+      }
+    }
+  }
+}
+"""
+)
+print(aprs.serialize_packet(packet).decode())
+```
+
+Output:
+
+```text
+N0CALL>APRS:!4903.50N/07201.75W>!W23!
+```
+
+#### Altitude in feet or meters
+
+Every supported altitude encoder accepts `Measurement(value, "feet")` or `Measurement(value, "meters")`. Conversion precedes wire rounding: `/A=` and compressed altitude use feet, Mic-E uses meters, and GGA uses meters. GGA exposes `altitude_msl` and `geoid_separation` as separate measurements; conversion never changes their reference datum.
+
+Build with Python:
+
+```python
+from hamkit import aprs
+
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.Position(
+        49, -72, aprs.Symbol("/", ">"),
+        extensions=aprs.Extensions(
+            altitude=aprs.Altitude(aprs.Measurement(100, "meters"), "feet_extension")
+        ),
+    ),
+)
+print(aprs.serialize_packet(packet).decode())
+```
+
+Output:
+
+```text
+N0CALL>APRS:!4900.00N/07200.00W>/A=000328
+```
+
+Build the same packet from JSON:
+
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
+{
+  "type": "packet",
+  "header": {
+    "source": "N0CALL",
+    "destination": "APRS"
+  },
+  "payload": {
+    "type": "position",
+    "latitude_deg": 49,
+    "longitude_deg": -72,
+    "symbol": {
+      "table_id": "/",
+      "code": ">"
+    },
+    "extensions": {
+      "altitude": {
+        "measurement": {
+          "value": 100,
+          "unit": "meters"
+        },
+        "encoding": "feet_extension"
+      }
+    }
+  }
+}
+"""
+)
+print(aprs.serialize_packet(packet).decode())
+```
+
+Output:
+
+```text
+N0CALL>APRS:!4900.00N/07200.00W>/A=000328
+```
+
+#### NMEA time and unresolved dates
+
+`UTCTime` stores UTC clock components and fractional seconds. `NMEADate(day, month, year_mod_100)` retains the two-digit year without choosing a century. A missing time/date is `None`; a partial date or unknown seconds stays partial. Partial received fields remain inspectable with diagnostics, but cannot be serialized until the caller supplies the required components. Void fixes may omit time and date; active fixes require time and RMC also requires a date. The library never consults the host clock.
+
+Build with Python:
+
+```python
+from hamkit import aprs
+
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.NMEA(
+        aprs.RMC(
+            aprs.UTCTime(12, 35, 19.25), aprs.NMEADate(23, 3, 94),
+            "A", aprs.Coordinates(49, -72),
+        ),
+        aprs.NMEAMetadata("GP"),
+    ),
+)
+print(aprs.serialize_packet(packet).decode())
+```
+
+Output:
+
+```text
+N0CALL>APRS:$GPRMC,123519.25,A,4900,N,07200,W,,,230394,,
+```
+
+Build the same packet from JSON:
+
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    """
+{
+  "type": "packet",
+  "header": {
+    "source": "N0CALL",
+    "destination": "APRS"
+  },
+  "payload": {
+    "type": "nmea",
+    "sentence": {
+      "type": "rmc",
+      "time_utc": {
+        "hour": 12,
+        "minute": 35,
+        "second": 19.25
+      },
+      "date": {
+        "day": 23,
+        "month": 3,
+        "year_mod_100": 94
+      },
+      "fix_status": "A",
+      "coordinates": {
+        "latitude_deg": 49,
+        "longitude_deg": -72
+      }
+    },
+    "metadata": {
+      "talker": "GP"
+    }
+  }
+}
+"""
+)
+print(aprs.serialize_packet(packet).decode())
+```
+
+Output:
+
+```text
+N0CALL>APRS:$GPRMC,123519.25,A,4900,N,07200,W,,,230394,,
 ```
 
 #### Raw vendor weather

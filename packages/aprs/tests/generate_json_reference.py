@@ -217,6 +217,12 @@ their own fully expanded examples in the field table.
     for schema, value in zip(_SCHEMAS, samples):
         name = schema.model.__name__
         doc += f"\n### {name}\n\nStandalone tag: `{schema.tag}`. [Back to type map](#type-map-and-object-catalog).\n\n"
+        if schema.model is a.DAO:
+            doc += "DAO precision codes are derived from the enclosing semantic coordinates; datum is an uppercase identifier and encoding chooses decimal, base91 or datum-only (null). Raw bytes are receive evidence only.\n\n"
+        if schema.model is a.UTCTime:
+            doc += "UTC clock components without an inferred date. Fractional seconds are numeric; null seconds remain unknown and cannot be sent as a complete NMEA clock.\n\n"
+        if schema.model is a.NMEADate:
+            doc += "Partial calendar components; year_mod_100 retains 00..99 without a century. Missing components remain null; a present RMC date needs all three components to serialize.\n\n"
         if schema.model is a.Header:
             doc += "A missing/null destination is an automatic header template, valid in a Packet only for Mic-E. Other Packet payloads require a destination. Mic-E serialization derives it from semantic fields without mutating the template; explicit addresses are checked.\n\n"
         if schema.model is a.Weather:

@@ -859,6 +859,44 @@ def policy_extensions(row: JSON) -> tuple[aprs.Extension, ...]:
     return tuple(selected)
 
 
+def semantic_fields(value: Any) -> None:
+    """Map prior public shapes to semantic fields without consulting the parser."""
+    if isinstance(value, list):
+        for item in value:
+            semantic_fields(item)
+    if not isinstance(value, dict):
+        return
+    if isinstance(value.get("time_utc"), str):
+        raw = value["time_utc"]
+        value["time_utc"] = (
+            {"hour": int(raw[:2]), "minute": int(raw[2:4]), "second": float(raw[4:])}
+            if raw
+            else None
+        )
+    if "date_ddmmyy" in value:
+        raw = value.pop("date_ddmmyy")
+        value["date"] = (
+            {"day": int(raw[:2]), "month": int(raw[2:4]), "year_mod_100": int(raw[4:])}
+            if raw
+            else None
+        )
+    for old, new in (
+        ("altitude_msl_m", "altitude_msl"),
+        ("geoid_separation_m", "geoid_separation"),
+    ):
+        if old in value:
+            number = value.pop(old)
+            value[new] = (
+                {"value": number, "unit": "meters"} if number is not None else None
+            )
+    if "datum_byte" in value:
+        value["datum"] = value.pop("datum_byte").upper()
+        value.pop("latitude_precision", None)
+        value.pop("longitude_precision", None)
+    for child in value.values():
+        semantic_fields(child)
+
+
 def records() -> list[JSON]:
     result = []
     defaults: JSON = {}
@@ -942,6 +980,7 @@ def records() -> list[JSON]:
             )
             # JSON array is the persisted spelling of the immutable tuple.
             row["policy"]["extensions"] = list(row["policy"]["extensions"])
+            semantic_fields(row["expected"])
             result.append(row)
     assert set(divergences["rows"]) <= {row["id"] for row in result}
     assert set(sequence_packets) == {row["id"] for row in result if "sequence" in row}

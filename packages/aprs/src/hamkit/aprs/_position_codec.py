@@ -111,17 +111,14 @@ def compressed_bytes(p) -> tuple[bytes, Extensions]:
             raise FieldError(
                 "compressed altitude reference is not an independent wire field"
             )
-        a = e.altitude.measurement
-        if (
-            a.unit != "feet"
-            or a.value is None
-            or a.value <= 0
-            or c.nmea_source != "GGA"
-        ):
+        from ._units import height
+
+        feet = height(e.altitude.measurement, "feet")
+        if feet <= 0 or c.nmea_source != "GGA":
             raise FieldError(
-                "compressed altitude requires positive feet and GGA source"
+                "compressed altitude requires positive height and GGA source"
             )
-        cs = pack91(round(math.log(a.value, 1.002)), 2) + pack91(c.type_value, 1)
+        cs = pack91(round(math.log(feet, 1.002)), 2) + pack91(c.type_value, 1)
         e = replace(e, altitude=None)
     elif e.range is not None:
         if e.range.miles < 2:
@@ -166,9 +163,14 @@ def compressed_bytes(p) -> tuple[bytes, Extensions]:
     return raw, e
 
 
-def dao_offset(value: float, dao, axis: str, direction=1) -> float:
+def dao_offset(value: float, dao, axis: str) -> float:
+    # Receive-only: decode precision from the received extension evidence.
     if dao is None or dao.encoding is None:
         return value
-    precision = getattr(dao, axis + "_precision")
-    increment = precision / (60000 if dao.encoding == "decimal" else 91 * 6000)
-    return math.copysign(abs(value) + direction * increment, value)
+    if dao.raw is None:
+        raise FieldError("received DAO precision bytes are missing")
+    code = dao.raw[2 if axis == "latitude" else 3]
+    increment = (
+        (code - 48) / 60000 if dao.encoding == "decimal" else (code - 33) / (91 * 6000)
+    )
+    return math.copysign(abs(value) + increment, value)

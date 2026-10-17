@@ -217,20 +217,16 @@ def read(
         datum = match[1].decode()
         pair = match[2]
         if pair == b"  ":
-            dao = d.DAO(datum, raw=match[0])
+            dao = d.DAO(datum.upper(), raw=match[0])
         elif datum.isupper() and pair.isdigit():
             dao = d.DAO(
-                datum,
-                latitude_precision=int(chr(pair[0])),
-                longitude_precision=int(chr(pair[1])),
+                datum.upper(),
                 encoding="decimal",
                 raw=match[0],
             )
         elif datum.islower() and all(33 <= c <= 123 for c in pair):
             dao = d.DAO(
-                datum,
-                latitude_precision=pair[0] - 33,
-                longitude_precision=pair[1] - 33,
+                datum.upper(),
                 encoding="base91",
                 raw=match[0],
             )
@@ -406,12 +402,13 @@ def _write_primary(
         )
     if e.altitude is not None:
         reading = e.altitude.measurement
-        if reading.unit != "feet":
-            raise Unrepresentable(
-                "$.extensions.altitude.measurement.unit", "/A= altitude is in feet"
-            )
+        from ._units import height
+
         feet = _rounded(
-            "$.extensions.altitude.measurement.value", reading.value, -99999, 999999
+            "$.extensions.altitude.measurement.value",
+            height(reading, "feet"),
+            -99999,
+            999999,
         )
         raw += b"/A=-%05d" % -feet if feet < 0 else b"/A=%06d" % feet
     return raw
@@ -422,6 +419,8 @@ def write(
     symbol: Symbol,
     comment: bytes = b"",
     policy: EnvelopePolicy = _DEFAULT_POLICY,
+    *,
+    coordinates: tuple[float, float] | None = None,
 ) -> bytes:
     e = extensions
     if e.dao is not None and "dao" not in policy.extensions:
@@ -500,28 +499,9 @@ def write(
     if e.signpost:
         extra += b"{" + e.signpost.label.encode() + b"}"
     if e.dao:
-        dao = e.dao
-        if not dao.datum_byte.isascii() or not dao.datum_byte.isalpha():
-            raise Unrepresentable(
-                "$.extensions.dao.datum_byte", "DAO requires a datum letter"
-            )
-        if dao.encoding is not None and (
-            dao.latitude_precision is None or dao.longitude_precision is None
-        ):
-            raise FieldError("DAO precision is required")
-        pair = (
-            b"  "
-            if dao.encoding is None
-            else bytes(
-                [
-                    cast(int, dao.latitude_precision)
-                    + (48 if dao.encoding == "decimal" else 33),
-                    cast(int, dao.longitude_precision)
-                    + (48 if dao.encoding == "decimal" else 33),
-                ]
-            )
-        )
-        extra += b"!" + dao.datum_byte.encode() + pair + b"!"
+        from ._dao import encode
+
+        extra += encode(e.dao, coordinates)
     if e.telemetry:
         from ._position_codec import pack91
 

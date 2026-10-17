@@ -126,7 +126,17 @@ from ._models import (
     UnsupportedPolicy,
     UserDefined,
 )
-from ._nmea import GGA, GLL, RMC, VTG, WPL, NMEAMetadata, NMEASentence
+from ._nmea import (
+    GGA,
+    GLL,
+    RMC,
+    VTG,
+    WPL,
+    NMEADate,
+    NMEAMetadata,
+    NMEASentence,
+    UTCTime,
+)
 from ._policy import (
     APRS_IS,
     EXTENSION_KINDS,
@@ -208,6 +218,7 @@ __all__ = [
     "MicEMessage",
     "ModelError",
     "Motion",
+    "NMEADate",
     "NMEAMetadata",
     "NMEASentence",
     "NTSAddress",
@@ -250,6 +261,7 @@ __all__ = [
     "Timestamp",
     "TimestampKind",
     "Trace",
+    "UTCTime",
     "Unit",
     "UnsupportedPolicy",
     "UserDefined",

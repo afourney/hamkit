@@ -372,6 +372,29 @@ def _trace(v: Trace, policy: EnvelopePolicy | None) -> Iterator[Finding]:
 
 @_conformance(NMEA)
 def _nmea(v: NMEA, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    from . import _nmea as n
+    from ._nmea_codec import write_date, write_time
+
+    sentence = v.sentence
+    if isinstance(sentence, (n.GGA, n.GLL, n.RMC)):
+        active = (
+            sentence.fix_quality > 0
+            if isinstance(sentence, n.GGA)
+            else sentence.fix_status == "A"
+        )
+        if active and sentence.time_utc is None:
+            yield "$.sentence.time_utc", "an active fix requires UTC time"
+        try:
+            write_time(sentence.time_utc)
+        except FieldError as exc:
+            yield "$.sentence.time_utc", str(exc)
+        if isinstance(sentence, n.RMC):
+            if active and sentence.date is None:
+                yield "$.sentence.date", "an active RMC fix requires a date"
+            try:
+                write_date(sentence.date)
+            except FieldError as exc:
+                yield "$.sentence.date", str(exc)
     # The encoder computes a fresh checksum, so sending a sentence received with
     # a bad one would make corrupt data look verified. Require explicit repair:
     # clear checksum_valid (or omit the checksum) once the fields are trusted.
@@ -450,13 +473,20 @@ def _position(v: Position, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if any(_located(v, policy)):
         return  # Report structural slot errors without secondary comment errors.
     try:
+        from ._dao import base_coordinates
+
+        base_coordinates(v)
         extensions = v.extensions
         if v.compression is not None:
             from ._position_codec import compressed_bytes
 
             _, extensions = compressed_bytes(v)
         prefix = _extensions.write(
-            extensions, v.symbol, v.comment.encode("utf-8"), policy or APRS_IS()
+            extensions,
+            v.symbol,
+            v.comment.encode("utf-8"),
+            policy or APRS_IS(),
+            coordinates=(v.latitude_deg, v.longitude_deg),
         )
     except CodecNotImplementedError:
         return

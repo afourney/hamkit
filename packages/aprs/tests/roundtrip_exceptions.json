@@ -655,6 +655,12 @@
       "invalid coordinate syntax"
     ]
   },
+  "FAP-035": {
+    "kind": "conformance",
+    "reasons": [
+      "DAO added precision requires an uncompressed or Mic-E position"
+    ]
+  },
   "FAP-038": {
     "kind": "malformed",
     "reasons": ["missing information separator"]
@@ -988,16 +994,18 @@
     "reasons": ["invalid NMEA field"]
   },
   "FAP-384": {
-    "kind": "malformed",
-    "reasons": ["invalid NMEA field"]
+    "kind": "conformance",
+    "reasons": [
+      "NMEA time requires seconds; unknown seconds cannot be invented"
+    ]
   },
   "FAP-385": {
     "kind": "malformed",
     "reasons": ["invalid NMEA field"]
   },
   "FAP-386": {
-    "kind": "malformed",
-    "reasons": ["invalid NMEA field"]
+    "kind": "conformance",
+    "reasons": ["an active fix requires UTC time"]
   },
   "FAP-387": {
     "kind": "malformed",
@@ -1024,16 +1032,18 @@
     "reasons": ["invalid NMEA field"]
   },
   "FAP-393": {
-    "kind": "malformed",
-    "reasons": ["invalid NMEA field"]
+    "kind": "conformance",
+    "reasons": [
+      "NMEA RMC needs day, month and two-digit year; partial date cannot be encoded"
+    ]
   },
   "FAP-394": {
     "kind": "malformed",
     "reasons": ["invalid NMEA field"]
   },
   "FAP-395": {
-    "kind": "malformed",
-    "reasons": ["invalid NMEA field"]
+    "kind": "conformance",
+    "reasons": ["an active RMC fix requires a date"]
   },
   "FAP-396": {
     "kind": "malformed",

@@ -149,7 +149,10 @@ def test_nmea_observations_are_stored_in_typed_fields(row):
             source["Course"], abs=0.5 if diverged else 0
         )
     if source["Altitude"] is not None:
-        assert sentence["altitude_msl_m"] == source["Altitude"]
+        assert sentence["altitude_msl"] == {
+            "value": source["Altitude"],
+            "unit": "meters",
+        }
     assert diverged or payload["symbol"] is None
     assert source["SymbolTable"] is None and source["SymbolCode"] is None
     assert payload["metadata"]["checksum_valid"] == source["ChecksumOK"]

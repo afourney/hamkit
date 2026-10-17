@@ -417,7 +417,7 @@ def check_public_phg(row, packet):
 
 
 def check_rejection(row):
-    from generate_vectors import header, translate
+    from generate_vectors import header, semantic_fields, translate
     from packets.test_corpus import differences, parse_row
 
     raw = row["packet"].encode("latin1")
@@ -437,6 +437,7 @@ def check_rejection(row):
         )
     if "kind" in source:
         expected = translate(source)
+        semantic_fields(expected)
         # Empty NMEA optional variation direction has the existing None form.
         n = expected.get("payload", {}).get("sentence", {})
         if n.get("magnetic_variation_direction") == "":

@@ -230,9 +230,11 @@ class PlaceTests(unittest.TestCase):
             (a.Extensions(motion=a.Motion(90)), "motion.speed_knots"),
             (
                 a.Extensions(
-                    altitude=a.Altitude(a.Measurement(100, "meters"), "feet_extension")
+                    altitude=a.Altitude(
+                        a.Measurement(1000000, "meters"), "feet_extension"
+                    )
                 ),
-                "altitude.measurement.unit",
+                "altitude.measurement.value",
             ),
         ):
             with self.subTest(path=path):
