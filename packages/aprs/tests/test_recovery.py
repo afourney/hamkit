@@ -105,6 +105,21 @@ class LenientDecodingTests(unittest.TestCase):
                 with self.assertRaises(a.CodecNotImplementedError):
                     a.parse_packet(b"N0CALL>APRS:" + information, unsupported="raise")
 
+    def test_invalid_df_bearing_is_inspectable_but_not_sendable(self) -> None:
+        raw = b"N0CALL>APRS:!4903.50N/07201.75W\\088/036/999/729"
+        packet = a.parse_packet(raw, unsupported="raise")
+        assert isinstance(packet, a.Packet)
+        assert isinstance(packet.payload, a.Position)
+        self.assertEqual(packet.original_wire, raw)
+        self.assertEqual(packet.payload.comment, "/999/729")
+        self.assertEqual(packet.payload.extensions.motion, a.Motion(88, 36))
+        self.assertIsNone(packet.payload.extensions.bearing)
+        self.assertEqual(codes(packet), {("nonconforming", "$.payload.comment")})
+        for profile in ("monitor", "rf"):
+            self.assertTrue(a.check_packet(packet, profile=profile))  # type: ignore[arg-type]
+            with self.assertRaises(a.ConformanceError):
+                a.serialize_packet(packet, profile=profile)  # type: ignore[arg-type]
+
 
 class MalformedTests(unittest.TestCase):
     def test_multiple_bad_components_keep_reliable_data(self) -> None:

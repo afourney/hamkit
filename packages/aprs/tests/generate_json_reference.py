@@ -12,10 +12,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Union, cast, get_args, get_origin
 
-from model_examples import field_examples, payload_examples
-
 import hamkit.aprs as a
 from hamkit.aprs._json import _BY_MODEL, _HINTS, _SCHEMAS
+from model_examples import field_examples, payload_examples
 
 ROOT = Path(__file__).parents[1]
 

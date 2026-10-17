@@ -7,9 +7,8 @@ import importlib
 import unittest
 from typing import Any, cast, get_args, get_type_hints
 
-from model_examples import SYMBOL, field_examples, payload_examples
-
 import hamkit.aprs as a
+from model_examples import SYMBOL, field_examples, payload_examples
 
 HEADER = a.Header("N0CALL", "APRS")
 

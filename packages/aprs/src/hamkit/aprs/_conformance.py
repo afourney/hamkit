@@ -358,7 +358,7 @@ def _position(v: Position, profile: EnvelopeProfile) -> Iterator[Finding]:
     if (actual, rest) != (expected, comment):
         yield "$.comment", "would be read back as a data extension"
     else:
-        yield from _extensions.lookalikes(actual, rest)
+        yield from _extensions.lookalikes(actual, rest, v.symbol)
 
 
 @_conformance(Position, Object, Item, MicE)

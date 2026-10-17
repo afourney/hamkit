@@ -9,10 +9,9 @@ import math
 import unittest
 from typing import Any, cast, get_args
 
-from model_examples import SYMBOL, field_examples, payload_examples
-
 import hamkit.aprs as a
 from hamkit.aprs._json import _BY_MODEL, _SCHEMAS
+from model_examples import SYMBOL, field_examples, payload_examples
 
 HEADER = a.Header("N0CALL", "APRS")
 

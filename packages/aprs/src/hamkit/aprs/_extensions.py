@@ -152,7 +152,9 @@ def read(tail: bytes, symbol: Symbol) -> tuple[Extensions, bytes]:
     return Extensions(**found), tail  # type: ignore[arg-type]
 
 
-def lookalikes(extensions: Extensions, comment: bytes) -> list[tuple[str, str]]:
+def lookalikes(
+    extensions: Extensions, comment: bytes, symbol: Symbol
+) -> list[tuple[str, str]]:
     """Comment text shaped like an extension that did not decode (invalid values)."""
     findings = []
     primary = ("motion", "phg", "range", "signal")
@@ -162,6 +164,13 @@ def lookalikes(extensions: Extensions, comment: bytes) -> list[tuple[str, str]]:
         findings.append(("$.comment", "begins with an invalid data extension"))
     if b"/A=" in comment:
         findings.append(("$.comment", "contains an invalid /A= altitude"))
+    if (
+        _is_df(symbol)
+        and extensions.motion is not None
+        and extensions.bearing is None
+        and _BEARING.match(comment)
+    ):
+        findings.append(("$.comment", "contains an invalid DF bearing"))
     return findings
 
 
@@ -219,9 +228,35 @@ def write(extensions: Extensions, symbol: Symbol) -> bytes:
             raise CodecNotImplementedError(f"{name} position extension encoding")
     if e.altitude is not None and e.altitude.encoding != "feet_extension":
         raise CodecNotImplementedError(f"{e.altitude.encoding} altitude encoding")
+    if e.altitude is not None and e.altitude.reference != "unspecified":
+        raise CodecNotImplementedError("altitude reference cannot be encoded in /A=")
+    if e.phg is not None and e.phg.rate_per_hour is not None:
+        raise CodecNotImplementedError("PHG rate extension encoding")
+    if e.bearing is not None and (
+        e.bearing.usable is not None or e.bearing.accuracy_less_than_deg is not None
+    ):
+        raise CodecNotImplementedError("DF bearing annotations have no wire encoding")
     raw = b""
     if e.motion is not None:
         raw += _motion_bytes(e.motion)
+        match = _COURSE_SPEED.fullmatch(raw)
+        assert match is not None
+        decoded = _motion(match, _is_df(symbol))
+        assert decoded is not None
+        for name in ("course_deg", "speed_knots"):
+            if (getattr(e.motion, name) is None) != (getattr(decoded, name) is None):
+                raise Unrepresentable(
+                    f"$.extensions.motion.{name}",
+                    "wire form would change whether the measurement is known",
+                )
+        if (
+            e.motion.zero_pair != "unspecified"
+            and e.motion.zero_pair != decoded.zero_pair
+        ):
+            raise Unrepresentable(
+                "$.extensions.motion.zero_pair",
+                "wire form would change the zero-pair interpretation",
+            )
         if e.bearing is not None:
             b = e.bearing
             raw += b"/%03d/%d%d%d" % (

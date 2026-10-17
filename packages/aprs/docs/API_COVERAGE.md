@@ -85,6 +85,14 @@ extending those examples and the codec registry.
 
 ## Validation tiers
 
+Uncompressed extension encoding rejects motion values whose wire form would
+change whether a measurement is known or contradict an explicit `zero_pair`.
+Invalid DF bearing text remains inspectable in the comment with a conformance
+diagnostic, and cannot be sent. PHG `rate_per_hour`, explicit altitude references,
+and bearing `usable`/`accuracy_less_than_deg` annotations remain representable in
+Python and JSON, but raise `CodecNotImplementedError` on send rather than being
+silently discarded.
+
 - **Constructors** reject values that cannot exist on the wire or contradict
   another field: an out-of-range coordinate, an invalid timestamp, a `{` inside
   message text, a lowercase overlay on an uncompressed position. These raise

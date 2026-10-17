@@ -245,6 +245,65 @@ class PlaceTests(unittest.TestCase):
         self.assertEqual(findings(rounded), set())
         self.assertTrue(a.serialize_payload(rounded).endswith(b"-088/036"))
 
+    def test_motion_encoding_preserves_known_values_and_zero_meaning(self) -> None:
+        for motion, symbol in (
+            (a.Motion(None, 0), SYMBOL),
+            (a.Motion(None, 0.2), SYMBOL),
+            (a.Motion(None, None, zero_pair="unavailable"), a.Symbol("/", "\\")),
+            (a.Motion(None, 0, zero_pair="fixed"), SYMBOL),
+            (a.Motion(90, 10, zero_pair="unavailable"), SYMBOL),
+        ):
+            with self.subTest(motion=motion, symbol=symbol):
+                value = a.Position(1, 2, symbol, extensions=a.Extensions(motion=motion))
+                self.assertTrue(findings(value))
+                with self.assertRaises(a.ConformanceError):
+                    a.serialize_payload(value)
+        for motion, symbol in (
+            (a.Motion(None, None), SYMBOL),
+            (a.Motion(None, None, zero_pair="unavailable"), SYMBOL),
+            (a.Motion(None, 0, zero_pair="fixed"), a.Symbol("/", "\\")),
+            (a.Motion(360, 0), SYMBOL),
+            (a.Motion(None, 1), SYMBOL),
+        ):
+            with self.subTest(motion=motion, symbol=symbol):
+                value = a.Position(1, 2, symbol, extensions=a.Extensions(motion=motion))
+                self.assertEqual(a.parse_payload(a.serialize_payload(value)), value)
+
+    def test_unencoded_extension_fields_are_explicitly_unsupported(self) -> None:
+        for extensions, symbol in (
+            (a.Extensions(phg=a.PHG(25, 80, 3, rate_per_hour=5)), SYMBOL),
+            (a.Extensions(phg=a.PHG(25, 80, 3, rate_per_hour=0)), SYMBOL),
+            (
+                a.Extensions(
+                    altitude=a.Altitude(
+                        a.Measurement(100, "feet"), "feet_extension", reference="MSL"
+                    )
+                ),
+                SYMBOL,
+            ),
+            (
+                a.Extensions(
+                    motion=a.Motion(90, 10),
+                    bearing=a.Bearing(270, 7, 2, 9, usable=False),
+                ),
+                a.Symbol("/", "\\"),
+            ),
+            (
+                a.Extensions(
+                    motion=a.Motion(90, 10),
+                    bearing=a.Bearing(270, 7, 2, 9, accuracy_less_than_deg=10),
+                ),
+                a.Symbol("/", "\\"),
+            ),
+        ):
+            with self.subTest(extensions=extensions):
+                value = a.Position(1, 2, symbol, extensions=extensions)
+                self.assertEqual(a.from_json(a.to_json(value)), value)
+                with self.assertRaises(a.CodecNotImplementedError):
+                    a.serialize_payload(value)
+                with self.assertRaises(a.CodecNotImplementedError):
+                    a.serialize_packet(a.Packet(HEADER, value), profile="rf")
+
     def test_extension_symbols_and_slots(self) -> None:
         storm = a.Storm(
             "HC",
