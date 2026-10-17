@@ -11,8 +11,10 @@ they do not claim to produce a TNC2 line. Calling `serialize_packet` on those
 models raises `CodecNotImplemented`.
 
 Install from a repository checkout with `python -m pip install -e packages/aprs`.
-Each Python block below runs independently, including the examples that embed
-JSON directly. Every example is followed by its exact output and checked by tests.
+Construction examples run independently, including those that embed JSON
+directly. After each parsing example, the JSON display block uses `packet` from
+the block immediately above it. Each block prints one result, followed by its
+exact output; the examples are checked by tests.
 Nothing here sends packets over a network or radio.
 
 ## Find an example
@@ -47,13 +49,23 @@ from hamkit import aprs
 
 packet = aprs.parse_packet(b"N0CALL>APRS:>Ready")
 print(packet)
-print(aprs.to_json(packet, indent=2))
 ```
 
 Output:
 
 ```text
 Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Status(text=b'Ready', timestamp=None, grid=None, symbol=None, beam=None), header_semantics=None)
+```
+
+Show that same packet as JSON:
+
+```python
+print(aprs.to_json(packet, indent=2))
+```
+
+Output:
+
+```text
 {
   "type": "packet",
   "header": {
@@ -141,13 +153,23 @@ from hamkit import aprs
 
 packet = aprs.parse_packet(b"N0CALL>APRS:!4903.50N/07201.75W>")
 print(packet)
-print(aprs.to_json(packet, indent=2))
 ```
 
 Output:
 
 ```text
 Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Position(latitude_deg=49.05833333333333, longitude_deg=-72.02916666666667, symbol=Symbol(table_id='/', code='>'), messaging=False, timestamp=None, tail=b'', encoding='uncompressed', ambiguity=None, compression=None, extensions=Extensions(motion=None, altitude=None, phg=None, range=None, signal=None, bearing=None, dao=None, area=None, signpost=None, weather=None, storm=None, telemetry=None), comment=b''), header_semantics=None)
+```
+
+Show that same packet as JSON:
+
+```python
+print(aprs.to_json(packet, indent=2))
+```
+
+Output:
+
+```text
 {
   "type": "packet",
   "header": {
@@ -1722,13 +1744,23 @@ packet = aprs.parse_packet(
     b"N0CALL>APRS:_10090556c220s004g005t077r001p025P012h50b09900WRSW"
 )
 print(packet)
-print(aprs.to_json(packet, indent=2))
 ```
 
 Output:
 
 ```text
 Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Opaque(information=b'_10090556c220s004g005t077r001p025P012h50b09900WRSW', reason='unsupported information field family', diagnostic=Diagnostic(code='unsupported', message='unsupported information field family')), header_semantics=None)
+```
+
+Show that same packet as JSON:
+
+```python
+print(aprs.to_json(packet, indent=2))
+```
+
+Output:
+
+```text
 {
   "type": "packet",
   "header": {

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Keep the README a runnable, independent, one-input/one-output cookbook."""
+"""Check single-result examples and explicitly adjacent parsing continuations."""
 
 import ast
 import contextlib
@@ -12,6 +12,7 @@ import re
 import unittest
 from pathlib import Path
 from typing import Any, ClassVar, get_args
+from unittest.mock import patch
 
 import hamkit.aprs as a
 
@@ -46,7 +47,13 @@ class ReadmeTests(unittest.TestCase):
                 raise AssertionError("Only one JSON input per block")
             cls.examples.append(
                 (
-                    "json" if literals else "python",
+                    "json"
+                    if literals
+                    else (
+                        "continuation"
+                        if source[2] == "print(aprs.to_json(packet, indent=2))"
+                        else "python"
+                    ),
                     literals[0] if literals else source[2],
                     source[2],
                     output[2] + "\n",
@@ -54,28 +61,52 @@ class ReadmeTests(unittest.TestCase):
             )
 
     def run_example(
-        self, language: str, source: str, code: str, expected: str
+        self,
+        language: str,
+        source: str,
+        code: str,
+        expected: str,
+        namespace: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        # Fresh namespace: examples cannot depend on a setup block or earlier packet.
-        namespace: dict[str, Any] = {"__name__": "readme_example"}
+        # Share context only for the explicitly adjacent JSON display.
+        if namespace is None:
+            namespace = {"__name__": "readme_example"}
         ast.parse(code, feature_version=(3, 10))
         captured = io.StringIO()
-        with contextlib.redirect_stdout(captured):
+        with contextlib.redirect_stdout(captured), patch(
+            "builtins.print", wraps=print
+        ) as printed:
             exec(compile(code, "README example", "exec"), namespace)  # noqa: S102
+        self.assertEqual(
+            printed.call_count, 1, "Each example must print exactly one result"
+        )
         self.assertEqual(captured.getvalue(), expected)
         return namespace
 
-    def test_every_example_runs_independently_with_exact_output(self) -> None:
+    def test_every_example_runs_with_only_declared_context_and_exact_output(
+        self,
+    ) -> None:
         self.assertEqual(
-            len(self.examples), 63
-        )  # 29 Python/JSON pairs, 4 parsing inputs, and one unsupported encoding.
+            len(self.examples), 66
+        )  # 29 construction pairs, 4 parsing inputs, 3 JSON displays, 1 unsupported encoding.
+        namespace: dict[str, Any] | None = None
         for index, example in enumerate(self.examples):
             with self.subTest(example=index + 1):
-                self.run_example(*example)
+                if example[0] == "continuation":
+                    self.assertGreater(index, 0)
+                    self.assertIn("aprs.parse_packet(", self.examples[index - 1][2])
+                    self.assertIsNotNone(namespace)
+                    self.run_example(*example, namespace=namespace)
+                    namespace = None
+                else:
+                    namespace = self.run_example(*example)
 
     def test_one_input_per_block_without_loops_or_shared_helpers(self) -> None:
         for language, source, code, _ in self.examples:
             with self.subTest(source=source[:80]):
+                if language == "continuation":
+                    self.assertEqual(code, "print(aprs.to_json(packet, indent=2))")
+                    continue
                 if language == "json":
                     self.assertIsInstance(a.from_json(source), a.Packet)
                 self.assertIn("from hamkit import aprs", code)
@@ -151,7 +182,7 @@ class ReadmeTests(unittest.TestCase):
 
     def test_successful_parsing_shows_both_object_and_pretty_json(self) -> None:
         count = 0
-        for language, source, _, _ in self.examples:
+        for index, (language, source, _, _) in enumerate(self.examples):
             if (
                 language != "python"
                 or "aprs.parse_packet(" not in source
@@ -159,6 +190,7 @@ class ReadmeTests(unittest.TestCase):
             ):
                 continue
             self.assertIn("print(packet)", source)
-            self.assertIn("print(aprs.to_json(packet, indent=2))", source)
+            self.assertNotIn("aprs.to_json", source)
+            self.assertEqual(self.examples[index + 1][0], "continuation")
             count += 1
         self.assertEqual(count, 3)
