@@ -34,6 +34,11 @@ bytes can have different expectations: embedded `!` is a modern beacon versus a
 legacy X1J position; FAP trims comments, converts weather units, rounds some
 values, and accepts certain incomplete historical reports.
 
+Schema-only differences are resolved in the stored JSONL expectations, not by
+rewriting actual public output during comparison. The offline source-to-schema
+generator preserves values while translating names, nesting and equivalent units;
+it never consults a parser or expected decoder output.
+
 The public codec is deterministic and preserves the richer wire interpretation.
 The private `_compatibility` adapter supplies the named historical views and
 additional receiver facts without adding profile parameters or JSON fields to
@@ -48,6 +53,24 @@ these separately from retained codes/bytes. Incomplete historical GLL reports
 and invalid timestamps remain `Malformed` in the public model when required
 facts cannot be constructed; the historical adapter exposes only available facts.
 No missing time, coordinate or calibration coefficient is fabricated.
+
+The completed schema migration rewrites 35 expectations (33 FAP, two historical
+positions). It stores weather measurements in the public decoder's equivalent
+units, compressed weather wind in `extensions.weather`, legacy positions inside
+`LegacyPosition`, vendor readings inside `RawWeather.weather`, and captured NMEA
+coordinates/speed/course/altitude/symbol/checksum assertions in typed fields. Four
+Mic-E comments now store their device marker separately in `device_code`,
+preserving every character.
+The runtime weather-unit conversion, wrapper flattening, and NMEA source-schema
+comparison have been removed. Source snapshots and all raw packet bytes remain
+unchanged; inverse-unit and source-value tests check that no information was lost.
+
+Nineteen additional cases now use direct public JSON comparisons with the main
+compatibility view disabled. Bypassing that view elsewhere still exposes 60
+failing vector tests: 58 FAP and two conflicting modern-beacon interpretations.
+That count includes real interpretation, incomplete-decoding and acceptance
+differences, not schema mismatches. Supplemental source-fact helpers remain in
+use, so it is not a count of every dependency on historical receiver behavior.
 
 The 23 sequence occurrences run through a test application receiver using public
 models. Ownership, deduplication, acknowledgment construction, calibration,

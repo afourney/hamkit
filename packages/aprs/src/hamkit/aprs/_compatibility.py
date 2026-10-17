@@ -57,6 +57,9 @@ def _mic_e_compat(raw: bytes, header: m.Header, broken: bool):
     # The old receiver reads comment telemetry before DAO and accepts a
     # short apostrophe hex block as channels 1 and 3.
     tail = body[8:]
+    device_code = None
+    if not mangled and tail[:1] in (b"]", b">"):
+        device_code, tail = tail[:1].decode(), tail[1:]
     extra, tail = _extensions.read(tail, d.Symbol(chr(body[7]), chr(body[6])))
     altitude = None
     match = re.search(rb"([!-{]{3})\}", tail)
@@ -88,47 +91,13 @@ def _mic_e_compat(raw: bytes, header: m.Header, broken: bool):
 
     p = replace(
         base,
+        device_code=device_code,
         extensions=e,
         latitude_deg=dao_offset(base.latitude_deg, e.dao, "latitude"),
         longitude_deg=dao_offset(base.longitude_deg, e.dao, "longitude"),
         comment=tail.decode("utf8", errors="replace"),
     )
     return p, mangled, short
-
-
-def _weather_view(w: dict[str, Any]) -> dict[str, Any]:
-    w = dict(w)
-    for name in (
-        "wind_speed",
-        "gust",
-        "temperature",
-        "rain_1h",
-        "rain_24h",
-        "rain_since_midnight",
-        "snow_24h",
-    ):
-        reading = w.get(name)
-        if reading is None:
-            continue
-        reading = dict(reading)
-        v = reading["value"]
-        unit = reading["unit"]
-        if name in ("wind_speed", "gust"):
-            if unit in ("mph", "disputed_knots_or_mph"):
-                factor = 0.44704
-            elif unit == "knots":
-                factor = 1852 / 3600
-            elif unit == "km/h":
-                factor = 1 / 3.6
-            else:
-                factor = 1
-            reading.update(value=None if v is None else v * factor, unit="m/s")
-        elif name == "temperature" and unit == "fahrenheit":
-            reading.update(value=None if v is None else (v - 32) / 1.8, unit="celsius")
-        elif unit == "inches":
-            reading.update(value=None if v is None else v * 25.4, unit="mm")
-        w[name] = reading
-    return w
 
 
 def _receiver_rejects(raw: bytes, p: m.Packet | m.Malformed, options: dict) -> bool:
@@ -189,14 +158,6 @@ def view(
         ):
             result["payload"] = to_json_dict(
                 m.Beacon(raw.partition(b":")[2].decode("latin1")), include_defaults=True
-            )
-        if (
-            isinstance(packet, m.Packet)
-            and isinstance(packet.payload, m.LegacyPosition)
-            and profile == "historical-1.0"
-        ):
-            result["payload"] = to_json_dict(
-                packet.payload.position, include_defaults=True
             )
         return result, rejected
     _envelope, _, body = raw.partition(b":")
@@ -287,13 +248,12 @@ def view(
         return result, True
     p = result.get("payload", {})
     if p.get("type") == "legacy_position":
-        p = result["payload"] = p["position"]
-        p["type"] = "position"
+        p = p["position"]
     if p.get("type") == "raw_weather" and p.get("weather"):
-        p = result["payload"] = p["weather"]
-        p["type"] = "weather"
+        p = p["weather"]
     if p.get("type") == "nmea":
         p["symbol"] = None
+        p.setdefault("metadata", {}).setdefault("checksum_valid", None)
         if p["sentence"].get("course_deg") is not None:
             p["sentence"]["course_deg"] = round(p["sentence"]["course_deg"])
     if p.get("type") == "mic_e":
@@ -321,7 +281,9 @@ def view(
         if motion and motion.get("course_deg") == 0:
             motion["course_deg"] = 360
     weather = (
-        p if p.get("type") == "weather" else p.get("extensions", {}).get("weather")
+        p
+        if p.get("type") == "weather" or isinstance(payload, m.RawWeather)
+        else p.get("extensions", {}).get("weather")
     )
     if weather is not None:
         code = (weather.get("software_code") or "") + (weather.get("device_code") or "")
@@ -351,20 +313,11 @@ def view(
             p["comment"] = tail
             if p.get("type") == "weather":
                 weather["comment"] = tail
-        converted = _weather_view(weather)
-        if p.get("type") == "weather":
-            result["payload"] = converted
-        else:
-            p["extensions"]["weather"] = converted
-            if compression:
-                wind = weather.get("wind_direction")
-                speed = weather.get("wind_speed")
-                p["extensions"]["motion"] = (
-                    {"course_deg": wind["value"], "speed_knots": speed["value"]}
-                    if wind and speed
-                    else None
-                )
-                converted["wind_direction"] = converted["wind_speed"] = None
+        # FAP selects the mph interpretation of the disputed uncompressed
+        # wind field. This is a semantic choice, not a unit/schema conversion.
+        speed = weather.get("wind_speed")
+        if speed and speed["unit"] == "disputed_knots_or_mph":
+            weather["wind_speed"] = {**speed, "unit": "mph"}
     if (
         isinstance(payload, m.Position)
         and payload.symbol.code == "_"
@@ -381,16 +334,28 @@ def view(
     return result, rejected
 
 
-def facts(raw: bytes, options: dict | None = None) -> dict[str, Any]:
+def facts(
+    raw: bytes, options: dict | None = None, *, packet: m.Packet | None = None
+) -> dict[str, Any]:
     """Historical receiver facts not represented as stored public-model fields.
 
     These include display resolution, raw timestamps, and optional vendor sensors.
     Kept separate so a receiver policy cannot alter the public JSON contract.
     """
     options = options or {}
-    projected, _ = view(raw, "compatibility-fap", options)
+    if packet is None:
+        projected, _ = view(raw, "compatibility-fap", options)
+        parsed = parse_packet(raw)
+    else:
+        # Schema-only cases already have their public packet; their supplemental
+        # source facts must not require a compatibility view of that packet.
+        projected = to_json_dict(packet, include_defaults=True)
+        parsed = packet
     p = projected.get("payload", {})
-    packet = parse_packet(raw)
+    if p.get("type") == "legacy_position":
+        p = p["position"]
+    elif p.get("type") == "raw_weather" and p.get("weather"):
+        p = {"type": "weather", **p["weather"]}
     body = raw.partition(b":")[2]
     ext = p.get("extensions", {})
     comp = p.get("compression")
@@ -428,14 +393,15 @@ def facts(raw: bytes, options: dict | None = None) -> dict[str, Any]:
     if dao and dao.get("encoding"):
         result["PosResolution"] = 1.852 if dao["encoding"] == "decimal" else 0.1852
     if body[:1] in (b"`", b"'"):
-        assert packet.header is not None
-        dest = packet.header.destination.split("-")[0]
+        assert parsed.header is not None
+        dest = parsed.header.destination.split("-")[0]
         result["MBits"] = "".join(
             "1" if "A" <= c <= "K" or "P" <= c <= "Z" else "0" for c in dest[:3]
         )
-        _, result["MiceMangled"], _ = _mic_e_compat(
-            body, packet.header, options.get("accept_broken_mice", False)
-        )
+        if packet is None or options.get("accept_broken_mice", False):
+            _, result["MiceMangled"], _ = _mic_e_compat(
+                body, parsed.header, options.get("accept_broken_mice", False)
+            )
     if options.get("raw_timestamp") and body[:1] in (b"/", b"@"):
         result["RawTimestamp"] = body[1:7].decode()
     if (body[:1] in (b"/", b"@", b">") and body[1:8] == b"000000z") or (
@@ -449,8 +415,8 @@ def facts(raw: bytes, options: dict | None = None) -> dict[str, Any]:
                 + "timestamp: invalid day: 00",
             }
         ]
-    if isinstance(packet, m.Packet) and isinstance(packet.payload, m.NMEA):
-        n = packet.payload
+    if isinstance(parsed, m.Packet) and isinstance(parsed.payload, m.NMEA):
+        n = parsed.payload
         result["ChecksumOK"] = n.metadata.checksum_valid
         fields = n.metadata.fields_raw
         from . import _nmea as sentences

@@ -13,9 +13,11 @@ python -m pytest packages/aprs/tests -q
 python packages/aprs/tests/generate_vectors.py
 ```
 
-The generator translates source assertions, never parser output. Schema changes
-include units/enums, explicit absence, telemetry channel padding, structured query
-responses and the existing typed NMEA hierarchy. `packet` is a Latin-1 byte carrier:
+The generator translates source assertions, never parser output. The translated
+expectations are stored in these JSONL files; comparisons do not convert them
+back to the source schema. Schema changes include units/enums, explicit absence,
+telemetry channel padding, structured query responses and typed NMEA sentences.
+`packet` is a Latin-1 byte carrier:
 use `packet.encode("latin-1")`, including for control/high-bit bytes.
 
 `expected` is a subset of the public JSON representation. Missing keys make no
@@ -30,7 +32,22 @@ is represented by the public diagnostic scheme rather than copied verbatim.
 Some profiles conflict for the same bytes. `_compatibility.py` expresses those
 receiver policies without changing the public API or consulting expected values.
 The canonical codec retains precise wire data; the adapter selects historical
-comment trimming, unit conventions, acceptance and warning policies.
+comment trimming, disputed wind-unit interpretation, acceptance and warning policies.
+
+The schema migration rewrote 35 stored expectations (33 FAP and two historical
+position cases): equivalent weather units, compressed weather wind nesting,
+`LegacyPosition`/`RawWeather` wrappers, four flattened NMEA observations, and four Mic-E device markers split from comments.
+Captured rounded values, whitespace, absent symbols, and incomplete reports were
+not changed to agree with the decoder. For example, FAP-357 still expects course
+28 despite the wire containing 27.9. Uncompressed FAP wind retains an explicit
+mph interpretation rather than changing to the public decoder's disputed unit.
+
+Nineteen formerly adapter-dependent cases now compare public packet JSON directly,
+with regression tests disabling the compatibility view. Offline conversion tests
+reverse unit changes back to the captured measurements and verify stored fields
+against source values. The original `source_expected` snapshots remain immutable
+provenance; their supplemental observations without public model fields remain
+explicitly asserted, not discarded or silently added to the packet schema.
 
 All 29 PHG/PHGR projections (including 15 FAP vectors) instead exercise the public
 API directly. Regression tests disable compatibility functions while checking

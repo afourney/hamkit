@@ -15,6 +15,30 @@ from hamkit import aprs
 
 DIRECTORY = Path(__file__).parents[1] / "vectors"
 
+# These cases previously differed only in schema/units. Their persisted
+# expectations now match the public schema, so bypass the compatibility view.
+SCHEMA_NATIVE_IDS = {
+    "FAP-005",
+    "FAP-036",
+    "FAP-345",
+    "FAP-346",
+    "FAP-032",
+    "FAP-033",
+    "FAP-406",
+    "FAP-407",
+    "FAP-477",
+    "FAP-478",
+    "FAP-479",
+    "FAP-480",
+    "FAP-481",
+    "FAP-491",
+    "FAP-492",
+    "FAP-493",
+    "FAP-494",
+    "OTH-034",
+    "OTH-036",
+}
+
 
 def differences(actual: Any, expected: Any, path: str = "$") -> list[str]:
     if isinstance(expected, dict):
@@ -72,7 +96,7 @@ def public_phg_row(row: dict[str, Any]) -> bool:
 
 def check(row: dict[str, Any]) -> None:
     raw = row["packet"].encode("latin-1")
-    if public_phg_row(row):
+    if public_phg_row(row) or row["id"] in SCHEMA_NATIVE_IDS:
         packet = aprs.parse_packet(raw)
         assert isinstance(packet, aprs.Packet)
         actual = aprs.to_json_dict(packet, include_defaults=True)
@@ -98,7 +122,9 @@ def check(row: dict[str, Any]) -> None:
         elif public_phg_row(row):
             errors.extend(check_public_phg(row, packet))
         else:
-            errors.extend(check_fap(row))
+            errors.extend(
+                check_fap(row, packet if row["id"] in SCHEMA_NATIVE_IDS else None)
+            )
     if row.get("sequence"):
         from receiver import Receiver
 

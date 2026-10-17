@@ -413,13 +413,13 @@ def check_public_phg(row, packet):
     return errors
 
 
-def check_fap(row):
+def check_fap(row, packet=None):
     from packets.test_corpus import differences
 
-    from hamkit.aprs._compatibility import facts, view
+    from hamkit.aprs._compatibility import facts
 
     raw = row["packet"].encode("latin1")
-    f = facts(raw, row.get("options"))
+    f = facts(raw, row.get("options"), packet=packet)
     actual = {"fap_fields": f}
     errors = []
     for path in row.get("unmapped", []):
@@ -429,30 +429,6 @@ def check_fap(row):
             errors.append(path + ": no derived assertion")
             continue
         errors.extend(differences(value, at(row["source_expected"], path), path))
-    # FAP flattens NMEA sentences; the JSON schema keeps them typed. Check the
-    # flattened observations too, not just that an NMEA family was recognized.
-    expected = row["source_expected"]["fap_fields"]
-    if expected.get("Format") == "nmea":
-        projected, _ = view(raw, "compatibility-fap", row.get("options"))
-        p = projected["payload"]
-        s = p["sentence"]
-        coords = s.get("coordinates") or {}
-        values = {
-            "Latitude": coords.get("latitude_deg"),
-            "Longitude": coords.get("longitude_deg"),
-            "Altitude": s.get("altitude_msl_m"),
-            "Speed": (
-                s.get("speed_knots") * 1.852
-                if s.get("speed_knots") is not None
-                else None
-            ),
-            "Course": s.get("course_deg"),
-            "SymbolTable": (p.get("symbol") or {}).get("table_id"),
-            "SymbolCode": (p.get("symbol") or {}).get("code"),
-        }
-        errors.extend(
-            differences(values, {k: expected[k] for k in values}, "$.fap_fields")
-        )
     return errors
 
 

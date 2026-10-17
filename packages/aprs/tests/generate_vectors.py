@@ -561,6 +561,15 @@ def fap_projection(e: JSON, packet: str) -> JSON:
         normal["telemetry_definition"] = definition
     result = translate(normal)
     payload = result.get("payload", {})
+    comment = payload.get("comment", "")
+    if (
+        payload.get("type") == "mic_e"
+        and comment[:1] in ("]", ">")
+        and packet.partition(":")[2][9:10] == comment[:1]
+    ):
+        # Split the captured marker into its public field without losing text.
+        # A broken fixed-width body must not be reinterpreted by this migration.
+        payload["device_code"], payload["comment"] = comment[0], comment[1:]
     if payload.get("type") not in (
         "position",
         "mic_e",
@@ -634,42 +643,132 @@ def fap_projection(e: JSON, packet: str) -> JSON:
     if f.get("Wx") is not None:
         wx = f["Wx"]
         mapped_wx = {}
-        for key, target, unit in (
-            ("WindDirection", "wind_direction", "degrees"),
-            ("WindSpeed", "wind_speed", "m/s"),
-            ("WindGust", "gust", "m/s"),
-            ("Temp", "temperature", "celsius"),
-            ("Humidity", "humidity", "percent"),
-            ("Pressure", "pressure", "hPa"),
-            ("Rain1h", "rain_1h", "mm"),
-            ("Rain24h", "rain_24h", "mm"),
-            ("RainMidnight", "rain_since_midnight", "mm"),
-            ("Snow24h", "snow_24h", "mm"),
-            ("Luminosity", "luminosity", "W/m2"),
+        vendor = packet.partition(":")[2].startswith(("$ULTW", "!!"))
+        for key, target, unit, scale, offset in (
+            ("WindDirection", "wind_direction", "degrees", 1, 0),
+            (
+                "WindSpeed",
+                "wind_speed",
+                "m/s" if vendor else "mph",
+                1 if vendor else 1 / 0.44704,
+                0,
+            ),
+            (
+                "WindGust",
+                "gust",
+                "m/s" if vendor else "mph",
+                1 if vendor else 1 / 0.44704,
+                0,
+            ),
+            (
+                "Temp",
+                "temperature",
+                "celsius" if vendor else "fahrenheit",
+                1 if vendor else 1.8,
+                0 if vendor else 32,
+            ),
+            ("Humidity", "humidity", "percent", 1, 0),
+            ("Pressure", "pressure", "hPa", 1, 0),
+            (
+                "Rain1h",
+                "rain_1h",
+                "mm" if vendor else "inches",
+                1 if vendor else 1 / 25.4,
+                0,
+            ),
+            (
+                "Rain24h",
+                "rain_24h",
+                "mm" if vendor else "inches",
+                1 if vendor else 1 / 25.4,
+                0,
+            ),
+            (
+                "RainMidnight",
+                "rain_since_midnight",
+                "mm" if vendor else "inches",
+                1 if vendor else 1 / 25.4,
+                0,
+            ),
+            (
+                "Snow24h",
+                "snow_24h",
+                "mm" if vendor else "inches",
+                1 if vendor else 1 / 25.4,
+                0,
+            ),
+            ("Luminosity", "luminosity", "W/m2", 1, 0),
         ):
             if wx.get(key) is not None:
-                mapped_wx[target] = {"value": wx[key], "unit": unit}
+                # Convert captured expectations, never values from the decoder.
+                # No rounding: the original physical measurement is preserved.
+                mapped_wx[target] = {"value": wx[key] * scale + offset, "unit": unit}
+        if normal.get("format") == "compressed":
+            # FAP flattens the compressed weather wind pair into Course/Speed.
+            # Our schema places that same pair inside extensions.weather.
+            motion = payload.get("extensions", {}).pop("motion", {})
+            for key, target, unit in (
+                ("course_deg", "wind_direction", "degrees"),
+                ("speed_knots", "wind_speed", "knots"),
+            ):
+                if key in motion:
+                    mapped_wx[target] = {"value": motion[key], "unit": unit}
         if payload.get("type") == "weather":
             payload.update(mapped_wx)
         else:
             payload.setdefault("extensions", {})["weather"] = mapped_wx
+        if vendor:
+            payload.pop("type")
+            result["payload"] = {
+                "type": "raw_weather",
+                "format": "ultimeter_2000",
+                "information": packet.partition(":")[2],
+                "weather": payload,
+            }
     if f.get("Format") == "nmea":
-        # The snapshot does not capture individual NMEA sentence fields; do not
-        # invent them from FAP's flattened station fix. Assert the public family.
-        result["payload"] = {"type": "nmea"}
-    if payload.get("extensions", {}).get("phg") and payload.get("type") == "position":
+        # Keep the snapshot's values (including rounded course and absent symbol)
+        # in typed NMEA fields. Missing time/fix fields are not invented.
+        sentence: JSON = {"type": packet.partition(":")[2][3:6].lower()}
+        if normal.get("position"):
+            sentence["coordinates"] = select(
+                normal["position"], "latitude_deg longitude_deg"
+            )
+        for key, target, scale in (
+            ("Altitude", "altitude_msl_m", 1),
+            ("Speed", "speed_knots", 1 / 1.852),
+            ("Course", "course_deg", 1),
+        ):
+            if f.get(key) is not None:
+                sentence[target] = f[key] * scale
+        table, code = f.get("SymbolTable"), f.get("SymbolCode")
+        result["payload"] = {
+            "type": "nmea",
+            "sentence": sentence,
+            "symbol": (
+                {"table_id": table, "code": code}
+                if table is not None and code is not None
+                else None
+            ),
+            "metadata": {"checksum_valid": f["ChecksumOK"]},
+        }
+    return result
+
+
+def nest_legacy_position(result: JSON, packet: str) -> None:
+    """Use the existing wrapper for source assertions identifying a position."""
+    payload = result.get("payload", {})
+    if payload.get("type") == "position":
         body = packet.partition(":")[2]
         prefix, marker, _ = body.partition("!")
         if marker and prefix and not body.startswith(("!", "=", "/", "@")):
-            # FAP flattens legacy beacon positions; our public model preserves
-            # both the beacon prefix and the nested decoded position.
+            # The source supplies all position values. The wire supplies only
+            # the literal prefix, which the finalized public schema preserves.
             payload.pop("type")
             result["payload"] = {
                 "type": "legacy_position",
                 "prefix": prefix,
                 "position": payload,
             }
-    return result
 
 
 def records() -> list[JSON]:
@@ -722,6 +821,7 @@ def records() -> list[JSON]:
                     if row["profile"] == "compatibility-fap"
                     else translate(tracked)
                 )
+                nest_legacy_position(row["expected"], row["packet"])
                 row["unmapped"] = sorted(leaf_paths(step["expected"]) - used)
                 if "payload" not in row["expected"]:
                     row[
