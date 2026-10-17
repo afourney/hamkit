@@ -19,3 +19,15 @@ class FieldError(APRSError):
 
 class UnsupportedFormat(APRSError):
     """A field codec cannot represent this otherwise potentially valid format."""
+
+
+class CodecNotImplemented(UnsupportedFormat, NotImplementedError):
+    """A modeled feature has no codec yet. Never substitute empty/opaque output."""
+
+
+class ContextRequired(APRSError):
+    """A header-dependent codec needs the outer header or joint encoder."""
+
+
+class ResourceLimitError(APRSError):
+    """The explicit third-party nesting limit was reached."""

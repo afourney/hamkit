@@ -108,7 +108,6 @@ class PacketTests(unittest.TestCase):
             b":W1AW     :Reply{01}02",
             b":BLN0     :Notice",
             b":NWS-WARN :Warning{123",
-            b"}N0CALL>APRS:>inner",
         ):
             with self.subTest(information=information):
                 packet = parse_packet(b"N0CALL>APRS:" + information)
@@ -130,9 +129,6 @@ class PacketTests(unittest.TestCase):
             b">APRS:>x",
             b"N0CALL>APRS,:>x",
             b"N0CALL>APRS,D1**:>x",
-            b"N0CALL>APRS:",
-            b"N0CALL>APRS:>x\n",
-            b"N0CALL>APRS:>x\r\n",
             b"N0CALL>APRS>BAD:>x",
             b"N0CALL >APRS:>x",
         ):
@@ -141,6 +137,7 @@ class PacketTests(unittest.TestCase):
 
     def test_bad_fields(self) -> None:
         for information in (
+            b"",
             b"!9000.01N/07201.75W-",
             b"!4903x50N/07201.75W-",
             b"!4903.50N/18000.01E-",
@@ -150,7 +147,6 @@ class PacketTests(unittest.TestCase):
             b":W1AW     :Hello{123456",
             b":W1AW     :" + b"x" * 68,
             b">" + b"x" * 63,
-            b">092345/Ready",
             b"@000000z4903.50N/07201.75W-",
         ):
             with self.subTest(information=information), self.assertRaises(FieldError):

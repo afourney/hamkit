@@ -4,11 +4,17 @@
 
 """Seven-byte APRS DHM and HMS timestamps (APRS101 pp. 22–23)."""
 
-from ..errors import FieldError
+from ..errors import CodecNotImplemented, FieldError
 from ..models import Timestamp
 
 
 def encode_timestamp(value: Timestamp) -> bytes:
+    if value.kind == "mdhm_utc":
+        raise CodecNotImplemented("MDHM weather timestamp")
+    if value.month is not None:
+        raise FieldError("month is only valid in MDHM timestamps")
+    if value.raw is not None:
+        raise CodecNotImplemented("timestamp raw evidence consistency validation")
     if not all(type(n) is int for n in (value.hour, value.minute)):
         raise FieldError("timestamp components must be integers")
     if not (0 <= value.hour <= 23 and 0 <= value.minute <= 59):
@@ -34,6 +40,8 @@ def encode_timestamp(value: Timestamp) -> bytes:
 
 
 def decode_timestamp(raw: bytes) -> Timestamp:
+    if len(raw) == 8 and raw.isdigit():
+        raise CodecNotImplemented("MDHM weather timestamp")
     if len(raw) != 7 or not raw[:6].isdigit():
         raise FieldError("timestamp must contain six digits and a suffix")
     a, b, c = int(raw[:2]), int(raw[2:4]), int(raw[4:6])

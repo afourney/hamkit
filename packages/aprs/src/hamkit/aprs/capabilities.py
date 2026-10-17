@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
+"""Discover codec availability without confusing model coverage with support."""
+from dataclasses import dataclass
+from typing import Literal, TypeAlias
+
+from . import models as m
+
+SupportLevel: TypeAlias = Literal["implemented", "partial", "unimplemented", "raw"]
+
+
+@dataclass(frozen=True)
+class CodecCapability:
+    model: type[m.Payload]
+    decode: SupportLevel
+    encode: SupportLevel
+    notes: str
+
+
+_CAPABILITIES: tuple[CodecCapability, ...] = (
+    CodecCapability(
+        m.Position,
+        "partial",
+        "partial",
+        "Uncompressed/unambiguous only; structured extensions are not encoded. Tail is uninterpreted.",
+    ),
+    CodecCapability(
+        m.Status,
+        "partial",
+        "partial",
+        "Text/DHM UTC only; structured grid/symbol/beam are not encoded.",
+    ),
+    CodecCapability(
+        m.Message,
+        "partial",
+        "partial",
+        "Basic printable text/ID only; no reply-ack or specialized message semantics.",
+    ),
+    CodecCapability(
+        m.Acknowledgment, "partial", "partial", "Basic ack/rej only; no reply-ack."
+    ),
+    CodecCapability(
+        m.MicE,
+        "unimplemented",
+        "unimplemented",
+        "Requires header; future joint encoding derives or checks destination.",
+    ),
+    CodecCapability(
+        m.ThirdParty,
+        "implemented",
+        "implemented",
+        "Bounded nesting; inner codec capabilities still apply.",
+    ),
+    CodecCapability(
+        m.UserDefined,
+        "implemented",
+        "implemented",
+        "User ID/type and arbitrary binary data; no interpretation of user data.",
+    ),
+    CodecCapability(
+        m.InvalidTest,
+        "implemented",
+        "implemented",
+        "Explicit invalid/test DTI, never a trusted position.",
+    ),
+    CodecCapability(
+        m.Reserved,
+        "unimplemented",
+        "raw",
+        "Explicit DTI/data construction; decoding unknown DTIs returns Opaque by default.",
+    ),
+    CodecCapability(
+        m.Opaque,
+        "raw",
+        "raw",
+        "Payload recovery only; invalid outer envelopes and resource limits still raise.",
+    ),
+    *(
+        CodecCapability(
+            model,
+            "unimplemented",
+            "unimplemented",
+            "Public representation only; wire codec raises CodecNotImplemented.",
+        )
+        for model in (
+            m.ObjectReport,
+            m.ItemReport,
+            m.WeatherReport,
+            m.Telemetry,
+            m.TelemetryDefinition,
+            m.AutoAnswer,
+            m.Bulletin,
+            m.NWSBulletin,
+            m.NTSMessage,
+            m.Query,
+            m.QueryResponse,
+            m.Capabilities,
+            m.NMEAReport,
+            m.RawWeather,
+            m.Agrelo,
+            m.MaidenheadBeacon,
+            m.LegacyPosition,
+            m.NonAPRSBeacon,
+            m.ExternalExtension,
+        )
+    ),
+)
+
+
+def get_capabilities() -> tuple[CodecCapability, ...]:
+    """Immutable per-model capabilities; 'partial' is not a per-value guarantee."""
+    return _CAPABILITIES
+
+
+def capability_for(value: m.Payload | type[m.Payload]) -> CodecCapability:
+    model = value if isinstance(value, type) else type(value)
+    for capability in _CAPABILITIES:
+        if capability.model is model:
+            return capability
+    raise TypeError("not a public APRS payload model")
