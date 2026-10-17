@@ -56,11 +56,17 @@ class ModelContractTests(unittest.TestCase):
                 49,
                 -72,
                 encoding="compressed",
-                compression=a.Compression(0, "old", "other", 0),
+                compression=a.Compression(ignored=True),
+                symbol=a.Symbol("/", "-"),
             ),
-            a.Position(49, -72, ambiguity=a.Ambiguity(1)),
-            a.Position(49, -72, extensions=a.Extensions(motion=a.Motion(90, 10))),
-            a.Status(grid=a.Grid("IO91SX")),
+            a.Position(49, -72, ambiguity=a.Ambiguity(1), symbol=a.Symbol("/", "-")),
+            a.Position(
+                49,
+                -72,
+                extensions=a.Extensions(motion=a.Motion(90, 10)),
+                symbol=a.Symbol("/", "-"),
+            ),
+            a.Status(grid=a.Grid("IO91SX"), symbol=a.Symbol("/", "-"), text=""),
             a.Message("W1AW", "Reply", reply_ack=a.ReplyAck("01", "02")),
             a.Acknowledgment("W1AW", "01", reply_ack=a.ReplyAck("01", "02")),
         )
@@ -75,7 +81,9 @@ class ModelContractTests(unittest.TestCase):
             if isinstance(value, get_args(a.NTSRecord)):
                 self.assertIs(a.Radiogram("W1AW", value).record, value)
             if isinstance(value, get_args(a.NMEASentence)):
-                self.assertIs(a.NMEA(value).sentence, value)
+                self.assertIs(
+                    a.NMEA(value, metadata=a.NMEAMetadata("GP")).sentence, value
+                )
             if isinstance(value, get_args(a.ResponseValue)):
                 self.assertIs(a.Response("W1AW", value).response, value)
 
@@ -91,7 +99,17 @@ class ModelContractTests(unittest.TestCase):
         with self.assertRaises(a.ContextRequired):
             a.decode_payload(b"`12345678")
         with self.assertRaises(a.ContextRequired):
-            a.encode_payload(a.MicE(a.Location(49, -72), (False,) * 3))
+            a.encode_payload(
+                a.MicE(
+                    a.Location(
+                        49,
+                        -72,
+                        symbol=a.Symbol("/", "-"),
+                        extensions=a.Extensions(motion=a.Motion()),
+                    ),
+                    (False,) * 3,
+                )
+            )
         with self.assertRaises(a.CodecNotImplemented):
             a.decode_payload(
                 b"`12345678",

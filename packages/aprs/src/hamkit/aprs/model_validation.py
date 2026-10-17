@@ -300,28 +300,6 @@ def _semantics(v: Any, path: str) -> None:
         fail("payload.timestamp", "positionless weather requires an MDHM timestamp")
     if name == "Weather" and v.timestamp is not None and v.timestamp.kind != "mdhm_utc":
         fail("timestamp", "weather requires MDHM UTC")
-    if name == "Telemetry":
-        if not v.analog and not v.digital:
-            fail("analog", "at least one channel is required")
-        if v.encoding == "classic":
-            if v.sequence is None:
-                fail("sequence", "classic telemetry requires a sequence or MIC")
-            length("analog", 5, 5)
-            length("digital", 8, 8)
-            if any(
-                x is None or not float(x).is_integer() or not 0 <= x <= 255
-                for x in v.analog
-            ):
-                fail(
-                    "analog",
-                    "classic telemetry requires five integer channels in 0..255",
-                )
-            if any(x is None for x in v.digital):
-                fail("digital", "classic telemetry requires eight binary channels")
-        length("analog", 0, 5)
-        length("digital", 0, 8)
-        if type(v.sequence) is int:
-            bounds("sequence", 0, 999)
     if name in ("Parameters", "Units"):
         length("channels", 1, 13)
         if any(
@@ -408,3 +386,16 @@ def _semantics(v: Any, path: str) -> None:
             "number" if name == "Phone" else "label" if name == "Signpost" else "name"
         )
         length(field, 1, 80)
+
+    # Import lazily: model construction begins while modules are loading.
+    from .validation_messages import validate_messages
+    from .validation_nmea import validate_nmea
+    from .validation_other import validate_other
+    from .validation_position import validate_position
+    from .validation_weather import validate_weather
+
+    validate_messages(v, path)
+    validate_nmea(v, path)
+    validate_position(v, path)
+    validate_weather(v, path)
+    validate_other(v, path)

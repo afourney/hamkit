@@ -42,7 +42,15 @@ class JSONRoundTripTests(unittest.TestCase):
             self.round_trip(payload)
             self.round_trip(
                 a.Packet(
-                    a.Header("N0CALL", "APRS", (a.Hop("WIDE1-1", True),)),
+                    a.Header(
+                        "N0CALL",
+                        "APRS",
+                        (
+                            a.Hop("WIDE1-1", True),
+                            a.Hop("qAR"),
+                            a.Hop("GATE"),
+                        ),
+                    ),
                     payload,
                     original_wire=b"archival\x00\xff\r\n",
                     header_semantics=a.HeaderSemantics(q_construct="qAR"),
@@ -58,7 +66,7 @@ class JSONRoundTripTests(unittest.TestCase):
         for value in examples:
             self.round_trip(cast(a.JSONModel, value))
         for model in get_args(a.JSONModel):
-            if model is not a.Telemetry and all(
+            if model not in (a.Telemetry, a.Compression) and all(
                 f.default is not dataclasses.MISSING
                 or f.default_factory is not dataclasses.MISSING
                 for f in dataclasses.fields(model)
@@ -70,16 +78,21 @@ class JSONRoundTripTests(unittest.TestCase):
             a.to_json_dict(a.Status("Ready")), {"type": "status", "text": "Ready"}
         )
         self.assertEqual(
-            a.to_json_dict(a.Position(49, -72)),
-            {"type": "position", "latitude_deg": 49, "longitude_deg": -72},
+            a.to_json_dict(a.Position(49, -72, symbol=a.Symbol("/", "-"))),
+            {
+                "type": "position",
+                "latitude_deg": 49,
+                "longitude_deg": -72,
+                "symbol": {"table_id": "/", "code": "-"},
+            },
         )
-        packet = a.to_json_dict(a.Packet(a.Header("N0CALL", "APRS"), a.Status()))
+        packet = a.to_json_dict(a.Packet(a.Header("N0CALL", "APRS"), a.Status(text="")))
         self.assertEqual(
             packet,
             {
                 "type": "packet",
                 "header": {"source": "N0CALL", "destination": "APRS"},
-                "payload": {"type": "status"},
+                "payload": {"type": "status", "text": ""},
             },
         )
         weather = a.Weather(temperature=a.Measurement(68, "fahrenheit"))
@@ -96,7 +109,7 @@ class JSONRoundTripTests(unittest.TestCase):
     def test_nested_union_variants(self) -> None:
         for value in field_examples():
             if isinstance(value, get_args(a.NMEASentence)):
-                self.round_trip(a.NMEA(value))
+                self.round_trip(a.NMEA(value, metadata=a.NMEAMetadata("GP")))
             if isinstance(value, get_args(a.DefinitionValue)):
                 self.round_trip(a.Definition("N0CALL", value))
             if isinstance(value, get_args(a.NTSRecord)):
@@ -139,16 +152,25 @@ class JSONRoundTripTests(unittest.TestCase):
         weather: a.Weather = a.from_json('{"type":"weather"}', expected_type=a.Weather)
         self.assertEqual(weather, a.Weather())
         position: a.Position = a.from_json_dict(
-            {"type": "position", "latitude_deg": 49, "longitude_deg": -72},
+            {
+                "type": "position",
+                "latitude_deg": 49,
+                "longitude_deg": -72,
+                "symbol": {"table_id": "/", "code": "-"},
+            },
             expected_type=a.Position,
         )
-        self.assertEqual(position, a.Position(49, -72))
-        # Within an object, its declared location type supplies the symbol default.
+        self.assertEqual(position, a.Position(49, -72, symbol=a.Symbol("/", "-")))
+        # A fixed nested location type still requires explicit symbol facts.
         model = a.from_json_dict(
             {
                 "type": "object",
                 "name": "A",
-                "position": {"latitude_deg": 49, "longitude_deg": -72},
+                "position": {
+                    "latitude_deg": 49,
+                    "longitude_deg": -72,
+                    "symbol": {"table_id": "/", "code": "-"},
+                },
                 "timestamp": {
                     "kind": "dhm_utc",
                     "hour": 0,
@@ -183,17 +205,18 @@ class JSONRoundTripTests(unittest.TestCase):
 
     def test_shared_weather_and_telemetry_preserve_report_metadata(self) -> None:
         weather = a.Weather(
+            wind_direction=a.Measurement(None, "degrees"),
+            wind_speed=a.Measurement(None, "mph"),
+            gust=a.Measurement(None, "mph"),
             temperature=a.Measurement(None, "fahrenheit", b"..."),
             timestamp=a.Timestamp("mdhm_utc", 12, 30, day=17, month=10),
             comment="weather",
             raw=b"sensor bytes",
         )
         telemetry = a.Telemetry(
-            (1, None, 0),
-            (True, None, False),
+            (1, 2, 3, 4, 5),
+            (True,) * 8,
             sequence="MIC",
-            encoding="mic_e_hex",
-            sequence_raw=b"MIC",
             raw=b"channels",
             mic_comma=False,
             comment="telemetry",
@@ -204,12 +227,17 @@ class JSONRoundTripTests(unittest.TestCase):
             self.assertEqual(a.to_json_dict(model)["type"], tag)
             with self.assertRaises(a.CodecNotImplemented):
                 a.serialize_packet(a.Packet(a.Header("N0CALL", "APRS"), model))
-        extensions = a.Extensions(weather=weather, telemetry=telemetry)
+        extensions = a.Extensions(
+            weather=dataclasses.replace(weather, timestamp=None),
+            telemetry=a.Telemetry((1, 2), sequence=1, encoding="base91_comment"),
+        )
         self.round_trip(extensions)
         nested = a.to_json_dict(extensions)
         for field in ("weather", "telemetry"):
             self.assertNotIn("type", cast(dict[str, a.JSONValue], nested[field]))
-        self.round_trip(a.Position(49, -72, extensions=extensions))
+        self.round_trip(
+            a.Position(49, -72, extensions=extensions, symbol=a.Symbol("/", "_"))
+        )
         self.assertNotIn("weather", a.to_json_dict(weather))
         self.assertNotIn("data", a.to_json_dict(telemetry))
         for old in ("weather_fields", "telemetry_data"):
@@ -219,7 +247,15 @@ class JSONRoundTripTests(unittest.TestCase):
             self.assertFalse(hasattr(a, old))
 
     def test_json_does_not_require_working_wire_codec(self) -> None:
-        mic_e = a.MicE(a.Location(49, -72), (True, False, True))
+        mic_e = a.MicE(
+            a.Location(
+                49,
+                -72,
+                symbol=a.Symbol("/", "-"),
+                extensions=a.Extensions(motion=a.Motion()),
+            ),
+            (True, False, True),
+        )
         self.round_trip(mic_e)
         with self.assertRaises(a.CodecNotImplemented):
             a.serialize_packet(a.Packet(a.Header("N0CALL", "APRS"), mic_e))
@@ -305,8 +341,8 @@ class JSONNegativeTests(unittest.TestCase):
     def test_invalid_python_models_are_not_coerced(self) -> None:
         for build in (
             lambda: a.Status(cast(Any, b"Hello")),
-            lambda: a.Position(True, 0),
-            lambda: a.Message("W1AW", message_id=cast(Any, 1)),
+            lambda: a.Position(True, 0, symbol=a.Symbol("/", "-")),
+            lambda: a.Message("W1AW", message_id=cast(Any, 1), text=""),
             lambda: a.Telemetry(digital=cast(Any, (1,))),
             lambda: a.Hop("D1", repeated=cast(Any, 1)),
         ):
@@ -327,10 +363,10 @@ class JSONNegativeTests(unittest.TestCase):
     def test_nested_union_tags_and_incompatible_tags(self) -> None:
         variants = (
             (a.Definition("N0CALL", a.Units(("V",))), "definition"),
-            (a.NMEA(a.VTG()), "sentence"),
+            (a.NMEA(a.VTG(), metadata=a.NMEAMetadata("GP")), "sentence"),
             (a.Radiogram("W1AW", a.Text(1, "Hello")), "record"),
             (a.Response("W1AW", a.DirectStations(("N0CALL",))), "response"),
-            (a.Packet(a.Header("N0CALL", "APRS"), a.Status()), "payload"),
+            (a.Packet(a.Header("N0CALL", "APRS"), a.Status(text="")), "payload"),
         )
         for model, key in variants:
             encoded = a.to_json_dict(model)
@@ -355,12 +391,12 @@ class JSONNegativeTests(unittest.TestCase):
                 {
                     "type": "packet",
                     "header": {"type": "symbol"},
-                    "payload": {"type": "status"},
+                    "payload": {"type": "status", "text": ""},
                 }
             )
 
     def test_cycles_and_excessive_depth_fail_cleanly(self) -> None:
-        packet = a.Packet(a.Header("N0CALL", "APRS"), a.Status())
+        packet = a.Packet(a.Header("N0CALL", "APRS"), a.Status(text=""))
         object.__setattr__(packet, "payload", a.ThirdParty(packet))
         with self.assertRaises(a.JSONModelError):
             a.to_json(packet)

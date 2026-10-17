@@ -92,7 +92,10 @@ def payload_data(raw: bytes) -> tuple[dict[str, object], list[Diagnostic]]:
             message, sep, identifier = body[10:].partition(b"{")
             keep("text", lambda: text(message))
             if sep:
-                keep("message_id", lambda: text(identifier))
+                # A present but invalid optional ID must not become an absent ID.
+                # Keep its byte spelling in repair data so ordinary strict import
+                # still rejects it until the caller edits/removes it explicitly.
+                data["message_id"] = identifier.decode("latin-1")
         else:
             # A short addressee with a clear separator still gives reliable text.
             address, sep, message = body.partition(b":")

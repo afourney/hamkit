@@ -124,6 +124,14 @@ class PolicyTests(unittest.TestCase):
         with self.assertRaises(a.CodecNotImplemented):
             decode_timestamp(b"10171230")
         with self.assertRaises(a.FieldError):
-            a.encode_payload(a.Position(49, -72, tail=b"raw", comment="structured"))
+            a.encode_payload(
+                a.Position(
+                    49,
+                    -72,
+                    tail=b"raw",
+                    comment="structured",
+                    symbol=a.Symbol("/", "-"),
+                )
+            )
         with self.assertRaises(ValueError):
             a.parse_packet(b"N0CALL>APRS:>Ready", options=a.DecodeOptions(max_depth=-1))

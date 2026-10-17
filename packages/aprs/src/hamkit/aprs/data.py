@@ -91,8 +91,8 @@ class Ambiguity(Validated):
 class Symbol(Validated):
     """Wire table/overlay byte plus symbol; lower-case compressed overlays retained."""
 
-    table_id: str = "/"
-    code: str = "-"
+    table_id: str
+    code: str
 
 
 @dataclass(frozen=True)
@@ -154,7 +154,7 @@ class Bearing(Validated):
     hits_code: int
     range_code: int
     quality_code: int
-    manual: bool = False
+    manual: bool | None = None
     usable: bool | None = None
     range_miles: float | None = None
     accuracy_less_than_deg: float | None = None
@@ -165,10 +165,10 @@ class Bearing(Validated):
 class Compression(Validated):
     """Raw csT plus semantic bits; c=space can explicitly ignore the remainder."""
 
-    type_value: int
-    fix: Literal["old", "current"]
-    nmea_source: Literal["other", "GLL", "GGA", "RMC"]
-    origin_code: int
+    type_value: int | None = None
+    fix: Literal["old", "current"] | None = None
+    nmea_source: Literal["other", "GLL", "GGA", "RMC"] | None = None
+    origin_code: int | None = None
     csT_raw: bytes | None = None
     ignored: bool = False
 
@@ -176,9 +176,9 @@ class Compression(Validated):
 @dataclass(frozen=True)
 class DAO(Validated):
     datum_byte: str
-    latitude_precision: int
-    longitude_precision: int
-    encoding: Literal["decimal", "base91"]
+    latitude_precision: int | None = None
+    longitude_precision: int | None = None
+    encoding: Literal["decimal", "base91"] | None = None
     raw: bytes | None = None
 
 
@@ -191,7 +191,7 @@ class Area(Validated):
     corridor_half_width_miles: float | None = None
     latitude_offset_deg: float | None = None
     longitude_offset_deg: float | None = None
-    transmitted_anchor: Literal["lower_reference", "circle_center"] = "lower_reference"
+    transmitted_anchor: Literal["lower_reference", "circle_center"] | None = None
 
 
 @dataclass(frozen=True)
@@ -285,7 +285,7 @@ class Location(Validated):
 
     latitude_deg: float
     longitude_deg: float
-    symbol: Symbol = field(default_factory=Symbol)
+    symbol: Symbol
     ambiguity: Ambiguity | None = None
     extensions: Extensions = field(default_factory=Extensions)
     tail: bytes = b""
@@ -329,7 +329,7 @@ class Equations(Validated):
 
 @dataclass(frozen=True)
 class Bits(Validated):
-    sense: DigitalChannels
+    sense: tuple[bool, ...]
     project_title: str = ""
 
 
@@ -340,11 +340,11 @@ DefinitionValue: TypeAlias = Parameters | Units | Equations | Bits
 class NTSHeader(Validated):
     number: str
     precedence: str
-    handling: str
+    handling: str | None = field(default=None, kw_only=True)
     originator: str
     check: str
     place: str
-    time: str
+    time: str | None = field(default=None, kw_only=True)
     date: str
 
 

@@ -144,11 +144,11 @@ class RecoveryTests(unittest.TestCase):
 class StrictConstructionTests(unittest.TestCase):
     def test_required_fields_and_domain_constraints(self) -> None:
         for build in (
-            lambda: a.Position(91, 0),
-            lambda: a.Position(0, -181),
-            lambda: a.Position(float("nan"), 0),
-            lambda: a.Position(True, 0),
-            lambda: a.Position(cast(Any, None), 0),
+            lambda: a.Position(91, 0, symbol=a.Symbol("/", "-")),
+            lambda: a.Position(0, -181, symbol=a.Symbol("/", "-")),
+            lambda: a.Position(float("nan"), 0, symbol=a.Symbol("/", "-")),
+            lambda: a.Position(True, 0, symbol=a.Symbol("/", "-")),
+            lambda: a.Position(cast(Any, None), 0, symbol=a.Symbol("/", "-")),
             lambda: a.Header("", "APRS"),
             lambda: a.Hop("WIDE1-1*"),
             lambda: a.Message("", "Hello"),
@@ -159,9 +159,11 @@ class StrictConstructionTests(unittest.TestCase):
             lambda: a.Timestamp("hms_utc", 12, 30),
             lambda: a.Timestamp("mdhm_utc", 12, 30, day=31, month=4),
             lambda: a.Object(
-                "", a.Location(49, -72), a.Timestamp("dhm_utc", 12, 30, day=1)
+                "",
+                a.Location(49, -72, symbol=a.Symbol("/", "-")),
+                a.Timestamp("dhm_utc", 12, 30, day=1),
             ),
-            lambda: a.Item("a", a.Location(49, -72)),
+            lambda: a.Item("a", a.Location(49, -72, symbol=a.Symbol("/", "-"))),
             lambda: a.Symbol("/", ""),
             lambda: a.Extent((50, 49), (-73, -72)),
             lambda: a.Weather(temperature=a.Measurement(10, "mph")),
@@ -210,14 +212,21 @@ class StrictConstructionTests(unittest.TestCase):
         with self.assertRaises(a.ModelError):
             a.Timestamp("dhm_utc", 12, 30, raw=b"171230z")
         with self.assertRaises(a.ModelError):
-            a.Position(49, -72, tail=b"old", comment="edited")
+            a.Position(
+                49, -72, tail=b"old", comment="edited", symbol=a.Symbol("/", "-")
+            )
         with self.assertRaises(a.ModelError):
-            a.Object("", a.Location(49, -72), timestamp, name_raw=b"VALIDNAME")
+            a.Object(
+                "",
+                a.Location(49, -72, symbol=a.Symbol("/", "-")),
+                timestamp,
+                name_raw=b"VALIDNAME",
+            )
         raw = a.Packet(
             a.Header("N0CALL", "APRS"), a.Opaque(b"~new"), original_wire=b"old"
         )
         self.assertEqual(a.serialize_packet(raw), b"N0CALL>APRS:~new")
-        position = a.Position(49, -72, tail=b"raw\x00\xff")
+        position = a.Position(49, -72, tail=b"raw\x00\xff", symbol=a.Symbol("/", "-"))
         self.assertTrue(a.encode_payload(position).endswith(b"raw\x00\xff"))
         # Defend the serialization boundary even against frozen-dataclass bypasses.
         object.__setattr__(packet.payload, "text", "é")
@@ -232,7 +241,7 @@ class StrictConstructionTests(unittest.TestCase):
         zero = a.Weather(wind_speed=a.Measurement(0, "mph"))
         self.assertNotEqual(absent, unavailable)
         self.assertNotEqual(unavailable, zero)
-        self.assertEqual(a.Message("W1AW").message_id, None)
-        self.assertEqual(a.Position(49, -72).timestamp, None)
+        self.assertEqual(a.Message("W1AW", text="").message_id, None)
+        self.assertEqual(a.Position(49, -72, symbol=a.Symbol("/", "-")).timestamp, None)
         self.assertEqual(a.GLL(None, "123000", "V").coordinates, None)
         self.assertEqual(dataclasses.replace(unavailable, wind_speed=None), absent)

@@ -4,7 +4,8 @@ This is the scope contract for the alpha API. **Representation is not codec
 implementation or compliance.** Every payload family within the baseline below
 has a public construction model, including historical and optional families.
 Known field layouts use named dataclasses and aliases, not untyped dictionaries.
-Unspecified vendor/extension grammars have explicitly named raw wrappers.
+Unimplemented vendor/extension grammars have explicitly named raw wrappers.
+See [unresolved specification questions](UNRESOLVED_SPEC.md) for source gaps and profile decisions.
 
 ## Baseline and authority
 
@@ -39,7 +40,7 @@ the capabilities of their enclosing payloads.
 | HDR, NME-015–036, OTH-038: destination/source metadata                 | `HeaderSemantics`, `Symbol`, `Grid`                                                       | Modeled interpretation of destination symbol/grid, source-SSID symbol, software ID and historical destination routing. Header tokens remain authoritative |
 | POS: all four position DTIs                                            | `Position`, `Symbol`                                                                      | Working uncompressed unambiguous position; messaging/timestamp options                                                                                    |
 | POS: ambiguity and unknown-position convention                         | `Ambiguity`, `Extent`; `Position.is_null_position`                                        | Ambiguity modeled; null convention working; no guessed exact fix for an ambiguous area                                                                    |
-| TIM: DHM UTC/local, HMS UTC, MDHM UTC                                  | `Timestamp`, `TimestampKind`                                                              | DHM/HMS working; MDHM and raw-timestamp consistency checks modeled. No inferred year/offset                                                               |
+| TIM: DHM UTC/local, HMS UTC, MDHM UTC                                  | `Timestamp`, `TimestampKind`                                                              | DHM/HMS working; MDHM modeled; raw timestamp is evidence, not an encoding override. No inferred year/offset                                               |
 | EXT: course/speed, altitude, range                                     | `Extensions`, `Motion`, `Altitude`, `Range`                                               | Modeled, with explicit units/encoding/reference and raw codes                                                                                             |
 | EXT: PHG and direction finding                                         | `PHG`, `Signal`, `Bearing`                                                                | Modeled: power/height/gain/directivity, signal and NRQ codes, validity and derived quantities                                                             |
 | CMP: compressed positions, csT precedence                              | `Position(encoding="compressed")`, `Compression`, `Extensions`                            | Modeled: type/fix/NMEA source/origin, ignored csT, motion/range/altitude. Encoders must validate mutually exclusive interpretations                       |
@@ -144,8 +145,10 @@ bytes, represented reversibly by Latin-1 code points in JSON. No replacement
 characters, guessed UTF-8 or surrogateescape strings are introduced. Constructors
 and JSON imports validate field types, finite numbers, coordinates/timestamps,
 mandatory components, address/symbol/message syntax and modeled quantity ranges.
-Packet Weather requires an MDHM timestamp; nested Weather can omit it. Classic
-Telemetry requires sequence and complete channels; active NMEA fixes need coordinates.
+Complete Weather requires direction, speed, gust and temperature slots; these may
+be explicitly unavailable. Positionless Weather also requires MDHM; located
+Weather uses the parent timestamp. Classic Telemetry requires sequence and complete
+channels; other formats have encoding-specific checks. Active NMEA fixes need coordinates.
 These model invariants do not imply an available wire codec or implement unknown
 grammars. Raw evidence never overrides structured fields or supplies a missing
 value. Timestamp encoding ignores stale raw evidence and uses its structured time.
@@ -160,8 +163,9 @@ validation and the outer RF information-size limit still apply.
 - Wind units in uncompressed complete weather and zero-pair semantics remain
   disputed in the corpus. `Measurement.unit="disputed_knots_or_mph"` and raw
   evidence can represent an unresolved reading. No converter chooses silently.
-- Raw vendor weather layouts, external polygon/line geometry, and detailed
-  Agrelo quality meanings need additional authoritative definitions. Named raw
+- Peet vendor layouts have manufacturer documentation but no implemented codec.
+  External polygon/line geometry and detailed Agrelo quality meanings still need
+  verified authoritative definitions. Named raw
   models preserve these boundaries rather than fabricating fields.
 - The area correction specifies numeric offsets/anchors, not a complete rendering
   algorithm. `Area` stores codes and corrected quantities; map rendering is out.
@@ -177,5 +181,5 @@ This is not a guarantee that future specifications require no additional fields
 or classes. No comprehensive vector-compliance claim is made.
 
 Weather and telemetry use the same semantic model as a full payload or nested
-field. Metadata is retained in both contexts; neither has a wire codec yet.
+field. Context determines required fields and allowed encoding variants; neither has a wire codec yet.
 See [the naming guide](NAMING.md) for model names and their meanings.

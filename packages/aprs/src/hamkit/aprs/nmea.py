@@ -18,7 +18,7 @@ from .model_validation import Validated
 
 @dataclass(frozen=True)
 class NMEAMetadata(Validated):
-    talker: str = "GP"
+    talker: str
     checksum_supplied: str | None = None
     checksum_valid: bool | None = None
     fields_raw: RawFields = ()

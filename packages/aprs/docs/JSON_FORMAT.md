@@ -94,12 +94,16 @@ required. Object property order is not meaningful.
   and ranges, and fixed-format telemetry/NMEA constraints. Invalid normal models
   raise ModelError; JSON import presents these as JSONModelError. Codec availability
   is separate: an otherwise valid model can still raise CodecNotImplemented.
-- Classic Telemetry requires a sequence (integer or MIC), five integer analog
-  channels in 0..255 and eight binary channels. Other encodings retain their
-  own optional sequence/missing-channel semantics. Weather measurement absence
-  is meaningful; a full Packet with Weather requires an MDHM timestamp, while
-  a fixed nested Weather field need not have one. Active NMEA fixes require
-  coordinates. DHM needs day, HMS needs second, MDHM needs month/day.
+- Classic Telemetry requires a sequence (0..999 or MIC), five integer analog
+  channels in 0..255 and eight binary channels. Base91 requires a sequence in
+  0..8280 and analog channels; Mic-E has no sequence/digital field. Complete weather
+  reports require direction, speed, gust and temperature slots, with MDHM only
+  for positionless reports. Present-but-unavailable measurements satisfy presence.
+- Symbol table/code, Position/Location symbol, Status/Message text and NMEA metadata
+  are explicit inputs. Missing recovered facts cannot become authoring defaults.
+  NTS handling/time and datum-only DAO precision are legitimately optional.
+- See [unresolved specification questions](UNRESOLVED_SPEC.md) for profile limits,
+  unresolved source disagreements and representability decisions.
 - Encoding reconstructs from structured fields and revalidates them. Original
   wire bytes, raw evidence and redundant raw codes do not override edits or
   satisfy required fields. Explicit raw models/portions use bytes as content.
@@ -332,8 +336,8 @@ Standalone tag: `symbol`. [Back to type map](#type-map-and-object-catalog).
 | Field      | JSON value / allowed values | Presence / default                      |
 | ---------- | --------------------------- | --------------------------------------- |
 | `type`     | `"symbol"`                  | required standalone; nested rules above |
-| `table_id` | string                      | optional; default `'/'`                 |
-| `code`     | string                      | optional; default `'-'`                 |
+| `table_id` | string                      | **required**                            |
+| `code`     | string                      | **required**                            |
 
 ### Grid
 
@@ -343,14 +347,8 @@ Standalone tag: `grid`. [Back to type map](#type-map-and-object-catalog).
 {
   "type": "grid",
   "locator": "IO91SX",
-  "bounds": {
-    "latitude": [49, 50],
-    "longitude": [-73, -72]
-  },
-  "center": {
-    "latitude_deg": 49,
-    "longitude_deg": -72
-  }
+  "bounds": null,
+  "center": null
 }
 ```
 
@@ -494,7 +492,7 @@ Standalone tag: `bearing`. [Back to type map](#type-map-and-object-catalog).
   "hits_code": 3,
   "range_code": 2,
   "quality_code": 7,
-  "manual": false,
+  "manual": null,
   "usable": null,
   "range_miles": null,
   "accuracy_less_than_deg": null,
@@ -509,7 +507,7 @@ Standalone tag: `bearing`. [Back to type map](#type-map-and-object-catalog).
 | `hits_code`              | integer                     | **required**                            |
 | `range_code`             | integer                     | **required**                            |
 | `quality_code`           | integer                     | **required**                            |
-| `manual`                 | boolean                     | optional; default `false`               |
+| `manual`                 | boolean or null             | optional; default `null`                |
 | `usable`                 | boolean or null             | optional; default `null`                |
 | `range_miles`            | finite number or null       | optional; default `null`                |
 | `accuracy_less_than_deg` | finite number or null       | optional; default `null`                |
@@ -531,15 +529,15 @@ Standalone tag: `compression`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field         | JSON value / allowed values          | Presence / default                      |
-| ------------- | ------------------------------------ | --------------------------------------- |
-| `type`        | `"compression"`                      | required standalone; nested rules above |
-| `type_value`  | integer                              | **required**                            |
-| `fix`         | `'old'`, `'current'`                 | **required**                            |
-| `nmea_source` | `'other'`, `'GLL'`, `'GGA'`, `'RMC'` | **required**                            |
-| `origin_code` | integer                              | **required**                            |
-| `csT_raw`     | Latin-1 byte string or null          | optional; default `null`                |
-| `ignored`     | boolean                              | optional; default `false`               |
+| Field         | JSON value / allowed values                  | Presence / default                      |
+| ------------- | -------------------------------------------- | --------------------------------------- |
+| `type`        | `"compression"`                              | required standalone; nested rules above |
+| `type_value`  | integer or null                              | optional; default `null`                |
+| `fix`         | `'old'`, `'current'` or null                 | optional; default `null`                |
+| `nmea_source` | `'other'`, `'GLL'`, `'GGA'`, `'RMC'` or null | optional; default `null`                |
+| `origin_code` | integer or null                              | optional; default `null`                |
+| `csT_raw`     | Latin-1 byte string or null                  | optional; default `null`                |
+| `ignored`     | boolean                                      | optional; default `false`               |
 
 ### DAO
 
@@ -556,14 +554,14 @@ Standalone tag: `dao`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field                 | JSON value / allowed values | Presence / default                      |
-| --------------------- | --------------------------- | --------------------------------------- |
-| `type`                | `"dao"`                     | required standalone; nested rules above |
-| `datum_byte`          | string                      | **required**                            |
-| `latitude_precision`  | integer                     | **required**                            |
-| `longitude_precision` | integer                     | **required**                            |
-| `encoding`            | `'decimal'`, `'base91'`     | **required**                            |
-| `raw`                 | Latin-1 byte string or null | optional; default `null`                |
+| Field                 | JSON value / allowed values     | Presence / default                      |
+| --------------------- | ------------------------------- | --------------------------------------- |
+| `type`                | `"dao"`                         | required standalone; nested rules above |
+| `datum_byte`          | string                          | **required**                            |
+| `latitude_precision`  | integer or null                 | optional; default `null`                |
+| `longitude_precision` | integer or null                 | optional; default `null`                |
+| `encoding`            | `'decimal'`, `'base91'` or null | optional; default `null`                |
+| `raw`                 | Latin-1 byte string or null     | optional; default `null`                |
 
 ### Area
 
@@ -579,21 +577,21 @@ Standalone tag: `area`. [Back to type map](#type-map-and-object-catalog).
   "corridor_half_width_miles": null,
   "latitude_offset_deg": null,
   "longitude_offset_deg": null,
-  "transmitted_anchor": "lower_reference"
+  "transmitted_anchor": null
 }
 ```
 
-| Field                       | JSON value / allowed values            | Presence / default                      |
-| --------------------------- | -------------------------------------- | --------------------------------------- |
-| `type`                      | `"area"`                               | required standalone; nested rules above |
-| `shape_code`                | integer                                | **required**                            |
-| `color_code`                | integer                                | **required**                            |
-| `latitude_offset_code`      | integer                                | **required**                            |
-| `longitude_offset_code`     | integer                                | **required**                            |
-| `corridor_half_width_miles` | finite number or null                  | optional; default `null`                |
-| `latitude_offset_deg`       | finite number or null                  | optional; default `null`                |
-| `longitude_offset_deg`      | finite number or null                  | optional; default `null`                |
-| `transmitted_anchor`        | `'lower_reference'`, `'circle_center'` | optional; default `'lower_reference'`   |
+| Field                       | JSON value / allowed values                    | Presence / default                      |
+| --------------------------- | ---------------------------------------------- | --------------------------------------- |
+| `type`                      | `"area"`                                       | required standalone; nested rules above |
+| `shape_code`                | integer                                        | **required**                            |
+| `color_code`                | integer                                        | **required**                            |
+| `latitude_offset_code`      | integer                                        | **required**                            |
+| `longitude_offset_code`     | integer                                        | **required**                            |
+| `corridor_half_width_miles` | finite number or null                          | optional; default `null`                |
+| `latitude_offset_deg`       | finite number or null                          | optional; default `null`                |
+| `longitude_offset_deg`      | finite number or null                          | optional; default `null`                |
+| `transmitted_anchor`        | `'lower_reference'`, `'circle_center'` or null | optional; default `null`                |
 
 ### Signpost
 
@@ -652,7 +650,11 @@ Weather measurements are direct JSON properties; `weather` is not a JSON propert
     "unit": "mph",
     "raw": null
   },
-  "gust": null,
+  "gust": {
+    "value": 15,
+    "unit": "mph",
+    "raw": null
+  },
   "temperature": {
     "value": 68,
     "unit": "fahrenheit",
@@ -870,7 +872,7 @@ Standalone tag: `location`. [Back to type map](#type-map-and-object-catalog).
 | `type`          | `"location"`                    | required standalone; nested rules above                       |
 | `latitude_deg`  | finite number                   | **required**                                                  |
 | `longitude_deg` | finite number                   | **required**                                                  |
-| `symbol`        | [Symbol](#symbol)               | optional; default [Symbol](#symbol) with its defaults         |
+| `symbol`        | [Symbol](#symbol)               | **required**                                                  |
 | `ambiguity`     | [Ambiguity](#ambiguity) or null | optional; default `null`                                      |
 | `extensions`    | [Extensions](#extensions)       | optional; default [Extensions](#extensions) with its defaults |
 | `tail`          | Latin-1 byte string             | optional; default `""`                                        |
@@ -921,7 +923,7 @@ Standalone tag: `parameters`. [Back to type map](#type-map-and-object-catalog).
 ```json
 {
   "type": "parameters",
-  "channels": ["Temperature", null, "Voltage"]
+  "channels": ["Temp", null, "Volts"]
 }
 ```
 
@@ -1004,7 +1006,7 @@ Standalone tag: `bits`. [Back to type map](#type-map-and-object-catalog).
 | Field           | JSON value / allowed values | Presence / default                      |
 | --------------- | --------------------------- | --------------------------------------- |
 | `type`          | `"bits"`                    | required standalone; nested rules above |
-| `sense`         | array of boolean or null    | **required**                            |
+| `sense`         | array of boolean            | **required**                            |
 | `project_title` | string                      | optional; default `''`                  |
 
 ### NTSHeader
@@ -1030,11 +1032,11 @@ Standalone tag: `nts_header`. [Back to type map](#type-map-and-object-catalog).
 | `type`       | `"nts_header"`              | required standalone; nested rules above |
 | `number`     | string                      | **required**                            |
 | `precedence` | string                      | **required**                            |
-| `handling`   | string                      | **required**                            |
+| `handling`   | string or null              | optional; default `null`                |
 | `originator` | string                      | **required**                            |
 | `check`      | string                      | **required**                            |
 | `place`      | string                      | **required**                            |
-| `time`       | string                      | **required**                            |
+| `time`       | string or null              | optional; default `null`                |
 | `date`       | string                      | **required**                            |
 
 ### Address
@@ -1181,7 +1183,7 @@ Standalone tag: `nmea_metadata`. [Back to type map](#type-map-and-object-catalog
 | Field               | JSON value / allowed values  | Presence / default                      |
 | ------------------- | ---------------------------- | --------------------------------------- |
 | `type`              | `"nmea_metadata"`            | required standalone; nested rules above |
-| `talker`            | string                       | optional; default `'GP'`                |
+| `talker`            | string                       | **required**                            |
 | `checksum_supplied` | string or null               | optional; default `null`                |
 | `checksum_valid`    | boolean or null              | optional; default `null`                |
 | `fields_raw`        | array of Latin-1 byte string | optional; default `[]`                  |
@@ -1409,14 +1411,8 @@ Standalone tag: `header_semantics`. [Back to type map](#type-map-and-object-cata
   "type": "header_semantics",
   "destination_grid": {
     "locator": "IO91SX",
-    "bounds": {
-      "latitude": [49, 50],
-      "longitude": [-73, -72]
-    },
-    "center": {
-      "latitude_deg": 49,
-      "longitude_deg": -72
-    }
+    "bounds": null,
+    "center": null
   },
   "destination_symbol": null,
   "source_ssid_symbol": null,
@@ -1478,7 +1474,7 @@ Standalone tag: `position`. [Back to type map](#type-map-and-object-catalog).
 | `type`          | `"position"`                        | required standalone; nested rules above                       |
 | `latitude_deg`  | finite number                       | **required**                                                  |
 | `longitude_deg` | finite number                       | **required**                                                  |
-| `symbol`        | [Symbol](#symbol)                   | optional; default [Symbol](#symbol) with its defaults         |
+| `symbol`        | [Symbol](#symbol)                   | **required**                                                  |
 | `messaging`     | boolean                             | optional; default `false`                                     |
 | `timestamp`     | [Timestamp](#timestamp) or null     | optional; default `null`                                      |
 | `tail`          | Latin-1 byte string                 | optional; default `""`                                        |
@@ -1504,7 +1500,14 @@ Standalone tag: `mic_e`. [Back to type map](#type-map-and-object-catalog).
     },
     "ambiguity": null,
     "extensions": {
-      "motion": null,
+      "motion": {
+        "course_deg": 90,
+        "speed_knots": 10,
+        "course_code": null,
+        "speed_code": null,
+        "raw": null,
+        "zero_pair": "unspecified"
+      },
       "altitude": null,
       "phg": null,
       "range": null,
@@ -1668,7 +1671,7 @@ Standalone tag: `definition`. [Back to type map](#type-map-and-object-catalog).
   "addressee": "N0CALL",
   "definition": {
     "type": "parameters",
-    "channels": ["Temperature"]
+    "channels": ["Temp"]
   },
   "values_raw": []
 }
@@ -1699,7 +1702,7 @@ Standalone tag: `status`. [Back to type map](#type-map-and-object-catalog).
 | Field       | JSON value / allowed values     | Presence / default                      |
 | ----------- | ------------------------------- | --------------------------------------- |
 | `type`      | `"status"`                      | required standalone; nested rules above |
-| `text`      | string                          | optional; default `''`                  |
+| `text`      | string                          | **required**                            |
 | `timestamp` | [Timestamp](#timestamp) or null | optional; default `null`                |
 | `grid`      | [Grid](#grid) or null           | optional; default `null`                |
 | `symbol`    | [Symbol](#symbol) or null       | optional; default `null`                |
@@ -1723,7 +1726,7 @@ Standalone tag: `message`. [Back to type map](#type-map-and-object-catalog).
 | ------------ | ----------------------------- | --------------------------------------- |
 | `type`       | `"message"`                   | required standalone; nested rules above |
 | `addressee`  | string                        | **required**                            |
-| `text`       | string                        | optional; default `''`                  |
+| `text`       | string                        | **required**                            |
 | `message_id` | string or null                | optional; default `null`                |
 | `reply_ack`  | [ReplyAck](#replyack) or null | optional; default `null`                |
 
@@ -1893,7 +1896,7 @@ Standalone tag: `heard_station`. [Back to type map](#type-map-and-object-catalog
 {
   "type": "heard_station",
   "station": "W1AW",
-  "counts": [1, null, 3]
+  "counts": [1, null, 3, 0, 0, 0, 0, 0]
 }
 ```
 
@@ -1993,14 +1996,14 @@ Standalone tag: `nmea`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field             | JSON value / allowed values                                             | Presence / default                                                |
-| ----------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `type`            | `"nmea"`                                                                | required standalone; nested rules above                           |
-| `sentence`        | [GGA](#gga) or [GLL](#gll) or [RMC](#rmc) or [VTG](#vtg) or [WPL](#wpl) | **required**                                                      |
-| `metadata`        | [NMEAMetadata](#nmeametadata)                                           | optional; default [NMEAMetadata](#nmeametadata) with its defaults |
-| `position_usable` | boolean or null                                                         | optional; default `null`                                          |
-| `symbol`          | [Symbol](#symbol) or null                                               | optional; default `null`                                          |
-| `comment`         | string                                                                  | optional; default `''`                                            |
+| Field             | JSON value / allowed values                                             | Presence / default                      |
+| ----------------- | ----------------------------------------------------------------------- | --------------------------------------- |
+| `type`            | `"nmea"`                                                                | required standalone; nested rules above |
+| `sentence`        | [GGA](#gga) or [GLL](#gll) or [RMC](#rmc) or [VTG](#vtg) or [WPL](#wpl) | **required**                            |
+| `metadata`        | [NMEAMetadata](#nmeametadata)                                           | **required**                            |
+| `position_usable` | boolean or null                                                         | optional; default `null`                |
+| `symbol`          | [Symbol](#symbol) or null                                               | optional; default `null`                |
+| `comment`         | string                                                                  | optional; default `''`                  |
 
 ### ThirdParty
 
@@ -2204,7 +2207,7 @@ Standalone tag: `reserved`. [Back to type map](#type-map-and-object-catalog).
 ```json
 {
   "type": "reserved",
-  "dti": 126,
+  "dti": 38,
   "data": "data"
 }
 ```
@@ -2400,7 +2403,7 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
   "addressee": "N0CALL",
   "definition": {
     "type": "parameters",
-    "channels": ["Temperature", null, "Voltage"]
+    "channels": ["Temp", null, "Volts"]
   },
   "values_raw": []
 }
@@ -2711,7 +2714,7 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
   "response": {
     "type": "heard_station",
     "station": "W1AW",
-    "counts": [1, null, 3]
+    "counts": [1, null, 3, 0, 0, 0, 0, 0]
   }
 }
 ```
@@ -2755,7 +2758,11 @@ Each allowed member is shown in its actual container. Fixed nested fields remain
       "unit": "mph",
       "raw": null
     },
-    "gust": null,
+    "gust": {
+      "value": 15,
+      "unit": "mph",
+      "raw": null
+    },
     "temperature": {
       "value": 68,
       "unit": "fahrenheit",

@@ -181,6 +181,7 @@ Output:
     "latitude_deg": 49.05833333333333,
     "longitude_deg": -72.02916666666667,
     "symbol": {
+      "table_id": "/",
       "code": ">"
     }
   },
@@ -224,7 +225,8 @@ packet = aprs.from_json(
     "latitude_deg": 49.05833333333333,
     "longitude_deg": -72.02916666666667,
     "symbol": {
-      "code": ">"
+      "code": ">",
+      "table_id": "/"
     }
   }
 }
@@ -509,14 +511,14 @@ Build with Python:
 ```python
 from hamkit import aprs
 
-packet = aprs.Packet(aprs.Header("N0CALL", "APRS"), aprs.Reserved(ord("~"), b"data"))
+packet = aprs.Packet(aprs.Header("N0CALL", "APRS"), aprs.Reserved(ord("&"), b"data"))
 print(aprs.serialize_packet(packet).decode("ascii"))
 ```
 
 Output:
 
 ```text
-N0CALL>APRS:~data
+N0CALL>APRS:&data
 ```
 
 Build the same packet from JSON:
@@ -534,7 +536,7 @@ packet = aprs.from_json(
   },
   "payload": {
     "type": "reserved",
-    "dti": 126,
+    "dti": 38,
     "data": "data"
   }
 }
@@ -546,7 +548,7 @@ print(aprs.serialize_packet(packet).decode("ascii"))
 Output:
 
 ```text
-N0CALL>APRS:~data
+N0CALL>APRS:&data
 ```
 
 ### Opaque data
@@ -615,7 +617,7 @@ packet = aprs.Packet(
     aprs.Weather(
         temperature=aprs.Measurement(68, "fahrenheit"),
         timestamp=aprs.Timestamp("mdhm_utc", 12, 30, day=17, month=10),
-    ),
+     wind_direction=aprs.Measurement(None, "degrees"), wind_speed=aprs.Measurement(None, "mph"), gust=aprs.Measurement(None, "mph")),
 )
 try:
     print(aprs.serialize_packet(packet).decode("ascii"))
@@ -645,7 +647,7 @@ from hamkit import aprs
 
 packet = aprs.Packet(
     aprs.Header("N0CALL", "APRS"),
-    aprs.MicE(aprs.Location(49, -72), (True, False, True)),
+    aprs.MicE(aprs.Location(49, -72, symbol=aprs.Symbol("/", "-"), extensions=aprs.Extensions(motion=aprs.Motion(90, 10))), (True, False, True)),
 )
 print(type(packet.payload).__name__)
 ```
@@ -673,7 +675,17 @@ packet = aprs.from_json(
     "type": "mic_e",
     "position": {
       "latitude_deg": 49,
-      "longitude_deg": -72
+      "longitude_deg": -72,
+      "symbol": {
+        "table_id": "/",
+        "code": "-"
+      },
+      "extensions": {
+        "motion": {
+          "course_deg": 90,
+          "speed_knots": 10
+        }
+      }
     },
     "comment_bits": [
       true,
@@ -705,7 +717,7 @@ from hamkit import aprs
 packet = aprs.Packet(
     aprs.Header("N0CALL", "APRS"),
     aprs.Object(
-        "AID #2", aprs.Location(49, -72), aprs.Timestamp("dhm_utc", 12, 30, day=17)
+        "AID #2", aprs.Location(49, -72, symbol=aprs.Symbol("/", "-")), aprs.Timestamp("dhm_utc", 12, 30, day=17)
     ),
 )
 print(type(packet.payload).__name__)
@@ -735,7 +747,11 @@ packet = aprs.from_json(
     "name": "AID #2",
     "position": {
       "latitude_deg": 49,
-      "longitude_deg": -72
+      "longitude_deg": -72,
+      "symbol": {
+        "table_id": "/",
+        "code": "-"
+      }
     },
     "timestamp": {
       "kind": "dhm_utc",
@@ -766,7 +782,7 @@ Build with Python:
 from hamkit import aprs
 
 packet = aprs.Packet(
-    aprs.Header("N0CALL", "APRS"), aprs.Item("WATER", aprs.Location(49, -72))
+    aprs.Header("N0CALL", "APRS"), aprs.Item("WATER", aprs.Location(49, -72, symbol=aprs.Symbol("/", "-")))
 )
 print(type(packet.payload).__name__)
 ```
@@ -795,7 +811,11 @@ packet = aprs.from_json(
     "name": "WATER",
     "position": {
       "latitude_deg": 49,
-      "longitude_deg": -72
+      "longitude_deg": -72,
+      "symbol": {
+        "table_id": "/",
+        "code": "-"
+      }
     }
   }
 }
@@ -827,7 +847,7 @@ packet = aprs.Packet(
         temperature=aprs.Measurement(68, "fahrenheit"),
         pressure=aprs.Measurement(1013.2, "hPa"),
         timestamp=aprs.Timestamp("mdhm_utc", 12, 30, day=17, month=10),
-    ),
+     gust=aprs.Measurement(None, "mph")),
 )
 print(type(packet.payload).__name__)
 ```
@@ -875,6 +895,10 @@ packet = aprs.from_json(
       "minute": 30,
       "day": 17,
       "month": 10
+    },
+    "gust": {
+      "value": null,
+      "unit": "mph"
     }
   }
 }
@@ -974,7 +998,7 @@ from hamkit import aprs
 
 packet = aprs.Packet(
     aprs.Header("N0CALL", "APRS"),
-    aprs.Definition("N0CALL", aprs.Parameters(("Temperature", "Voltage"))),
+    aprs.Definition("N0CALL", aprs.Parameters(("Temp", "Volts"))),
 )
 print(type(packet.payload).__name__)
 ```
@@ -1004,8 +1028,8 @@ packet = aprs.from_json(
     "definition": {
       "type": "parameters",
       "channels": [
-        "Temperature",
-        "Voltage"
+        "Temp",
+        "Volts"
       ]
     }
   }
@@ -1417,7 +1441,7 @@ from hamkit import aprs
 
 packet = aprs.Packet(
     aprs.Header("N0CALL", "APRS"),
-    aprs.NMEA(aprs.GLL(aprs.Coordinates(49, -72), "123000", "A")),
+    aprs.NMEA(aprs.GLL(aprs.Coordinates(49, -72), "123000", "A"), metadata=aprs.NMEAMetadata("GP")),
 )
 print(type(packet.payload).__name__)
 ```
@@ -1451,6 +1475,9 @@ packet = aprs.from_json(
       },
       "time_utc": "123000",
       "fix_status": "A"
+    },
+    "metadata": {
+      "talker": "GP"
     }
   }
 }
@@ -1627,7 +1654,7 @@ Build with Python:
 from hamkit import aprs
 
 packet = aprs.Packet(
-    aprs.Header("N0CALL", "APRS"), aprs.LegacyPosition(b"X1J ", aprs.Position(49, -72))
+    aprs.Header("N0CALL", "APRS"), aprs.LegacyPosition(b"X1J ", aprs.Position(49, -72, symbol=aprs.Symbol("/", "-")))
 )
 print(type(packet.payload).__name__)
 ```
@@ -1657,7 +1684,11 @@ packet = aprs.from_json(
     "position": {
       "type": "position",
       "latitude_deg": 49,
-      "longitude_deg": -72
+      "longitude_deg": -72,
+      "symbol": {
+        "table_id": "/",
+        "code": "-"
+      }
     }
   }
 }
@@ -1933,6 +1964,19 @@ arbitrary binary payload bytes.
 - JSON round trips preserve model values and raw evidence. They do not preserve
   whitespace, key order, or whether an optional null was originally omitted.
   `serialize_packet` encodes the model; it does not replay `original_wire`.
+
+Mandatory symbols and ordinary message/status text must be supplied explicitly.
+An empty string is valid text; a missing field in recovered data is not silently
+replaced by one. NMEA composition requires explicit talker metadata. NTS handling
+instructions and filed time, and DAO precision in a datum-only report, can be omitted.
+
+Complete weather reports require direction, speed, gust and temperature slots.
+Those slots may contain unavailable readings. Positionless reports also need an
+MDHM timestamp; located reports use the enclosing position timestamp. An empty
+Weather value is only a reusable observations component.
+
+See [unresolved specification questions](docs/UNRESOLVED_SPEC.md) for NMEA profile
+limits, conflicting extension descriptions and future encoding decisions.
 
 ## Full reference
 

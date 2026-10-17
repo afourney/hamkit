@@ -29,6 +29,7 @@ def examples() -> dict[type[a.JSONModel], a.JSONModel]:
     values[a.Weather] = a.Weather(
         wind_direction=a.Measurement(270, "degrees"),
         wind_speed=a.Measurement(12, "mph"),
+        gust=a.Measurement(15, "mph"),
         temperature=a.Measurement(68, "fahrenheit"),
         pressure=a.Measurement(1013.2, "hPa"),
         timestamp=a.Timestamp("mdhm_utc", 12, 30, day=17, month=10),
@@ -45,7 +46,7 @@ def catalog_examples() -> list[a.JSONModel]:
     result = [values[s.model] for s in _SCHEMAS]
     containers: tuple[tuple[Any, Callable[[Any], a.JSONModel]], ...] = (
         (a.DefinitionValue, lambda v: a.Definition("N0CALL", v)),
-        (a.NMEASentence, a.NMEA),
+        (a.NMEASentence, lambda v: a.NMEA(v, a.NMEAMetadata("GP"))),
         (a.NTSRecord, lambda v: a.Radiogram("W1AW", v)),
         (a.ResponseValue, lambda v: a.Response("W1AW", v)),
     )
@@ -206,12 +207,16 @@ required. Object property order is not meaningful.
   and ranges, and fixed-format telemetry/NMEA constraints. Invalid normal models
   raise ModelError; JSON import presents these as JSONModelError. Codec availability
   is separate: an otherwise valid model can still raise CodecNotImplemented.
-- Classic Telemetry requires a sequence (integer or MIC), five integer analog
-  channels in 0..255 and eight binary channels. Other encodings retain their
-  own optional sequence/missing-channel semantics. Weather measurement absence
-  is meaningful; a full Packet with Weather requires an MDHM timestamp, while
-  a fixed nested Weather field need not have one. Active NMEA fixes require
-  coordinates. DHM needs day, HMS needs second, MDHM needs month/day.
+- Classic Telemetry requires a sequence (0..999 or MIC), five integer analog
+  channels in 0..255 and eight binary channels. Base91 requires a sequence in
+  0..8280 and analog channels; Mic-E has no sequence/digital field. Complete weather
+  reports require direction, speed, gust and temperature slots, with MDHM only
+  for positionless reports. Present-but-unavailable measurements satisfy presence.
+- Symbol table/code, Position/Location symbol, Status/Message text and NMEA metadata
+  are explicit inputs. Missing recovered facts cannot become authoring defaults.
+  NTS handling/time and datum-only DAO precision are legitimately optional.
+- See [unresolved specification questions](UNRESOLVED_SPEC.md) for profile limits,
+  unresolved source disagreements and representability decisions.
 - Encoding reconstructs from structured fields and revalidates them. Original
   wire bytes, raw evidence and redundant raw codes do not override edits or
   satisfy required fields. Explicit raw models/portions use bytes as content.

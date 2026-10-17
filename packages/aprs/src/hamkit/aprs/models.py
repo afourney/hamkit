@@ -101,7 +101,7 @@ class Position(Validated):
 
     latitude_deg: float
     longitude_deg: float
-    symbol: Symbol = field(default_factory=Symbol)
+    symbol: Symbol
     messaging: bool = False
     timestamp: Timestamp | None = None
     tail: bytes = b""
@@ -181,7 +181,7 @@ class Definition(Validated):
 
 @dataclass(frozen=True)
 class Status(Validated):
-    text: str = ""
+    text: str
     timestamp: Timestamp | None = None
     grid: Grid | None = None
     symbol: Symbol | None = None
@@ -191,7 +191,7 @@ class Status(Validated):
 @dataclass(frozen=True)
 class Message(Validated):
     addressee: str
-    text: str = ""
+    text: str
     message_id: str | None = None
     reply_ack: ReplyAck | None = None
 
@@ -283,7 +283,7 @@ class Capabilities(Validated):
 @dataclass(frozen=True)
 class NMEA(Validated):
     sentence: NMEASentence
-    metadata: NMEAMetadata = field(default_factory=NMEAMetadata)
+    metadata: NMEAMetadata
     position_usable: bool | None = None
     symbol: Symbol | None = None
     comment: str = ""
@@ -303,7 +303,7 @@ class UserDefined(Validated):
 
 @dataclass(frozen=True)
 class RawWeather(Validated):
-    """Vendor layout is not specified here; retain the complete information field."""
+    """Vendor bytes are authoritative; prefix is checked, detailed layout is not."""
 
     format: Literal["ultimeter_ii", "ultimeter_2000", "ultw", "peet_logging"]
     information: bytes

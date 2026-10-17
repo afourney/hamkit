@@ -33,7 +33,9 @@ class PacketTests(unittest.TestCase):
     def test_build_position(self) -> None:
         packet = Packet(
             Header("N0CALL", "APRS", (Hop("WIDE1-1"),)),
-            Position(49 + 3.5 / 60, -(72 + 1.75 / 60), tail=b"Test"),
+            Position(
+                49 + 3.5 / 60, -(72 + 1.75 / 60), tail=b"Test", symbol=Symbol("/", "-")
+            ),
         )
         wire = b"N0CALL>APRS,WIDE1-1:!4903.50N/07201.75W-Test"
         self.assertEqual(serialize_packet(packet), wire)
@@ -45,7 +47,7 @@ class PacketTests(unittest.TestCase):
         self.assertIsInstance(value, Position)
         assert isinstance(value, Position)
         self.assertTrue(value.is_null_position)
-        self.assertFalse(Position(0, 0).is_null_position)
+        self.assertFalse(Position(0, 0, symbol=Symbol("/", "-")).is_null_position)
 
     def test_four_position_dtis(self) -> None:
         for messaging in (False, True):
@@ -81,7 +83,7 @@ class PacketTests(unittest.TestCase):
 
     def test_message_and_ack_round_trips(self) -> None:
         for payload in (
-            Message("W1AW"),
+            Message("W1AW", text=""),
             Message("W1AW", " leading: trailing ", "003"),
             Acknowledgment("W1AW", "003"),
             Acknowledgment("W1AW", "Ab9Z0", True),
@@ -95,7 +97,7 @@ class PacketTests(unittest.TestCase):
 
     def test_status_round_trip(self) -> None:
         for value in (
-            Status(),
+            Status(text=""),
             Status("  padded  "),
             Status("Ready", Timestamp("dhm_utc", 23, 45, day=9)),
             Status("1234567 not a timestamp"),
@@ -179,11 +181,13 @@ class PacketTests(unittest.TestCase):
     def test_rf_limits(self) -> None:
         for source in ("N0CALL-16", "TOOLONG", "n0call"):
             with self.subTest(source=source), self.assertRaises(EnvelopeError):
-                serialize_packet(Packet(Header(source, "APRS"), Status()), profile="rf")
+                serialize_packet(
+                    Packet(Header(source, "APRS"), Status(text="")), profile="rf"
+                )
         for count in (8, 9):
             packet = Packet(
                 Header("N0CALL", "APRS", tuple(Hop("D1") for _ in range(count))),
-                Status(),
+                Status(text=""),
             )
             if count == 8:
                 validate_packet(packet, profile="rf")
