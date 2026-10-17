@@ -65,12 +65,14 @@ The runtime weather-unit conversion, wrapper flattening, and NMEA source-schema
 comparison have been removed. Source snapshots and all raw packet bytes remain
 unchanged; inverse-unit and source-value tests check that no information was lost.
 
-Nineteen additional cases now use direct public JSON comparisons with the main
-compatibility view disabled. Bypassing that view elsewhere still exposes 60
-failing vector tests: 58 FAP and two conflicting modern-beacon interpretations.
-That count includes real interpretation, incomplete-decoding and acceptance
-differences, not schema mismatches. Supplemental source-fact helpers remain in
-use, so it is not a count of every dependency on historical receiver behavior.
+All but 23 vectors compare public `parse_packet` output with their stored
+expectations directly. Thirty-seven FAP expectations record where FAP's
+interpretation differs from the specification-following public decoder
+(`tests/fap_divergences.json`). The remaining 23 still use the compatibility
+view: Mic-E manufacturer prefixes, the embedded `!` search in modern beacons,
+`000000z` timestamps, short or decimal telemetry, minimal GLL sentences and
+trailing APRS 1.2 weather fields. Supplemental FAP source facts are still
+checked through the adapter's helpers.
 
 The 23 sequence occurrences run through a test application receiver using public
 models. Ownership, deduplication, acknowledgment construction, calibration,

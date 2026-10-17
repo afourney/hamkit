@@ -30,25 +30,29 @@ Rejection cases also check retained headers and partial observations, including
 invalid timestamps and the historical receiver's validation order. Error wording
 is represented by the public diagnostic scheme rather than copied verbatim.
 
-Some profiles conflict for the same bytes. `_compatibility.py` expresses those
-receiver policies without changing the public API or consulting expected values.
-The canonical codec retains precise wire data; the adapter selects historical
-comment trimming, disputed wind-unit interpretation, acceptance and warning policies.
+Every row compares `parse_packet` output with `expected` directly, except the
+23 listed in `COMPATIBILITY_PENDING` (`tests/packets/test_corpus.py`). Those
+still go through the private `_compatibility.py` view while they wait on parser
+changes or decisions; a regression test fails once one of them passes directly,
+so the list can only shrink.
+
+Where FAP's interpretation differs from the public decoder's, and the public
+one follows the specification, `tests/fap_divergences.json` replaces the
+FAP-derived expectation. Each override names its reasons, such as comment
+whitespace kept as transmitted, callsign case, compressed course 0, disputed
+wind units, NMEA default symbols and precision, and packets FAP refuses but the
+specification allows. The generator applies the overrides, copies the reasons
+into the row's `divergence` field and leaves `outcome` and `source_expected` as
+FAP captured them.
 
 The schema migration rewrote 35 stored expectations (33 FAP and two historical
 position cases): equivalent weather units, compressed weather wind nesting,
 `LegacyPosition`/`RawWeather` wrappers, four flattened NMEA observations, and four Mic-E device markers split from comments.
-Captured rounded values, whitespace, absent symbols, and incomplete reports were
-not changed to agree with the decoder. For example, FAP-357 still expects course
-28 despite the wire containing 27.9. Uncompressed FAP wind retains an explicit
-mph interpretation rather than changing to the public decoder's disputed unit.
-
-Nineteen formerly adapter-dependent cases now compare public packet JSON directly,
-with regression tests disabling the compatibility view. Offline conversion tests
-reverse unit changes back to the captured measurements and verify stored fields
-against source values. The original `source_expected` snapshots remain immutable
-provenance; their supplemental observations without public model fields remain
-explicitly asserted, not discarded or silently added to the packet schema.
+Offline conversion tests reverse unit changes back to the captured measurements
+and verify stored fields against source values. The original `source_expected`
+snapshots remain immutable provenance; their supplemental observations without
+public model fields remain explicitly asserted, not discarded or silently added
+to the packet schema.
 
 All 29 PHG/PHGR projections (including 15 FAP vectors) instead exercise the public
 API directly. Regression tests disable compatibility functions while checking

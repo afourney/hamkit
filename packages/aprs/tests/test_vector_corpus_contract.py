@@ -46,14 +46,12 @@ def test_comparator_checks_missing_null_lists_and_tolerances() -> None:
 
 
 def test_mismatch_cannot_be_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
-    from hamkit.aprs import _compatibility
-
     row = next(r for r in all_rows() if r["id"] == "STA-008")
     check(row)
     packet = a.parse_packet(row["packet"].encode("latin-1"))
     assert isinstance(packet, a.Packet)
     bad = replace(packet, header=a.Header("WRONG", "APRS"))
-    monkeypatch.setattr(_compatibility, "parse_packet", lambda *args, **kwargs: bad)
+    monkeypatch.setattr(a, "parse_packet", lambda *args, **kwargs: bad)
     with pytest.raises(AssertionError, match="header.source"):
         check(row)
 
@@ -66,9 +64,7 @@ def test_parser_exception_is_not_an_expected_failure(
     def broken(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("unexpected parser crash")
 
-    from hamkit.aprs import _compatibility
-
-    monkeypatch.setattr(_compatibility, "parse_packet", broken)
+    monkeypatch.setattr(a, "parse_packet", broken)
     with pytest.raises(RuntimeError, match="unexpected parser crash"):
         check(row)
 

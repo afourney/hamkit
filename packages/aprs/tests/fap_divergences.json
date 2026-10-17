@@ -1,0 +1,298 @@
+{
+  "reasons": {
+    "whitespace": "Comment text keeps its leading and trailing spaces exactly as transmitted; FAP trims them.",
+    "case": "Callsigns keep the case transmitted; FAP uppercases them.",
+    "course_zero": "A compressed course byte of 0 is reported as 0 degrees, as transmitted; FAP rewrites it to 360.",
+    "mic_e_sequence": "Mic-E hex telemetry carries no sequence number, so none is reported; FAP reports 0.",
+    "nmea_precision": "NMEA course keeps the transmitted precision; FAP rounds to whole degrees.",
+    "nmea_symbol": "APRS101 assigns a default symbol from the source SSID when NMEA has no symbol destination (SSID 11 is the balloon, /O); FAP reports no symbol.",
+    "parm_case": "APRS101 defines the telemetry keywords in upper case, so 'parm.' is ordinary message text; FAP matches them case-insensitively.",
+    "wx_symbol": "A weather-station symbol with no weather fields is a position with a comment; FAP reports an empty weather report and discards the comment.",
+    "disputed_wind": "The uncompressed wind-speed unit is disputed between the specifications and stays marked as disputed; FAP assumes mph.",
+    "user_defined": "'{' is APRS101's user-defined data type, so this decodes as user-defined data; FAP rejects experimental formats.",
+    "unknown_nmea": "Unknown NMEA sentences are kept as opaque data with an 'unsupported' diagnostic, not rejected.",
+    "vtg": "$GPVTG is a supported NMEA sentence (course and speed only, so no usable position); FAP rejects it.",
+    "beacon": "Text with no position in the first 40 bytes is a non-APRS beacon, kept as text; FAP rejects it."
+  },
+  "rows": {
+    "FAP-013": {
+      "reasons": ["case"],
+      "set": {
+        "$.header.source": "oh7lzb"
+      }
+    },
+    "FAP-016": {
+      "reasons": ["case"],
+      "set": {
+        "$.header.destination": "aprs"
+      }
+    },
+    "FAP-022": {
+      "reasons": ["user_defined"],
+      "accept": {
+        "payload": {
+          "type": "user_defined",
+          "user_id": "{",
+          "user_type": " ",
+          "data": "unsupported experimental format"
+        }
+      }
+    },
+    "FAP-030": {
+      "reasons": ["course_zero", "whitespace"],
+      "set": {
+        "$.payload.comment": " Tero, Green Volvo 960, GGL-880",
+        "$.payload.extensions.motion.course_deg": 0
+      }
+    },
+    "FAP-034": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 12.3V 21C"
+      }
+    },
+    "FAP-035": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " http://aprs.fi/"
+      }
+    },
+    "FAP-347": {
+      "reasons": ["mic_e_sequence", "whitespace"],
+      "set": {
+        "$.payload.comment": " commeeeent",
+        "$.payload.extensions.telemetry.sequence": null
+      }
+    },
+    "FAP-357": {
+      "reasons": ["nmea_precision", "nmea_symbol"],
+      "set": {
+        "$.payload.sentence.course_deg": 27.9,
+        "$.payload.symbol": {
+          "table_id": "/",
+          "code": "O"
+        }
+      }
+    },
+    "FAP-359": {
+      "reasons": ["nmea_symbol"],
+      "set": {
+        "$.payload.symbol": {
+          "table_id": "/",
+          "code": "O"
+        }
+      }
+    },
+    "FAP-361": {
+      "reasons": ["nmea_symbol"],
+      "set": {
+        "$.payload.symbol": {
+          "table_id": "/",
+          "code": "O"
+        }
+      }
+    },
+    "FAP-363": {
+      "reasons": ["unknown_nmea"],
+      "accept": {
+        "payload": {
+          "type": "opaque",
+          "information": "$XXXXX,A,B,C",
+          "diagnostic": {
+            "code": "unsupported",
+            "path": "$"
+          }
+        }
+      }
+    },
+    "FAP-366": {
+      "reasons": ["vtg"],
+      "accept": {
+        "payload": {
+          "type": "nmea",
+          "sentence": {
+            "type": "vtg",
+            "course_true_deg": 0.0,
+            "course_magnetic_deg": 0.0,
+            "speed_knots": 0.0,
+            "speed_kmh_reported": 0.0
+          },
+          "metadata": {
+            "talker": "GP",
+            "checksum_supplied": null,
+            "checksum_valid": null,
+            "fields_raw": ["0", "T", "0", "M", "0", "N", "0", "K"]
+          },
+          "position_usable": false,
+          "symbol": null,
+          "comment": ""
+        }
+      }
+    },
+    "FAP-408": {
+      "reasons": ["beacon"],
+      "accept": {
+        "payload": {
+          "type": "beacon",
+          "text": "0123456789012345678901234567890123456789!6028.51N/02505.68E#"
+        }
+      }
+    },
+    "FAP-409": {
+      "reasons": ["beacon"],
+      "accept": {
+        "payload": {
+          "type": "beacon",
+          "text": "Tno position here at all"
+        }
+      }
+    },
+    "FAP-417": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": "test "
+      }
+    },
+    "FAP-418": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " "
+      }
+    },
+    "FAP-419": {
+      "reasons": ["course_zero", "whitespace"],
+      "set": {
+        "$.payload.comment": " Tero, Green Volvo 960, GGL-880",
+        "$.payload.extensions.motion.course_deg": 0
+      }
+    },
+    "FAP-421": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": "a|b "
+      }
+    },
+    "FAP-428": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " comment "
+      }
+    },
+    "FAP-429": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " comment "
+      }
+    },
+    "FAP-431": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " comment "
+      }
+    },
+    "FAP-444": {
+      "reasons": ["parm_case"],
+      "set": {
+        "$.payload": {
+          "type": "message",
+          "addressee": "N0CALL",
+          "text": "parm.Vin,Rx1h",
+          "message_id": null,
+          "reply_ack": null
+        }
+      }
+    },
+    "FAP-446": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " {UIV32N}"
+      }
+    },
+    "FAP-447": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " {UIV32N}"
+      }
+    },
+    "FAP-448": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 14.3V 27C HDOP01.0 SATS09"
+      }
+    },
+    "FAP-449": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 14.3V 27C HDOP01.0 SATS09"
+      }
+    },
+    "FAP-450": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 14.3V 27C HDOP01.0 SATS09"
+      }
+    },
+    "FAP-451": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 14.3V 27C HDOP01.0 SATS09"
+      }
+    },
+    "FAP-452": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " {UIV32N}"
+      }
+    },
+    "FAP-453": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 14.3V 27C HDOP01.0 SATS09"
+      }
+    },
+    "FAP-457": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " "
+      }
+    },
+    "FAP-465": {
+      "reasons": ["wx_symbol"],
+      "set": {
+        "$.payload.comment": "Home of KA0RID"
+      },
+      "remove": ["$.payload.extensions.weather"],
+      "drop_unmapped": ["$.fap_fields.Wx."]
+    },
+    "FAP-471": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 13.8V 15CYB1RUS-9 Mobile Tracker"
+      }
+    },
+    "FAP-472": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 13.8V 15CYB1RUS-9 Mobile Tracker"
+      }
+    },
+    "FAP-474": {
+      "reasons": ["disputed_wind"],
+      "set": {
+        "$.payload.extensions.weather.wind_speed.unit": "disputed_knots_or_mph"
+      }
+    },
+    "FAP-475": {
+      "reasons": ["disputed_wind"],
+      "set": {
+        "$.payload.extensions.weather.wind_speed.unit": "disputed_knots_or_mph"
+      }
+    },
+    "FAP-476": {
+      "reasons": ["disputed_wind"],
+      "set": {
+        "$.payload.extensions.weather.wind_speed.unit": "disputed_knots_or_mph"
+      }
+    }
+  }
+}

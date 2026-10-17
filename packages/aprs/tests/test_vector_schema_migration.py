@@ -6,7 +6,8 @@ import copy
 
 import pytest
 from generate_vectors import records
-from packets.test_corpus import SCHEMA_NATIVE_IDS, check, rows
+from packets import test_corpus
+from packets.test_corpus import COMPATIBILITY_PENDING, check, rows
 
 from hamkit import aprs as a
 
@@ -20,6 +21,8 @@ WEATHER = [
     row
     for row in FAP_ACCEPTED
     if row["source_expected"]["fap_fields"]["Wx"] is not None
+    # FAP-465 diverges: its weather symbol carries no weather fields.
+    and row["id"] != "FAP-465"
 ]
 NMEA = [
     row
@@ -50,30 +53,19 @@ def test_regeneration_does_not_consult_decoders(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "row", [r for r in ROWS if r["id"] in SCHEMA_NATIVE_IDS], ids=lambda row: row["id"]
+    "row",
+    [r for r in ROWS if r["id"] in COMPATIBILITY_PENDING],
+    ids=lambda row: row["id"],
 )
-def test_schema_only_cases_bypass_compatibility_view(monkeypatch, row):
-    from hamkit.aprs import _compatibility
-
-    def forbidden(*args, **kwargs):
-        raise AssertionError("Schema changes belong in persisted expectations")
-
-    original_facts = _compatibility.facts
-
-    def supplemental(raw, options=None, *, packet=None):
-        assert isinstance(packet, a.Packet)
-        return original_facts(raw, options, packet=packet)
-
-    monkeypatch.setattr(_compatibility, "view", forbidden)
-    monkeypatch.setattr(_compatibility, "facts", supplemental)
-    monkeypatch.setattr(_compatibility, "rejected_facts", forbidden)
-    monkeypatch.setattr(_compatibility, "_mic_e_compat", forbidden)
-    check(row)
+def test_pending_rows_still_need_the_compatibility_view(monkeypatch, row):
+    """Remove an ID from COMPATIBILITY_PENDING once the public parser meets it."""
+    monkeypatch.setattr(test_corpus, "COMPATIBILITY_PENDING", set())
+    with pytest.raises(AssertionError):
+        check(row)
 
 
-def test_schema_only_coverage_is_not_empty_or_stale():
-    assert len(SCHEMA_NATIVE_IDS) == 19
-    assert SCHEMA_NATIVE_IDS <= {row["id"] for row in ROWS}
+def test_pending_list_is_not_stale():
+    assert COMPATIBILITY_PENDING <= {row["id"] for row in ROWS}
 
 
 @pytest.mark.parametrize("row", WEATHER, ids=lambda row: row["id"])
@@ -108,7 +100,10 @@ def test_weather_expectations_preserve_physical_measurements(row):
         reading = weather[target]
         value, unit = reading["value"], reading["unit"]
         if source in ("WindSpeed", "WindGust"):
-            assert unit in ("mph", "m/s")  # Do not weaken mph to disputed units.
+            # Only a reviewed divergence may keep the disputed unit.
+            if unit == "disputed_knots_or_mph" and "divergence" in row:
+                unit = "mph"
+            assert unit in ("mph", "m/s")
             value = value * 0.44704 if unit == "mph" else value
         elif source == "Temp":
             assert unit in ("fahrenheit", "celsius")
@@ -155,11 +150,14 @@ def test_nmea_observations_are_stored_in_typed_fields(row):
         assert sentence["speed_knots"] * 1.852 == pytest.approx(
             source["Speed"], abs=1e-12
         )
+    diverged = "divergence" in row  # Course precision and default symbol.
     if source["Course"] is not None:
-        assert sentence["course_deg"] == source["Course"]
+        assert sentence["course_deg"] == pytest.approx(
+            source["Course"], abs=0.5 if diverged else 0
+        )
     if source["Altitude"] is not None:
         assert sentence["altitude_msl_m"] == source["Altitude"]
-    assert payload["symbol"] is None
+    assert diverged or payload["symbol"] is None
     assert source["SymbolTable"] is None and source["SymbolCode"] is None
     assert payload["metadata"]["checksum_valid"] == source["ChecksumOK"]
     # The source did not assert these sentence fields. Never invent them to make
@@ -194,8 +192,8 @@ def test_migrated_values_are_asserted_not_only_archived(identifier):
     if identifier == "FAP-032":
         payload["extensions"]["weather"]["wind_direction"]["value"] += 1
     elif identifier == "FAP-357":
-        assert payload["sentence"]["course_deg"] == 28  # Wire contains 27.9.
-        payload["sentence"]["course_deg"] = 27.9
+        assert payload["sentence"]["course_deg"] == 27.9  # FAP reports 28.
+        payload["sentence"]["course_deg"] = 28
     elif identifier == "FAP-406":
         payload["position"]["latitude_deg"] += 1
     else:

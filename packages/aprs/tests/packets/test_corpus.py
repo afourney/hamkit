@@ -15,28 +15,35 @@ from hamkit import aprs
 
 DIRECTORY = Path(__file__).parents[1] / "vectors"
 
-# These cases previously differed only in schema/units. Their persisted
-# expectations now match the public schema, so bypass the compatibility view.
-SCHEMA_NATIVE_IDS = {
-    "FAP-005",
-    "FAP-036",
-    "FAP-345",
-    "FAP-346",
-    "FAP-032",
-    "FAP-033",
-    "FAP-406",
-    "FAP-407",
-    "FAP-477",
-    "FAP-478",
-    "FAP-479",
-    "FAP-480",
-    "FAP-481",
-    "FAP-491",
-    "FAP-492",
-    "FAP-493",
-    "FAP-494",
-    "OTH-034",
-    "OTH-036",
+# Rows still checked through the private compatibility view. Each one waits on
+# a parser change or a decision; every other row compares parse_packet output
+# directly. Group 2: Mic-E manufacturer prefixes and the embedded "!" search.
+# Group 3: 000000z timestamps, short or decimal telemetry, minimal GLL and
+# trailing APRS 1.2 weather fields (X/V tails also read as software/unit codes).
+COMPATIBILITY_PENDING = {
+    "FAP-348",
+    "FAP-349",
+    "FAP-430",
+    "OTH-033",
+    "OTH-035",
+    "FAP-362",
+    "FAP-433",
+    "FAP-434",
+    "FAP-435",
+    "FAP-436",
+    "FAP-454",
+    "FAP-455",
+    "FAP-456",
+    "FAP-482",
+    "FAP-483",
+    "FAP-484",
+    "FAP-485",
+    "FAP-486",
+    "FAP-487",
+    "FAP-488",
+    "FAP-489",
+    "FAP-490",
+    "FAP-497",
 }
 
 
@@ -96,15 +103,19 @@ def public_phg_row(row: dict[str, Any]) -> bool:
 
 def check(row: dict[str, Any]) -> None:
     raw = row["packet"].encode("latin-1")
-    if public_phg_row(row) or row["id"] in SCHEMA_NATIVE_IDS:
-        packet = aprs.parse_packet(raw)
-        assert isinstance(packet, aprs.Packet)
-        actual = aprs.to_json_dict(packet, include_defaults=True)
-        rejected = any(d.code == "nonconforming" for d in packet.diagnostics)
-    else:
+    packet: aprs.Packet | aprs.Malformed | None = None
+    if row["id"] in COMPATIBILITY_PENDING:
         from hamkit.aprs._compatibility import view
 
         actual, rejected = view(raw, row["profile"], row.get("options"))
+    else:
+        options = row.get("options") or {}
+        strict = row["profile"] == "strict-envelope" or options.get("ax25")
+        packet = aprs.parse_packet(raw, policy=aprs.RF if strict else aprs.APRS_IS)
+        actual = aprs.to_json_dict(packet, include_defaults=True)
+        rejected = isinstance(packet, aprs.Malformed) or any(
+            d.code == "nonconforming" for d in packet.diagnostics
+        )
     assert actual["original_wire"] == row["packet"], "original bytes changed"
     assert not row.get("gap") and not row.get("unresolved")
     errors = differences(actual, row["expected"])
@@ -123,7 +134,7 @@ def check(row: dict[str, Any]) -> None:
             errors.extend(check_public_phg(row, packet))
         else:
             errors.extend(
-                check_fap(row, packet if row["id"] in SCHEMA_NATIVE_IDS else None)
+                check_fap(row, packet if isinstance(packet, aprs.Packet) else None)
             )
     if row.get("sequence"):
         from receiver import Receiver

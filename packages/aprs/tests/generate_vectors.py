@@ -18,6 +18,7 @@ from typing import Any
 ROOT = Path(__file__).parents[1]
 SOURCE = ROOT / "docs/APRS_COMPLIANCE_VECTORS.md"
 DEST = ROOT / "tests/vectors"
+DIVERGENCES = ROOT / "tests/fap_divergences.json"
 JSON = dict[str, Any]
 
 
@@ -754,6 +755,40 @@ def fap_projection(e: JSON, packet: str) -> JSON:
     return result
 
 
+def diverge(row: JSON, divergences: JSON) -> None:
+    """Replace FAP-specific interpretations with the reviewed public expectation.
+
+    Each override names its reasons; source_expected keeps FAP's own values.
+    """
+    assert row["profile"] == "compatibility-fap", row["id"]
+    entry = divergences["rows"][row["id"]]
+    row["divergence"] = [divergences["reasons"][key] for key in entry["reasons"]]
+    if "accept" in entry:
+        assert row.pop("rejection"), row["id"]
+        row["expected"] = {
+            "type": "packet",
+            "original_wire": row["packet"],
+            **entry["accept"],
+        }
+        return
+    for path, value in entry.get("set", {}).items():
+        *parents, key = path.removeprefix("$.").split(".")
+        target = row["expected"]
+        for name in parents:
+            target = target[name]
+        assert key in target, (row["id"], path)
+        target[key] = value
+    for prefix in entry.get("drop_unmapped", []):
+        # Facts from FAP's interpretation that the public expectation rejects.
+        row["unmapped"] = [p for p in row["unmapped"] if not p.startswith(prefix)]
+    for path in entry.get("remove", []):
+        *parents, key = path.removeprefix("$.").split(".")
+        target = row["expected"]
+        for name in parents:
+            target = target[name]
+        del target[key]
+
+
 def nest_legacy_position(result: JSON, packet: str) -> None:
     """Use the existing wrapper for source assertions identifying a position."""
     payload = result.get("payload", {})
@@ -774,6 +809,7 @@ def nest_legacy_position(result: JSON, packet: str) -> None:
 def records() -> list[JSON]:
     result = []
     defaults: JSON = {}
+    divergences = json.loads(DIVERGENCES.read_text())
     for block in re.findall(r"```json\n(.*?)\n```", SOURCE.read_text(), re.DOTALL):
         case = json.loads(block)
         if "fap_field_defaults" in case:
@@ -827,7 +863,10 @@ def records() -> list[JSON]:
                     row[
                         "unresolved"
                     ] = "Source has no mapped payload expectation; retain the original assertions for adapter completion."
+            if row["id"] in divergences["rows"]:
+                diverge(row, divergences)
             result.append(row)
+    assert set(divergences["rows"]) <= {row["id"] for row in result}
     return result
 
 
