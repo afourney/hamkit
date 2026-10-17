@@ -73,3 +73,9 @@ packages = ["src/hamkit"]
 python_version = "3.11"
 mypy_path = ["$MYPY_CONFIG_FILE_DIR/src", "$MYPY_CONFIG_FILE_DIR/tests"]
 explicit_package_bases = true
+
+[tool.ruff.lint.isort]
+# Test helpers are imported as top-level modules from tests/. Declaring them, and
+# hamkit, as first-party keeps import order the same whichever directory ruff
+# runs from; otherwise package-dir and repository-root runs disagree.
+known-first-party = ["hamkit", "generate_json_reference", "model_examples", "vector_adapter"]
