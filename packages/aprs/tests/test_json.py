@@ -10,6 +10,7 @@ import unittest
 from typing import Any, cast, get_args
 
 import hamkit.aprs as a
+from hamkit.aprs.json import _BY_MODEL
 from model_examples import field_examples, payload_examples
 
 
@@ -64,42 +65,35 @@ class JSONRoundTripTests(unittest.TestCase):
             ):
                 self.round_trip(model())
 
-    def test_stable_domain_shapes_without_tags(self) -> None:
-        self.assertEqual(a.to_json_dict(a.Status(b"Ready")), {"status_text": "Ready"})
+    def test_stable_tags_and_context(self) -> None:
         self.assertEqual(
-            a.to_json_dict(a.Message("W1AW", b"Hello", "003")),
-            {"addressee": "W1AW", "message_text": "Hello", "message_id": "003"},
+            a.to_json_dict(a.Status(b"Ready")), {"type": "status", "text": "Ready"}
         )
         self.assertEqual(
             a.to_json_dict(a.Position(49, -72)),
-            {"latitude_deg": 49, "longitude_deg": -72, "messaging": False},
+            {"type": "position", "latitude_deg": 49, "longitude_deg": -72},
+        )
+        packet = a.to_json_dict(a.Packet(a.Header("N0CALL", "APRS"), a.Status()))
+        self.assertEqual(
+            packet,
+            {
+                "type": "packet",
+                "header": {"source": "N0CALL", "destination": "APRS"},
+                "payload": {"type": "status"},
+            },
+        )
+        weather = a.WeatherReport(
+            a.Weather(temperature=a.Measurement(68, "fahrenheit"))
         )
         self.assertEqual(
-            a.to_json_dict(a.Coordinates(49, -72)),
-            {"latitude_deg": 49, "longitude_deg": -72},
+            a.to_json_dict(weather),
+            {"type": "weather", "temperature": {"value": 68, "unit": "fahrenheit"}},
         )
-        self.assertEqual(
-            a.to_json_dict(a.TelemetryParameters(("Temp", None))),
-            {"channel_names": ["Temp", None]},
-        )
-        self.assertEqual(
-            a.to_json_dict(a.TelemetryUnits(("deg.C", None))),
-            {"channel_units": ["deg.C", None]},
-        )
-
-        def no_tags(value: object) -> None:
-            if isinstance(value, dict):
-                self.assertFalse(
-                    set(value) & {"type", "__type__", "model", "class", "$type"}
-                )
-                for child in value.values():
-                    no_tags(child)
-            elif isinstance(value, list):
-                for child in value:
-                    no_tags(child)
-
         for value in payload_examples():
-            no_tags(a.to_json_dict(value, include_defaults=True))
+            self.assertIsInstance(a.to_json_dict(value)["type"], str)
+        from hamkit.aprs.json import _SCHEMAS
+
+        self.assertEqual(len({s.tag for s in _SCHEMAS}), len(_SCHEMAS))
 
     def test_nested_union_variants(self) -> None:
         for value in field_examples():
@@ -119,42 +113,47 @@ class JSONRoundTripTests(unittest.TestCase):
         self.assertIn(r"\u00ff", text)
         self.assertIn(r"\u0000", text)
         self.round_trip(original)
-        self.assertEqual(a.from_json('{"status_text":"\\u00e9"}'), a.Status(b"\xe9"))
+        self.assertEqual(
+            a.from_json('{"type":"status","text":"\\u00e9"}'), a.Status(b"\xe9")
+        )
 
     def test_null_absent_and_zero(self) -> None:
-        absent = a.from_json_dict({"weather": {}})
+        absent = a.from_json_dict({"type": "weather"})
         unavailable = a.from_json_dict(
-            {"weather": {"wind_speed": {"value": None, "unit": "mph"}}}
+            {"type": "weather", "wind_speed": {"value": None, "unit": "mph"}}
         )
         zero = a.from_json_dict(
-            {"weather": {"wind_speed": {"value": 0, "unit": "mph"}}}
+            {"type": "weather", "wind_speed": {"value": 0, "unit": "mph"}}
         )
         self.assertIsInstance(absent, a.WeatherReport)
         self.assertEqual(absent, a.WeatherReport(a.Weather()))
         self.assertNotEqual(absent, unavailable)
         self.assertNotEqual(unavailable, zero)
         self.assertEqual(
-            a.from_json_dict({"status_text": "Ready", "timestamp": None}),
-            a.from_json_dict({"status_text": "Ready"}),
+            a.from_json_dict({"type": "status", "text": "Ready", "timestamp": None}),
+            a.from_json_dict({"type": "status", "text": "Ready"}),
         )
         self.assertEqual(
-            a.to_json_dict(a.Measurement(None, "mph")), {"value": None, "unit": "mph"}
+            a.to_json_dict(a.Measurement(None, "mph")),
+            {"type": "measurement", "value": None, "unit": "mph"},
         )
 
     def test_typed_sparse_conversion_and_context(self) -> None:
         weather: a.Weather = a.from_json("{}", expected_type=a.Weather)
         self.assertEqual(weather, a.Weather())
         position: a.Position = a.from_json_dict(
-            {"latitude_deg": 49, "longitude_deg": -72}, expected_type=a.Position
+            {"type": "position", "latitude_deg": 49, "longitude_deg": -72},
+            expected_type=a.Position,
         )
         self.assertEqual(position, a.Position(49, -72))
         # Within an object, its declared location type supplies the symbol default.
         model = a.from_json_dict(
             {
-                "object_name": "A",
+                "type": "object",
+                "name": "A",
                 "position": {"latitude_deg": 49, "longitude_deg": -72},
                 "timestamp": {
-                    "timestamp_format": "dhm_utc",
+                    "kind": "dhm_utc",
                     "hour": 0,
                     "minute": 0,
                     "day": 1,
@@ -193,9 +192,9 @@ class JSONRoundTripTests(unittest.TestCase):
 
 
 class JSONNegativeTests(unittest.TestCase):
-    def test_ambiguous_sparse_objects(self) -> None:
+    def test_standalone_objects_require_tag_or_explicit_context(self) -> None:
         for value in ({}, {"raw": "data"}):
-            with self.subTest(value=value), self.assertRaises(a.AmbiguousJSONError):
+            with self.subTest(value=value), self.assertRaises(a.JSONModelError):
                 a.from_json_dict(value)
 
     def test_conflicts_unknown_keys_and_missing_required_fields(self) -> None:
@@ -203,11 +202,18 @@ class JSONNegativeTests(unittest.TestCase):
             {"status_text": "Ready", "message_text": "Hello", "addressee": "W1AW"},
             {"channel_names": [], "channel_units": []},
             {"object_name": "A", "item_name": "B"},
-            {"status_text": "Ready", "typo": True},
+            {"type": "status", "text": "Ready", "typo": True},
+            {"type": "message"},
+            {"type": "weather", "temperature": {"value": 1}},
+            {
+                "type": "weather",
+                "temperature": {"type": "symbol", "value": 1, "unit": "celsius"},
+            },
+            {"type": "position", "latitude_deg": 1},
             {"type": "Status", "status_text": "Ready"},
             {
                 "header": {"source": "N0CALL", "destination": "APRS"},
-                "payload": {"status_text": "Ready"},
+                "payload": {"type": "status", "text": "Ready"},
                 "information": ">Ready",
             },
             {"unit": "mph"},
@@ -222,24 +228,26 @@ class JSONNegativeTests(unittest.TestCase):
 
     def test_invalid_scalars_enums_nulls_and_arrays(self) -> None:
         cases = (
-            ({"status_text": "\u2603"}, a.Status),
-            ({"status_text": [65]}, a.Status),
+            ({"text": "\u2603"}, a.Status),
+            ({"text": [65]}, a.Status),
             ({"addressee": None}, a.Message),
             ({"latitude_deg": True, "longitude_deg": 0}, a.Coordinates),
             ({"latitude_deg": "49", "longitude_deg": 0}, a.Coordinates),
             ({"dti": 1.0, "data": ""}, a.Reserved),
             ({"latitude_deg": 1, "longitude_deg": 2, "messaging": 0}, a.Position),
-            ({"timestamp_format": "UTC", "hour": 0, "minute": 0}, a.Timestamp),
+            ({"kind": "UTC", "hour": 0, "minute": 0}, a.Timestamp),
             ({"value": 1, "unit": "furlongs"}, a.Measurement),
-            ({"address_lines": ["one", "two"]}, a.NTSAddress),
+            ({"lines": ["one", "two"]}, a.NTSAddress),
             ({"analog": [True]}, a.TelemetryData),
             ({"digital": [1]}, a.TelemetryData),
-            ({"line": True, "line_text": "one"}, a.NTSText),
+            ({"line": True, "text": "one"}, a.NTSText),
             ({"table_id": "/", "code": "-"}, a.Status),
         )
         for value, expected in cases:
             with self.subTest(value=value), self.assertRaises(a.JSONModelError):
-                a.from_json_dict(value, expected_type=expected)
+                a.from_json_dict(
+                    {"type": _BY_MODEL[expected].tag, **value}, expected_type=expected
+                )
 
     def test_duplicate_nonfinite_and_malformed_json(self) -> None:
         for text in (
@@ -247,7 +255,7 @@ class JSONNegativeTests(unittest.TestCase):
             '{"weather":{"wind_speed":null,"wind_speed":null}}',
             '{"value":NaN,"unit":"mph"}',
             '{"value":Infinity,"unit":"mph"}',
-            '{"value":1e999,"unit":"mph"}',
+            '{"type":"measurement","value":1e999,"unit":"mph"}',
             "[]",
             "null",
             '"Ready"',
@@ -281,6 +289,41 @@ class JSONNegativeTests(unittest.TestCase):
             )
         with self.assertRaises(a.JSONModelError):
             a.to_json(cast(a.JSONModel, a.capability_for(a.MicE)))
+
+    def test_nested_union_tags_and_incompatible_tags(self) -> None:
+        variants = (
+            (a.TelemetryDefinition("N0CALL", a.TelemetryUnits(("V",))), "definition"),
+            (a.NMEAReport(a.VTG()), "sentence"),
+            (a.NTSMessage("W1AW", a.NTSText(1, b"Hello")), "record"),
+            (a.QueryResponse("W1AW", a.DirectStations(("N0CALL",))), "response"),
+            (a.Packet(a.Header("N0CALL", "APRS"), a.Status()), "payload"),
+        )
+        for model, key in variants:
+            encoded = a.to_json_dict(model)
+            nested = cast(dict[str, a.JSONValue], encoded[key])
+            self.assertIn("type", nested)
+            for bad in (None, 1, "Status", "unknown", "measurement"):
+                altered = dict(nested)
+                if bad is None:
+                    del altered["type"]
+                else:
+                    altered["type"] = bad
+                with self.subTest(model=type(model), tag=bad), self.assertRaises(
+                    a.JSONModelError
+                ):
+                    a.from_json_dict({**encoded, key: altered})
+        with self.assertRaisesRegex(a.JSONModelError, "incompatible"):
+            a.from_json_dict({"type": "symbol"}, expected_type=a.Weather)
+        with self.assertRaises(a.JSONModelError):
+            a.from_json_dict({"type": "weather", "weather": {}})
+        with self.assertRaises(a.JSONModelError):
+            a.from_json_dict(
+                {
+                    "type": "packet",
+                    "header": {"type": "symbol"},
+                    "payload": {"type": "status"},
+                }
+            )
 
     def test_cycles_and_excessive_depth_fail_cleanly(self) -> None:
         packet = a.Packet(a.Header("N0CALL", "APRS"), a.Status())

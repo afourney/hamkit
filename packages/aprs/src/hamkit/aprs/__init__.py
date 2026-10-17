@@ -78,7 +78,6 @@ from .errors import (
     UnsupportedFormat,
 )
 from .json import (
-    AmbiguousJSONError,
     JSONModel,
     JSONModelError,
     JSONObject,
@@ -169,7 +168,6 @@ __all__ = [
     "Agrelo",
     "Altitude",
     "Ambiguity",
-    "AmbiguousJSONError",
     "AnalogChannels",
     "Area",
     "AutoAnswer",

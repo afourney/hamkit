@@ -4,7 +4,7 @@
 
 """Domain-shaped JSON for APRS models, independent of wire codec availability.
 
-Field aliases and required inference fields are the schema, not class-name tags.
+Stable semantic tags identify standalone models and polymorphic boundaries.
 See docs/JSON_FORMAT.md before changing them: they are a public data contract.
 """
 from __future__ import annotations
@@ -130,124 +130,117 @@ class JSONModelError(APRSError):
     """Malformed JSON, an unknown/conflicting shape, or invalid field types."""
 
 
-class AmbiguousJSONError(JSONModelError):
-    """More than one model fits; provide semantic fields or expected_type."""
-
-
 @dataclass(frozen=True)
 class _Schema:
     model: type[JSONModel]
-    aliases: Mapping[str, str]
-    anchors: tuple[str, ...] = ()
+    tag: str
 
     def key(self, name: str) -> str:
-        return self.aliases.get(name, name)
+        return name
 
     @property
     def allowed(self) -> set[str]:
-        return {self.key(f.name) for f in fields(self.model)}
+        return {f.name for f in fields(self.model)}
 
     @property
     def required(self) -> set[str]:
         return {
-            self.key(f.name)
+            f.name
             for f in fields(self.model)
             if f.default is MISSING and f.default_factory is MISSING
         }
 
-    @property
-    def signature(self) -> set[str]:
-        return self.required | {self.key(name) for name in self.anchors}
 
-
+# Explicit wire-independent identifiers: renaming a Python class does not change JSON.
 _SCHEMAS = (
-    _Schema(d.Measurement, {}, ()),
-    _Schema(d.Timestamp, {"kind": "timestamp_format"}, ()),
-    _Schema(d.Coordinates, {}, ()),
-    _Schema(d.CellBounds, {}, ()),
-    _Schema(d.Ambiguity, {"digits": "ambiguity_digits"}, ()),
-    _Schema(d.Symbol, {}, ("table_id", "code")),
-    _Schema(d.GridLocator, {}, ()),
-    _Schema(d.Motion, {}, ("course_deg",)),
-    _Schema(d.Altitude, {}, ()),
-    _Schema(d.RadioRange, {}, ()),
-    _Schema(d.PHG, {}, ()),
-    _Schema(d.DFSignal, {}, ()),
-    _Schema(d.DFBearing, {}, ()),
-    _Schema(d.Compression, {}, ()),
-    _Schema(d.DAO, {}, ()),
-    _Schema(d.Area, {}, ()),
-    _Schema(d.Signpost, {}, ()),
-    _Schema(d.WaterHeight, {}, ()),
-    _Schema(d.Weather, {}, ("wind_speed",)),
-    _Schema(d.Storm, {"kind": "storm_category"}, ()),
-    _Schema(d.TelemetryData, {}, ("analog", "digital")),
-    _Schema(d.Extensions, {}, ("motion",)),
-    _Schema(d.Location, {}, ("symbol",)),
-    _Schema(d.Beam, {}, ()),
-    _Schema(d.ReplyAck, {}, ()),
-    _Schema(d.TelemetryParameters, {"channels": "channel_names"}, ()),
-    _Schema(d.TelemetryUnits, {"channels": "channel_units"}, ()),
-    _Schema(d.Calibration, {}, ()),
-    _Schema(d.TelemetryEquations, {}, ()),
-    _Schema(d.TelemetryBits, {"sense": "sense_bits"}, ()),
-    _Schema(d.NTSHeader, {}, ()),
-    _Schema(d.NTSAddress, {"lines": "address_lines"}, ()),
-    _Schema(d.NTSPhone, {"number": "phone_number"}, ()),
-    _Schema(d.NTSText, {"text": "line_text"}, ()),
-    _Schema(d.NTSSignature, {"text": "signature_text"}, ()),
-    _Schema(d.NTSRouting, {}, ()),
-    _Schema(d.QueryFootprint, {}, ()),
-    _Schema(d.CapabilityToken, {"name": "capability_name"}, ()),
-    _Schema(n.NMEAMetadata, {}, ("talker",)),
-    _Schema(n.GGA, {}, ()),
-    _Schema(n.GLL, {}, ()),
-    _Schema(n.RMC, {}, ()),
-    _Schema(n.VTG, {}, ("course_true_deg",)),
-    _Schema(n.WPL, {}, ()),
-    _Schema(m.DecodeOptions, {}, ("unsupported",)),
-    _Schema(m.EncodeOptions, {}, ("destination",)),
-    _Schema(m.PathHop, {}, ()),
-    _Schema(m.Header, {}, ()),
-    _Schema(m.HeaderSemantics, {}, ("q_construct",)),
-    _Schema(m.Position, {}, ("messaging",)),
-    _Schema(m.MicE, {}, ()),
-    _Schema(m.ObjectReport, {"name": "object_name"}, ()),
-    _Schema(m.ItemReport, {"name": "item_name"}, ()),
-    _Schema(m.WeatherReport, {}, ()),
-    _Schema(m.Telemetry, {"data": "telemetry"}, ()),
-    _Schema(m.TelemetryDefinition, {}, ()),
-    _Schema(m.Status, {"text": "status_text"}, ("text",)),
-    _Schema(m.Message, {"text": "message_text"}, ("text",)),
-    _Schema(m.Acknowledgment, {"message_id": "acknowledgment_id"}, ()),
-    _Schema(m.AutoAnswer, {"text": "auto_answer_text"}, ()),
-    _Schema(m.Bulletin, {"identifier": "bulletin_id"}, ()),
-    _Schema(m.NWSBulletin, {"text": "nws_text"}, ()),
-    _Schema(m.NTSMessage, {}, ()),
-    _Schema(m.Query, {"name": "query_name"}, ()),
-    _Schema(m.DirectStations, {}, ()),
-    _Schema(m.HeardStation, {}, ()),
-    _Schema(m.TraceRoute, {}, ()),
-    _Schema(m.QueryResponse, {}, ()),
-    _Schema(m.Capabilities, {"tokens": "capability_tokens"}, ()),
-    _Schema(m.NMEAReport, {}, ()),
-    _Schema(m.ThirdParty, {"packet": "third_party_packet"}, ()),
-    _Schema(m.UserDefined, {}, ()),
-    _Schema(m.RawWeather, {"format": "weather_format"}, ()),
-    _Schema(m.Agrelo, {}, ()),
-    _Schema(m.MaidenheadBeacon, {}, ()),
-    _Schema(m.LegacyPosition, {}, ()),
-    _Schema(m.NonAPRSBeacon, {"text": "beacon_text"}, ()),
-    _Schema(m.InvalidTest, {"data": "test_data"}, ()),
-    _Schema(m.Reserved, {}, ()),
-    _Schema(m.ExternalExtension, {"name": "extension_name"}, ()),
-    _Schema(m.Diagnostic, {}, ()),
-    _Schema(m.Opaque, {}, ()),
-    _Schema(m.Packet, {}, ()),
-    _Schema(m.EncodedPacketFields, {}, ()),
+    _Schema(d.Measurement, "measurement"),
+    _Schema(d.Timestamp, "timestamp"),
+    _Schema(d.Coordinates, "coordinates"),
+    _Schema(d.CellBounds, "cell_bounds"),
+    _Schema(d.Ambiguity, "ambiguity"),
+    _Schema(d.Symbol, "symbol"),
+    _Schema(d.GridLocator, "grid_locator"),
+    _Schema(d.Motion, "motion"),
+    _Schema(d.Altitude, "altitude"),
+    _Schema(d.RadioRange, "radio_range"),
+    _Schema(d.PHG, "phg"),
+    _Schema(d.DFSignal, "df_signal"),
+    _Schema(d.DFBearing, "df_bearing"),
+    _Schema(d.Compression, "compression"),
+    _Schema(d.DAO, "dao"),
+    _Schema(d.Area, "area"),
+    _Schema(d.Signpost, "signpost"),
+    _Schema(d.WaterHeight, "water_height"),
+    _Schema(d.Weather, "weather_fields"),
+    _Schema(d.Storm, "storm"),
+    _Schema(d.TelemetryData, "telemetry_data"),
+    _Schema(d.Extensions, "extensions"),
+    _Schema(d.Location, "location"),
+    _Schema(d.Beam, "beam"),
+    _Schema(d.ReplyAck, "reply_ack"),
+    _Schema(d.TelemetryParameters, "telemetry_parameters"),
+    _Schema(d.TelemetryUnits, "telemetry_units"),
+    _Schema(d.Calibration, "calibration"),
+    _Schema(d.TelemetryEquations, "telemetry_equations"),
+    _Schema(d.TelemetryBits, "telemetry_bits"),
+    _Schema(d.NTSHeader, "nts_header"),
+    _Schema(d.NTSAddress, "nts_address"),
+    _Schema(d.NTSPhone, "nts_phone"),
+    _Schema(d.NTSText, "nts_text"),
+    _Schema(d.NTSSignature, "nts_signature"),
+    _Schema(d.NTSRouting, "nts_routing"),
+    _Schema(d.QueryFootprint, "query_footprint"),
+    _Schema(d.CapabilityToken, "capability_token"),
+    _Schema(n.NMEAMetadata, "nmea_metadata"),
+    _Schema(n.GGA, "gga"),
+    _Schema(n.GLL, "gll"),
+    _Schema(n.RMC, "rmc"),
+    _Schema(n.VTG, "vtg"),
+    _Schema(n.WPL, "wpl"),
+    _Schema(m.DecodeOptions, "decode_options"),
+    _Schema(m.EncodeOptions, "encode_options"),
+    _Schema(m.PathHop, "path_hop"),
+    _Schema(m.Header, "header"),
+    _Schema(m.HeaderSemantics, "header_semantics"),
+    _Schema(m.Position, "position"),
+    _Schema(m.MicE, "mic_e"),
+    _Schema(m.ObjectReport, "object"),
+    _Schema(m.ItemReport, "item"),
+    _Schema(m.WeatherReport, "weather"),
+    _Schema(m.Telemetry, "telemetry"),
+    _Schema(m.TelemetryDefinition, "telemetry_definition"),
+    _Schema(m.Status, "status"),
+    _Schema(m.Message, "message"),
+    _Schema(m.Acknowledgment, "acknowledgment"),
+    _Schema(m.AutoAnswer, "auto_answer"),
+    _Schema(m.Bulletin, "bulletin"),
+    _Schema(m.NWSBulletin, "nws_bulletin"),
+    _Schema(m.NTSMessage, "nts_message"),
+    _Schema(m.Query, "query"),
+    _Schema(m.DirectStations, "direct_stations"),
+    _Schema(m.HeardStation, "heard_station"),
+    _Schema(m.TraceRoute, "trace_route"),
+    _Schema(m.QueryResponse, "query_response"),
+    _Schema(m.Capabilities, "capabilities"),
+    _Schema(m.NMEAReport, "nmea"),
+    _Schema(m.ThirdParty, "third_party"),
+    _Schema(m.UserDefined, "user_defined"),
+    _Schema(m.RawWeather, "raw_weather"),
+    _Schema(m.Agrelo, "agrelo"),
+    _Schema(m.MaidenheadBeacon, "maidenhead_beacon"),
+    _Schema(m.LegacyPosition, "legacy_position"),
+    _Schema(m.NonAPRSBeacon, "non_aprs_beacon"),
+    _Schema(m.InvalidTest, "invalid_test"),
+    _Schema(m.Reserved, "reserved"),
+    _Schema(m.ExternalExtension, "external_extension"),
+    _Schema(m.Diagnostic, "diagnostic"),
+    _Schema(m.Opaque, "opaque"),
+    _Schema(m.Packet, "packet"),
+    _Schema(m.EncodedPacketFields, "encoded_packet_fields"),
 )
 _BY_MODEL = {schema.model: schema for schema in _SCHEMAS}
-
+_BY_TAG = {schema.tag: schema.model for schema in _SCHEMAS}
+_PAYLOAD_MODELS = set(get_args(m.Payload))
 
 _HINTS = {model: get_type_hints(model) for model in _BY_MODEL}
 
@@ -272,31 +265,39 @@ def _object(value: object, path: str) -> Mapping[str, object]:
     return value
 
 
-def _infer(
+def _tagged_model(
     value: Mapping[str, object], candidates: tuple[type[JSONModel], ...], path: str
 ) -> type[JSONModel]:
-    keys = set(value)
-    structural = [
-        s
-        for model in candidates
-        if (s := _BY_MODEL.get(model)) is not None and s.required <= keys <= s.allowed
-    ]
-    matches = [s for s in structural if s.signature <= keys]
-    if len(matches) == 1:
-        return matches[0].model
-    if len(matches) > 1 or (not matches and len(structural) > 1):
-        names = ", ".join(s.model.__name__ for s in (matches or structural))
-        raise AmbiguousJSONError(
-            f"{path}: ambiguous shape ({names}); supply distinguishing fields or expected_type"
+    tag = value.get("type")
+    if type(tag) is not str:
+        raise JSONModelError(f"{path}.type: required semantic type string")
+    model = _BY_TAG.get(tag)
+    if model is None:
+        raise JSONModelError(f"{path}.type: unknown type {tag!r}")
+    if model not in candidates:
+        raise JSONModelError(f"{path}.type: incompatible type {tag!r} for this field")
+    return model
+
+
+def _contextualize(value: JSONValue, annotation: Any) -> JSONValue:
+    """Omit tags only where the declared field identifies exactly one model."""
+    origin, args = get_origin(annotation), get_args(annotation)
+    models = tuple(t for t in args if t in _BY_MODEL)
+    if isinstance(value, dict):
+        fixed = (
+            annotation
+            if annotation in _BY_MODEL
+            else (models[0] if len(models) == 1 else None)
         )
-    if structural:
-        missing = sorted(structural[0].signature - keys)
-        raise JSONModelError(
-            f"{path}: inference needs fields {missing}; alternatively supply expected_type"
-        )
-    raise JSONModelError(
-        f"{path}: no model matches these fields (unknown, conflicting, or missing fields)"
-    )
+        if fixed is not None and fixed not in _PAYLOAD_MODELS:
+            return {k: v for k, v in value.items() if k != "type"}
+    if origin is tuple and isinstance(value, list):
+        variadic = len(args) == 2 and args[1] is Ellipsis
+        return [
+            _contextualize(item, args[0] if variadic else args[i])
+            for i, item in enumerate(value)
+        ]
+    return value
 
 
 def _decode(value: object, annotation: Any, path: str, depth: int, maximum: int) -> Any:
@@ -310,7 +311,8 @@ def _decode(value: object, annotation: Any, path: str, depth: int, maximum: int)
         models = tuple(t for t in args if t in _BY_MODEL)
         if isinstance(value, Mapping) and models:
             raw = _object(value, path)
-            return _decode_model(raw, _infer(raw, models, path), path, depth, maximum)
+            model = _tagged_model(raw, models, path) if len(models) > 1 else models[0]
+            return _decode_model(raw, model, path, depth, maximum)
         successes = []
         for variant in args:
             try:
@@ -320,7 +322,7 @@ def _decode(value: object, annotation: Any, path: str, depth: int, maximum: int)
         if len(successes) == 1:
             return successes[0]
         if len(successes) > 1:
-            raise AmbiguousJSONError(f"{path}: multiple union members accept the value")
+            raise JSONModelError(f"{path}: multiple union members accept the value")
         raise JSONModelError(f"{path}: value does not match the declared field types")
     if origin is Literal:
         if any(type(value) is type(v) and value == v for v in args):
@@ -380,6 +382,19 @@ def _decode_model(
     maximum: int,
 ) -> JSONModel:
     _limit(depth, maximum, path)
+    if "type" in value or model in _PAYLOAD_MODELS:
+        _tagged_model(value, (model,), path)
+    value = {k: v for k, v in value.items() if k != "type"}
+    if model is m.WeatherReport:
+        if "weather" in value:
+            raise JSONModelError(
+                f"{path}.weather: use direct weather measurement fields"
+            )
+        weather_keys = _BY_MODEL[d.Weather].allowed
+        value = {
+            **{k: v for k, v in value.items() if k not in weather_keys},
+            "weather": {k: v for k, v in value.items() if k in weather_keys},
+        }
     schema = _BY_MODEL[model]
     extra, missing = set(value) - schema.allowed, schema.required - set(value)
     if extra or missing:
@@ -451,7 +466,7 @@ def _encode(
     try:
         model = cast(JSONModel, value)
         schema = _BY_MODEL[type(model)]
-        result: JSONObject = {}
+        result: JSONObject = {"type": schema.tag}
         # Validate ALL fields, even ones omitted from compact output. Never let
         # Python's True == 1 or a default comparison hide an invalid field type.
         hints = _hints(type(model))
@@ -468,13 +483,12 @@ def _encode(
             default = f.default
             if f.default_factory is not MISSING:
                 default = f.default_factory()
-            if (
-                include_defaults
-                or key in schema.signature
-                or default is MISSING
-                or item != default
-            ):
-                result[key] = encoded
+            if include_defaults or default is MISSING or item != default:
+                if isinstance(model, m.WeatherReport) and key == "weather":
+                    assert isinstance(encoded, dict)
+                    result.update({k: v for k, v in encoded.items() if k != "type"})
+                else:
+                    result[key] = _contextualize(encoded, hints[f.name])
         return result
     finally:
         active.remove(id(value))
@@ -483,10 +497,10 @@ def _encode(
 def to_json_dict(
     value: JSONModel, *, include_defaults: bool = False, max_depth: int = 64
 ) -> JSONObject:
-    """Convert a supported model to a domain-shaped JSON object, with no type tag.
+    """Convert a supported model to a JSON object with a stable semantic type tag.
 
-    Byte fields use Latin-1 strings. Compact output keeps semantic fields needed
-    for inference. Validation checks model field types, not APRS wire grammar.
+    Byte fields use Latin-1 strings. Compact output keeps required fields needed
+    for construction. Validation checks model field types, not APRS wire grammar.
     """
     _check_limit(max_depth)
     if type(include_defaults) is not bool:
@@ -518,16 +532,16 @@ def from_json_dict(
     expected_type: type[Any] | None = None,
     max_depth: int = 64,
 ) -> JSONModel:
-    """Infer a model from semantic fields, or check an explicitly expected model.
+    """Read a tagged model, or an untagged fixed field with expected_type.
 
-    Unknown/conflicting keys, ambiguous shapes and invalid scalar types raise
+    Unknown/conflicting keys, missing/incompatible tags and invalid scalar types raise
     JSONModelError. expected_type supplies context for sparse standalone fields.
     """
     _check_limit(max_depth)
     raw = _object(value, "$")
     if expected_type is not None and expected_type not in _BY_MODEL:
         raise JSONModelError("expected_type must be a supported concrete APRS model")
-    model = expected_type or _infer(raw, tuple(_BY_MODEL), "$")
+    model = expected_type or _tagged_model(raw, tuple(_BY_MODEL), "$")
     return _decode_model(raw, model, "$", 0, max_depth)
 
 
