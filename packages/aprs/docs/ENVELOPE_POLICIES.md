@@ -23,15 +23,16 @@ without their trailing `*` repeated marker. `None` means no limit; zero means
 zero entries or bytes. Invalid regular expressions, negative limits, and limits
 that are not integers are rejected when constructing a policy.
 
-| Constraint                      | `aprs.RF`                                                      | `aprs.APRS_IS`                                                                                         |
-| ------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Source                          | 1–6 uppercase ASCII letters/digits, optional numeric SSID 0–15 | At least 3 ASCII letters/digits, optional 1–2 alphanumeric SSID characters, at most 9 characters total |
-| Destination and path address    | Same format as RF source                                       | At least 1 ASCII letter/digit, optional 1–2 alphanumeric SSID characters, at most 9 characters total   |
-| Path entries                    | 8                                                              | No separate limit                                                                                      |
-| Information bytes               | 256                                                            | No separate limit                                                                                      |
-| TNC2 line bytes, including CRLF | No separate limit                                              | 512                                                                                                    |
+| Constraint                      | `aprs.RF`                                                      | `aprs.APRS_IS`                                                                                                         |
+| ------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Source                          | 1–6 uppercase ASCII letters/digits, optional numeric SSID 0–15 | At least 3 ASCII letters/digits, optional 1–2 alphanumeric SSID characters other than `-0`, at most 9 characters total |
+| Destination and path address    | Same format as RF source                                       | At least 1 ASCII letter/digit, optional 1–2 alphanumeric SSID characters other than `-0`, at most 9 characters total   |
+| Path entries                    | 8                                                              | No separate limit                                                                                                      |
+| Information bytes               | 256                                                            | No separate limit                                                                                                      |
+| TNC2 line bytes, including CRLF | No separate limit                                              | 512                                                                                                                    |
 
-APRS-IS patterns permit mixed case, including `qAR` in paths. Patterns check
+APRS-IS patterns permit mixed case, including `qAR` in paths, and refuse SSID
+`-0`, which APRS-IS drops because it conflicts with an absent SSID. Patterns check
 individual formats, not q-construct ordering or network routing rules. The
 APRS-IS limits follow the [server address rules](https://www.aprs-is.net/ServerDesign.aspx)
 and [connection specification](https://www.aprs-is.net/Connecting.aspx).

@@ -167,3 +167,140 @@ def test_invalid_signpost_token_and_oversized_sequence_are_malformed():
         b"N0CALL>APRS:T#" + b"1" * 5000 + b",1,2,3,4,5,00000000",
     ):
         assert isinstance(a.parse_packet(wire), a.Malformed)
+
+
+def test_mic_e_longitude_100_to_109_degrees_uses_specified_bytes():
+    # APRS101 p.48 encodes 100-109 degrees as 'l'-'u'; bytes 28-37 decode to the
+    # same values but include FS-US control characters.
+    cases = [r for r in rows() if r["id"] in {f"MIC-{n}" for n in range(116, 126)}]
+    assert len(cases) == 10
+    for row in cases:
+        raw = row["packet"].encode("latin-1")
+        wire = a.serialize_packet(without_evidence(packet(raw)))
+        assert wire == raw, row["id"]
+        assert 108 <= wire[wire.index(b":") + 2] <= 117
+
+
+def test_known_bad_nmea_checksum_requires_explicit_repair():
+    received = packet(b"N0CALL>APRS:$GPGLL,4916.45,N,12311.12,W,225444,A*00")
+    n = received.payload
+    assert isinstance(n, a.NMEA) and n.metadata.checksum_valid is False
+    finding = "$.payload.metadata.checksum_valid"
+    assert [d.path for d in received.diagnostics] == [finding]  # Reported once.
+    assert [d.path for d in a.check_packet(received)] == [finding]
+    for send in (a.serialize_packet, a.validate_packet, a.serialize_tnc2_line):
+        with pytest.raises(a.ConformanceError) as caught:
+            send(received)
+        assert [d.path for d in caught.value.diagnostics] == [finding]
+    # Explicit repair: clear the verdict, and a fresh checksum is computed.
+    trusted = dataclasses.replace(n.metadata, checksum_valid=None)
+    repaired = dataclasses.replace(
+        received, payload=dataclasses.replace(n, metadata=trusted)
+    )
+    resent = packet(a.serialize_packet(repaired)).payload
+    assert isinstance(resent, a.NMEA) and resent.metadata.checksum_valid is True
+    # Or omit the checksum entirely.
+    unsigned = dataclasses.replace(
+        received,
+        payload=dataclasses.replace(n, metadata=a.NMEAMetadata(n.metadata.talker)),
+    )
+    assert b"*" not in a.serialize_packet(unsigned)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Directs= are fine, see you at 7",
+        "Directs=",
+        "N0CALL HEARD: 1 2 3",
+        "N0CALL HEARD: 1 2 3 4 5 6 7 8 9",
+    ],
+)
+def test_text_resembling_a_response_stays_a_message(text):
+    raw = b"N0CALL>APRS::W1AW     :" + text.encode()
+    value = packet(raw).payload
+    assert value == a.Message("W1AW", text)
+    assert a.serialize_packet(packet(raw)) == raw
+
+
+def test_complete_response_grammar_is_still_structured():
+    value = packet(b"N0CALL>APRS::W1AW     :Directs= W1AW W2ABC").payload
+    assert value == a.Response("W1AW", a.DirectStations(("W1AW", "W2ABC")))
+
+
+def test_structured_weather_is_exempt_from_the_position_comment_budget():
+    weather = (
+        b"N0CALL>APRS:@092345z4903.50N/07201.75W_220/004g005t077r000p000P000h50b09900"
+    )
+    # 44 bytes of structured weather data: an ordinary report is sendable.
+    assert a.check_packet(packet(weather + b"L123wRSW")) == ()
+    # Wind occupies the 7-byte data-extension slot; the comment keeps 36 bytes.
+    assert a.check_packet(packet(weather + b" " + b"x" * 35)) == ()
+    assert [d.path for d in a.check_packet(packet(weather + b" " + b"x" * 36))] == [
+        "$.payload.comment"
+    ]
+    # With wind in compressed csT, all weather data is exempt.
+    compressed = b"N0CALL>APRS:=/5L!!<*e7_7P[g005t077r000p000P000h50b09900L123"
+    assert a.check_packet(packet(compressed + b" " + b"x" * 42)) == ()
+    assert [d.path for d in a.check_packet(packet(compressed + b" " + b"x" * 43))] == [
+        "$.payload.comment"
+    ]
+    # Envelope limits still count every weather byte.
+    tight = dataclasses.replace(a.RF, max_information_bytes=60)
+    findings = a.check_packet(packet(weather + b"L123wRSW"), policy=tight)
+    assert [d.path for d in findings] == ["$.payload"]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"N0CALL>APRS:_10090556c220s004g005t077r000p000P000h50b09900wRSW",
+        b"N0CALL>APRS:!4903.50N/07201.75W_220/004g005t077r000p000P000h50b09900wRSW",
+    ],
+)
+def test_weather_codes_must_end_the_report(raw):
+    # APRS101 pp.63-66 end every weather report with the S/uuuu codes and define
+    # no comment after them, so a comment would hide the codes on read-back.
+    received = packet(raw)
+    assert a.check_packet(received) == ()
+    payload = dataclasses.replace(received.payload, comment="home")
+    both = dataclasses.replace(received, payload=payload)
+    findings = a.check_packet(both)
+    assert [(d.path, d.message) for d in findings] == [
+        (
+            "$.payload.comment",
+            (
+                "weather software/unit codes must end the report; "
+                "a comment cannot follow them"
+            ),
+        )
+    ]
+    with pytest.raises(a.ConformanceError):
+        a.serialize_packet(both)
+    # Without codes, the comment is sent and read back unchanged.
+    if isinstance(payload, a.Weather):
+        uncoded = dataclasses.replace(payload, software_code=None, device_code=None)
+    else:
+        assert payload.extensions.weather is not None
+        weather = dataclasses.replace(
+            payload.extensions.weather, software_code=None, device_code=None
+        )
+        uncoded = dataclasses.replace(
+            payload,
+            extensions=dataclasses.replace(payload.extensions, weather=weather),
+        )
+    # Without codes, a comment shaped like codes would be read back as codes.
+    lookalike = dataclasses.replace(both, payload=uncoded)
+    assert [(d.path, d.message) for d in a.check_packet(lookalike)] == [
+        (
+            "$.payload.comment",
+            "comment would be read back as weather software/unit codes",
+        )
+    ]
+    # Any other comment is sent and read back unchanged.
+    for comment in ("home station", "73!"):
+        plain = dataclasses.replace(
+            lookalike, payload=dataclasses.replace(uncoded, comment=comment)
+        )
+        resent = packet(a.serialize_packet(plain))
+        assert resent.payload.comment == comment

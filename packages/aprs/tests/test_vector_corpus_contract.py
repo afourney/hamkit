@@ -29,12 +29,12 @@ def all_rows() -> list[dict[str, Any]]:
 def test_complete_source_extraction() -> None:
     rows = all_rows()
     assert len(list(VECTORS.glob("*.jsonl"))) == 18
-    assert len(rows) == 1561  # 1,538 individual packets + 23 sequence occurrences.
+    assert len(rows) == 1564  # 1,541 individual packets + 23 sequence occurrences.
     assert len({row["id"] for row in rows}) == len(rows)
     assert sorted(rows, key=lambda r: r["id"]) == sorted(
         records(), key=lambda r: r["id"]
     )
-    assert len({row.get("sequence", row["id"]) for row in rows}) == 1545
+    assert len({row.get("sequence", row["id"]) for row in rows}) == 1548
 
 
 def test_comparator_checks_missing_null_lists_and_tolerances() -> None:
@@ -129,8 +129,16 @@ def test_projection_keys_belong_to_public_json_models() -> None:
             validate(row["expected"], a.Packet, row["id"])
 
 
+# Source cases added after the PR #4 freeze (see the corpus amendment note).
+AMENDED_IDS = {"WX-067", "WX-068", "WX-069"}
+
+
 def test_original_vector_bytes_expectations_and_provenance_are_unchanged() -> None:
-    """Frozen at PR #4 head b97beb7970c6b6fec2c0b6e30200f348bb87d96c."""
+    """Frozen at PR #4 head b97beb7970c6b6fec2c0b6e30200f348bb87d96c.
+
+    Later source amendments are frozen separately, so the original digest keeps
+    proving that no original vector changed.
+    """
     import hashlib
 
     keys = [
@@ -147,9 +155,19 @@ def test_original_vector_bytes_expectations_and_provenance_are_unchanged() -> No
         "extension_tags",
         "sequence",
     ]
-    original = [{k: r[k] for k in keys if k in r} for r in all_rows()]
-    encoded = json.dumps(original, sort_keys=True, separators=(",", ":")).encode()
+
+    def digest(rows: list[dict[str, Any]]) -> str:
+        frozen = [{k: r[k] for k in keys if k in r} for r in rows]
+        encoded = json.dumps(frozen, sort_keys=True, separators=(",", ":")).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
+    rows = all_rows()
+    assert {r["id"] for r in rows} >= AMENDED_IDS
     assert (
-        hashlib.sha256(encoded).hexdigest()
+        digest([r for r in rows if r["id"] not in AMENDED_IDS])
         == "2db005c07f133aa738ccf3ec65b6364bf57d48cceff447a72c63e659c612573e"
+    )
+    assert (
+        digest([r for r in rows if r["id"] in AMENDED_IDS])
+        == "54b230e42653249842ec4c1143ad4f618c66eeba967366446944d3fd45a412db"
     )

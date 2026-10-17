@@ -52,7 +52,7 @@ def assert_conformance(
     [
         ("N0CALL", True, True),
         ("n0call", False, True),
-        ("N0CALL-0", True, True),
+        ("N0CALL-0", True, False),  # APRS-IS drops SSID -0.
         ("N0CALL-15", True, True),
         ("N0CALL-16", False, True),
         ("N0CALL-JS", False, True),
@@ -74,6 +74,16 @@ def test_source_formats(address: str, rf_ok: bool, internet_ok: bool) -> None:
     raw = address.encode() + b">APRS:>Ready"
     for policy, valid in ((a.RF, rf_ok), (a.APRS_IS, internet_ok)):
         assert_conformance(raw, policy, set() if valid else {"$.header.source"})
+
+
+def test_internet_rejects_ssid_zero_everywhere() -> None:
+    # aprs-is.net: "SSID -0 is dropped as conflicts with not present SSID".
+    for raw, path in (
+        (b"N0CALL>APRS-0:>Ready", "$.header.destination"),
+        (b"N0CALL>APRS,WIDE1-0:>Ready", "$.header.path[0].address"),
+    ):
+        assert_conformance(raw, a.APRS_IS, {path})
+        assert_conformance(raw, a.RF, set())
 
 
 @pytest.mark.parametrize("address", ["A", "AB", "A-1", "qAR", "AE5PL-JS"])

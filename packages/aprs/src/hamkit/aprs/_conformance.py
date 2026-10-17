@@ -35,6 +35,7 @@ from ._data import (
 )
 from ._errors import CodecNotImplementedError, FieldError
 from ._models import (
+    NMEA,
     Acknowledgment,
     AutoAnswer,
     Bulletin,
@@ -318,6 +319,18 @@ def _trace(v: Trace, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     yield from _text("header", str(v.header) + ":", 67)
 
 
+@_conformance(NMEA)
+def _nmea(v: NMEA, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    # The encoder computes a fresh checksum, so sending a sentence received with
+    # a bad one would make corrupt data look verified. Require explicit repair:
+    # clear checksum_valid (or omit the checksum) once the fields are trusted.
+    if v.metadata.checksum_valid is False:
+        yield (
+            "$.metadata.checksum_valid",
+            "NMEA checksum mismatch; clear checksum_valid to repair before sending",
+        )
+
+
 @_conformance(Capabilities)
 def _capabilities(v: Capabilities, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if not v.tokens:
@@ -336,6 +349,46 @@ def _capabilities(v: Capabilities, policy: EnvelopePolicy | None) -> Iterator[Fi
 def _item(v: Item, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if len(v.name) < 3:
         yield "$.name", "item names have at least three characters"
+
+
+# APRS101 pp.63-66 end every weather report with the optional software (S) and
+# unit (uuuu) codes and define no comment after them, so the decoder reads codes
+# only when they end the report. Text after them would hide the codes.
+WEATHER_CODES_LAST = (
+    "weather software/unit codes must end the report; a comment cannot follow them"
+)
+WEATHER_COMMENT_AS_CODES = "comment would be read back as weather software/unit codes"
+
+
+def _weather_comment(weather: Any, comment: str) -> str | None:
+    """Why a comment after weather data would not read back unchanged."""
+    if not comment:
+        return None
+    if weather.software_code or weather.device_code:
+        return WEATHER_CODES_LAST
+    from ._weather import CODES
+
+    if CODES.fullmatch(comment.encode("utf-8")):
+        return WEATHER_COMMENT_AS_CODES
+    return None
+
+
+def _weather_exempt_bytes(extensions: Any) -> int:
+    """Encoded weather bytes outside the 43-byte position-comment budget.
+
+    Uncompressed wind (ddd/sss) occupies the 7-byte data-extension slot, which
+    the budget still counts, leaving 36 comment bytes as for course/speed. The
+    other weather fields, and all of them when wind is in compressed csT, are
+    structured data rather than comment. Envelope limits still apply to them.
+    """
+    w = extensions.weather
+    if w is None:
+        return 0
+    from . import _weather
+
+    compressed_wind = w.wind_direction is None and w.wind_speed is None
+    encoded = _weather.write(w, positioned=True, compressed=compressed_wind)
+    return len(encoded) - (0 if compressed_wind else 7)
 
 
 @_conformance(Position, Object, Item)
@@ -359,7 +412,11 @@ def _position(v: Position, policy: EnvelopePolicy | None) -> Iterator[Finding]:
         yield "$.extensions", str(exc)
         return
     comment = v.comment.encode("utf-8")
-    if len(prefix) + len(comment) > 43:
+    problem = extensions.weather and _weather_comment(extensions.weather, v.comment)
+    if problem:
+        yield "$.comment", problem
+        return
+    if len(prefix) - _weather_exempt_bytes(extensions) + len(comment) > 43:
         yield "$.comment", "extensions and comment exceed 43 bytes"
     try:
         expected, _ = _extensions.read(prefix, v.symbol)
@@ -458,6 +515,9 @@ def _weather_report(w: Weather, path: str, positioned: bool) -> Iterator[Finding
 
 @_conformance(Weather)
 def _weather(v: Weather, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    problem = _weather_comment(v, v.comment)
+    if problem:
+        yield "$.comment", problem
     for name in (
         "wind_direction",
         "wind_speed",

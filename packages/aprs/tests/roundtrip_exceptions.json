@@ -655,14 +655,6 @@
       "invalid coordinate syntax"
     ]
   },
-  "FAP-032": {
-    "kind": "conformance",
-    "reasons": ["extensions and comment exceed 43 bytes"]
-  },
-  "FAP-033": {
-    "kind": "conformance",
-    "reasons": ["extensions and comment exceed 43 bytes"]
-  },
   "FAP-038": {
     "kind": "malformed",
     "reasons": ["missing information separator"]
@@ -1180,10 +1172,6 @@
     "kind": "conformance",
     "reasons": ["extensions and comment exceed 43 bytes"]
   },
-  "FAP-475": {
-    "kind": "conformance",
-    "reasons": ["extensions and comment exceed 43 bytes"]
-  },
   "FAP-476": {
     "kind": "conformance",
     "reasons": ["extensions and comment exceed 43 bytes"]
@@ -1202,10 +1190,6 @@
       "requires an integer in 0..255",
       "requires an integer in 0..255"
     ]
-  },
-  "FAP-497": {
-    "kind": "conformance",
-    "reasons": ["extensions and comment exceed 43 bytes"]
   },
   "FAP-500": {
     "kind": "malformed",

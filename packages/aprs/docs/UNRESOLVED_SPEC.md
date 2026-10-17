@@ -76,7 +76,9 @@ reported observations; agreement is not enforced because numeric fields do not
 retain the precision needed to compare rounded wire readings. The encoder preserves both reported observations. Calendar validation rejects
 impossible dates, allowing February 29 in YY=00 without assigning a century.
 `checksum_valid` requires a supplied checksum, but is evidence about original
-input, not certification of an edited sentence. The model does not calculate checksums; the encoder recomputes a supplied checksum.
+input, not certification of an edited sentence. The model does not calculate
+checksums; the encoder recomputes a supplied checksum, and refuses to send a
+sentence still marked `checksum_valid=False` until the caller repairs it.
 
 **What resolves it:** define which speed is authoritative for composition and
 retain each received field's precision, or define an explicitly selected rounding

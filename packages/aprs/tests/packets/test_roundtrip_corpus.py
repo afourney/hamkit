@@ -36,7 +36,21 @@ APRS_IS_ADDRESS_REFUSALS = {
     "FAP-047",
     "FAP-051",
     "FAP-052",
+    # APRS-IS drops SSID -0; RF and the permissive corpus policy accept it.
+    "HDR-002",
+    "HDR-036",
 }
+CHECKSUM_FINDING = "$.payload.metadata.checksum_valid"
+
+
+def repair_checksum(packet: a.Packet) -> a.Packet:
+    """The explicit repair a caller makes before resending a bad checksum."""
+    n = packet.payload
+    assert isinstance(n, a.NMEA)
+    metadata = dataclasses.replace(n.metadata, checksum_valid=None)
+    return dataclasses.replace(
+        packet, payload=dataclasses.replace(n, metadata=metadata)
+    )
 
 
 def without_evidence(value: Any) -> Any:
@@ -97,6 +111,18 @@ def test_vector_roundtrip(row):
         assert [d.message for d in packet.diagnostics] == exception["reasons"]
         return
     clean = without_evidence(packet)
+    repaired = False
+    if (
+        isinstance(clean.payload, a.NMEA)
+        and clean.payload.metadata.checksum_valid is False
+    ):
+        # A known-bad checksum is never re-signed implicitly: sending refuses
+        # until the caller clears checksum_valid as an explicit repair.
+        for send in (a.serialize_packet, a.validate_packet, a.serialize_tnc2_line):
+            with pytest.raises(a.ConformanceError) as caught:
+                send(clean, policy=CORPUS_POLICY)
+            assert [d.path for d in caught.value.diagnostics] == [CHECKSUM_FINDING]
+        clean, repaired = repair_checksum(clean), True
     if exception:
         assert exception["kind"] == "conformance"
         with pytest.raises(a.ConformanceError) as caught:
@@ -118,8 +144,9 @@ def test_vector_roundtrip(row):
         if n.metadata.checksum_supplied is not None:
             assert isinstance(decoded.payload, a.NMEA)
             assert decoded.payload.metadata.checksum_valid is True
-            if n.metadata.checksum_valid is False:
-                # Three deliberately bad checksums are repaired, not replayed.
+            if repaired:
+                # After explicit repair the encoder signs the trusted fields,
+                # and the receiver re-evaluates fix usability.
                 s = n.sentence
                 usable = (
                     s.fix_quality > 0

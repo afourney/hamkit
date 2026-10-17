@@ -154,6 +154,25 @@ def read(information: bytes, header: Header, diagnostics: list) -> MicE:
     )
 
 
+def _longitude_degrees_byte(degrees: int, offset: bool) -> int:
+    """APRS101 p.48 longitude-degrees table.
+
+    100-109 degrees use 'l'-'u' (108-117). Bytes 28-37 decode to the same
+    values arithmetically, but they are not the specified encoding and include
+    the FS-US control characters.
+    """
+    if offset:
+        if 0 <= degrees <= 9:
+            return degrees + 118
+        if 100 <= degrees <= 109:
+            return degrees + 8
+        if 110 <= degrees <= 179:
+            return degrees - 100 + 28
+    elif 10 <= degrees <= 99:
+        return degrees + 28
+    raise FieldError("Mic-E destination longitude offset does not match longitude")
+
+
 def write(p: MicE, header: Header) -> bytes:
     p = replace(
         p,
@@ -173,18 +192,7 @@ def write(p: MicE, header: Header) -> bytes:
     units = round(abs(p.longitude_deg) * 6000)
     degrees, minutes = divmod(units, 6000)
     minutes, hundredths = divmod(minutes, 100)
-    # Find a legal wire longitude byte for the caller-supplied destination bit.
-    candidates = []
-    for byte in range(28, 128):
-        value = byte - 28 + (100 if offset else 0)
-        if 180 <= value <= 189:
-            value -= 80
-        elif 190 <= value <= 199:
-            value -= 190
-        if value == degrees:
-            candidates.append(byte)
-    if not candidates:
-        raise FieldError("Mic-E destination longitude offset does not match longitude")
+    degree_byte = _longitude_degrees_byte(degrees, offset)
     m = p.extensions.motion
     if m is None or m.course_deg is None or m.speed_knots is None:
         raise FieldError("Mic-E requires course and speed")
@@ -194,7 +202,7 @@ def write(p: MicE, header: Header) -> bytes:
     body = (
         bytes(
             [
-                candidates[0],
+                degree_byte,
                 minutes + (88 if minutes < 10 else 28),
                 hundredths + 28,
                 speed // 10 + 28,

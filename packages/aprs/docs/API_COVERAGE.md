@@ -3,7 +3,7 @@
 Packet dataclasses, payload unions and the packet JSON schema are unchanged.
 Envelope entry points now accept `policy=EnvelopePolicy(...)` instead of a
 profile string, with public `RF` and `APRS_IS` presets. `APRS_IS` is the default.
-Decoding and encoding cover the families exercised by all 1,561 occurrences in
+Decoding and encoding cover the families exercised by all 1,564 occurrences in
 [the edition 1 corpus](APRS_COMPLIANCE_VECTORS.md). Unknown grammars still use
 `Opaque`; raw wrappers preserve authoritative information bytes.
 
@@ -91,15 +91,29 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   Field overflow is rejected. No saturation or text truncation is performed.
 - Mic-E requires a destination consistent with latitude, ambiguity, message and
   longitude flags. A mismatch raises `FieldError`; packet headers are not silently
-  changed. Payload-only Mic-E still requires header context.
+  changed. Payload-only Mic-E still requires header context. Longitude degrees
+  use APRS101's table, so 100–109° are sent as `l`–`u`, never as control bytes.
 - NMEA uses semantic numeric fields and recomputes a supplied checksum. Checksum
-  characters can change when equivalent numeric spellings change. A deliberately
-  bad input checksum is repaired and fix usability is reevaluated.
+  characters can change when equivalent numeric spellings change. A sentence
+  received with a bad checksum (`checksum_valid=False`) is a conformance finding:
+  it is reported when parsed and refused when sending, so corrupt data is never
+  re-signed implicitly. Repair it explicitly by clearing `checksum_valid` (a fresh
+  checksum is computed) or by omitting the checksum.
 - Weather encoders convert supported units to wire units, then round to field
   precision. Uncompressed located wind retains the corpus's explicit
   `disputed_knots_or_mph` unit on decode; composition of an explicitly metric or
   mph reading follows the FAP mph interpretation. No interpretation is assigned
   to a received disputed reading by the core decoder.
+- Structured weather data is exempt from the 43-byte position-comment budget.
+  Uncompressed wind (`ddd/sss`) still counts as the 7-byte data extension, leaving
+  36 comment bytes; with wind in compressed csT all weather data is exempt.
+  Envelope limits (information and line bytes) still count every byte.
+- Weather software/unit codes end a report (APRS101 pp. 63–66 define no comment
+  after them). They are decoded only when they end the report, so sending refuses
+  codes followed by a comment, and a comment alone that would read back as codes
+  (3–5 characters such as `home`).
+- Message text is a query response only when it matches a response grammar
+  completely; anything else remains an ordinary `Message`.
 - Explicit altitude datum and DF interpretation annotations with no wire form
   remain unsendable rather than being silently discarded. Raw vendor weather
   annotations do not replace authoritative bytes.
@@ -110,23 +124,24 @@ warnings alone do not prevent encoding: Latin-1 input can become valid UTF-8.
 
 ## Verification
 
-All 1,561 decode cases pass without skips or expected failures. Public JSON
+All 1,564 decode cases pass without skips or expected failures. Public JSON
 projections and source assertions outside the projections are both checked,
 including partial values recovered before a rejection.
 All original packet bytes, semantic expectations, options and provenance have a
 frozen integrity hash tied to PR #4's head commit.
 
 Every vector also has an encoding test. With an explicit permissive envelope
-policy (`EnvelopePolicy(".*", ".*", ".*")`), 1,296 occurrences encode and stabilize
+policy (`EnvelopePolicy(".*", ".*", ".*")`), 1,303 occurrences encode and stabilize
 through semantic decode/encode round trips with all raw evidence removed. The
-other 265 have explicit refusal records: 181 malformed public packets and 84
+other 261 have explicit refusal records: 181 malformed public packets and 80
 violations of the existing transmit-conformance rules. Those refusal tests assert
-the reason; they are not broad exception catches or skipped tests. Three bad
-NMEA checksums are repaired as part of the 1,296 successful encodings.
+the reason; they are not broad exception catches or skipped tests. Three NMEA
+sentences with bad checksums are first refused, then encode after an explicit
+repair; they are counted among the 1,303.
 
-Of those 1,296, 13 have addresses rejected by the new default `APRS_IS` policy;
-the tests independently require those default-policy refusals and validate the
-other 1,283 under the default policy. The permissive policy changes no decoded
+Of those 1,303, 15 have addresses rejected by the new default `APRS_IS` policy,
+including two with SSID `-0`; the tests independently require those
+default-policy refusals and validate the other 1,288 under the default policy. The permissive policy changes no decoded
 fields, packet bytes or payload conformance checks. Dedicated policy tests cover
 custom patterns, optional and zero limits, boundary sizes including CRLF,
 repeated markers, and consistent outer-envelope handling of third-party packets.

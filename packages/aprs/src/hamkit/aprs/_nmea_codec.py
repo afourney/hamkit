@@ -88,15 +88,8 @@ def read(raw: bytes, header: Header | None, diagnostics: list) -> NMEA:
         supplied = trailer[:2].decode()
         comment = trailer[2:]
         actual = functools.reduce(operator.xor, raw[1 : raw.index(b"*")], 0)
+        # A mismatch is reported by conformance, so it also blocks sending.
         valid = actual == int(supplied, 16)
-        if not valid:
-            diagnostics.append(
-                Diagnostic(
-                    "nonconforming",
-                    "NMEA checksum mismatch",
-                    "$.metadata.checksum_valid",
-                )
-            )
     fields_raw = tuple(data.split(b","))
     f = [token(v, "$.sentence") for v in fields_raw]
     number = lambda i: float(f[i]) if f[i] else None

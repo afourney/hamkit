@@ -54,8 +54,10 @@ class EnvelopePolicy:
 
 
 _AX25_ADDRESS = r"[A-Z0-9]{1,6}(?:-(?:[0-9]|1[0-5]))?"
-_APRS_IS_SOURCE = r"(?=.{1,9}\Z)[A-Za-z0-9]{3,9}(?:-[A-Za-z0-9]{1,2})?"
-_APRS_IS_ADDRESS = r"(?=.{1,9}\Z)[A-Za-z0-9]{1,9}(?:-[A-Za-z0-9]{1,2})?"
+# APRS-IS drops SSID -0 because it conflicts with an absent SSID.
+_APRS_IS_SSID = r"(?:-(?!0\Z)[A-Za-z0-9]{1,2})?"
+_APRS_IS_SOURCE = r"(?=.{1,9}\Z)[A-Za-z0-9]{3,9}" + _APRS_IS_SSID
+_APRS_IS_ADDRESS = r"(?=.{1,9}\Z)[A-Za-z0-9]{1,9}" + _APRS_IS_SSID
 
 RF = EnvelopePolicy(
     source_pattern=_AX25_ADDRESS,

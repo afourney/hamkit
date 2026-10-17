@@ -9,7 +9,7 @@ from typing import Any, cast
 
 from . import _data as d
 from . import _models as m
-from ._errors import FieldError
+from ._errors import APRSError, FieldError
 from ._fields import decode_timestamp, encode_timestamp
 from ._text import free_text, token
 
@@ -190,25 +190,31 @@ def specialized(address: str, body: bytes, diagnostics: list):
 
 
 def response(address: str, body: bytes):
-    """Recognize the three documented directed-query response grammars."""
-    if body.startswith(b"Directs= "):
-        return m.Response(
-            address,
-            m.DirectStations(tuple(token(body[9:], "$.response.stations").split())),
+    """Recognize the three documented directed-query response grammars.
+
+    Text that does not match a grammar completely is an ordinary message.
+    """
+    try:
+        if re.fullmatch(rb"Directs=(?: [A-Za-z0-9-]{1,9})+", body):
+            return m.Response(
+                address,
+                m.DirectStations(tuple(body[9:].decode("ascii").split())),
+            )
+        match = re.fullmatch(
+            rb"([A-Za-z0-9-]+) HEARD: ((?:[0-9]+|\.)(?: (?:[0-9]+|\.)){7})", body
         )
-    match = re.fullmatch(
-        rb"([A-Za-z0-9-]+) HEARD: ((?:[0-9]+|\.)(?: (?:[0-9]+|\.)){7})", body
-    )
-    if match:
-        return m.Response(
-            address,
-            m.HeardStation(
-                match[1].decode(),
-                tuple(None if c == b"." else int(c) for c in match[2].split()),
-            ),
-        )
-    if re.fullmatch(rb"[A-Za-z0-9-]+>[A-Za-z0-9,*-]+:", body):
-        return m.Response(address, m.Trace(m.Header.parse(body[:-1].decode())))
+        if match:
+            return m.Response(
+                address,
+                m.HeardStation(
+                    match[1].decode(),
+                    tuple(None if c == b"." else int(c) for c in match[2].split()),
+                ),
+            )
+        if re.fullmatch(rb"[A-Za-z0-9-]+>[A-Za-z0-9,*-]+:", body):
+            return m.Response(address, m.Trace(m.Header.parse(body[:-1].decode())))
+    except APRSError:
+        pass
     return None
 
 

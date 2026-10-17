@@ -93,7 +93,7 @@ def read(
         values[name] = Measurement(value, unit, raw=field)
         raw = raw[width + 1 :]
     # APRS software + two/three-character weather device code is a suffix.
-    if re.fullmatch(rb"[A-Za-z][A-Za-z0-9]{2,4}", raw):
+    if CODES.fullmatch(raw):
         values["software_code"] = chr(raw[0])
         values["device_code"] = raw[1:].decode()
         raw = b""
@@ -138,6 +138,10 @@ def _number(value: float | None, width: int, scale: float = 1) -> bytes:
     if len(raw) != width:
         raise FieldError("weather value exceeds field width")
     return raw
+
+
+# Software S plus unit uuuu (APRS101 p.63) when they are all that remains.
+CODES = re.compile(rb"[A-Za-z][A-Za-z0-9]{2,4}")
 
 
 def write(w: Weather, *, positioned=False, compressed=False) -> bytes:
