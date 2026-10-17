@@ -1,112 +1,53 @@
-# Public naming audit
+# Public naming guide
 
-Version 0.0.1a5 simplifies the unreleased API. There are 82 serializable models
-(previously 84), still covering 29 payload families. No draft compatibility
-aliases or old JSON tags remain. The [JSON reference](JSON_FORMAT.md) gives the
-canonical complete shapes. Only type names/tags change; attribute names such as
-`wind_speed` stay descriptive.
+Python model names and JSON type tags describe APRS concepts. Short names are
+used where the meaning is clear; qualifiers distinguish different concepts.
+The [JSON reference](JSON_FORMAT.md) lists all 82 models, their tags and fields.
+Attribute names such as `wind_speed` describe the value they hold.
 
-## Shared weather and telemetry
+## Weather and telemetry
 
-`WeatherReport(weather, timestamp, comment)` and `Weather` are now one `Weather`
-model, with measurements, optional timestamp and comment directly on it.
-`Telemetry(data, comment)` and `TelemetryData` are now one `Telemetry`, with
-channels, sequence, encoding/raw evidence and comment directly on it. Constructors
-no longer take the redundant `weather` or `data` wrapper arguments. All fields
-are preserved, including raw evidence and report comments.
+`Weather` contains measurements, an optional timestamp and a comment.
+`Telemetry` contains channels, sequence, encoding/raw evidence and a comment.
+Both models work as full payloads and as fixed nested fields. Their fields are
+direct attributes in Python and direct properties in JSON.
 
-Both models work as full payloads and as fixed nested fields. Standalone/payload
-JSON requires `type: weather` or `type: telemetry`; fixed nested fields omit the
-tag because their declared class supplies context. This does not grant new wire
-support: weather and telemetry encoding/decoding remain unimplemented.
+Standalone/payload JSON requires `type: weather` or `type: telemetry`. Fixed
+nested fields omit the tag because their declared class supplies context.
+Weather and telemetry wire encoding/decoding are unimplemented.
 
-## Python names
+## Short names in context
 
-| Before                    | After             |
-| ------------------------- | ----------------- |
-| `CellBounds`              | `Extent`          |
-| `GridLocator`             | `Grid`            |
-| `RadioRange`              | `Range`           |
-| `DFSignal`                | `Signal`          |
-| `DFBearing`               | `Bearing`         |
-| `TelemetryData`           | `Telemetry`       |
-| `TelemetryParameters`     | `Parameters`      |
-| `TelemetryUnits`          | `Units`           |
-| `TelemetryEquations`      | `Equations`       |
-| `TelemetryBits`           | `Bits`            |
-| `NTSAddress`              | `Address`         |
-| `NTSPhone`                | `Phone`           |
-| `NTSText`                 | `Text`            |
-| `NTSSignature`            | `Signature`       |
-| `NTSRouting`              | `Routing`         |
-| `QueryFootprint`          | `Footprint`       |
-| `CapabilityToken`         | `Capability`      |
-| `PathHop`                 | `Hop`             |
-| `ObjectReport`            | `Object`          |
-| `ItemReport`              | `Item`            |
-| `WeatherReport`           | `Weather`         |
-| `TelemetryDefinition`     | `Definition`      |
-| `NTSMessage`              | `Radiogram`       |
-| `TraceRoute`              | `Trace`           |
-| `QueryResponse`           | `Response`        |
-| `NMEAReport`              | `NMEA`            |
-| `MaidenheadBeacon`        | `Maidenhead`      |
-| `NonAPRSBeacon`           | `Beacon`          |
-| `InvalidTest`             | `Invalid`         |
-| `TelemetryDefinitionData` | `DefinitionValue` |
-| `QueryResponseData`       | `ResponseValue`   |
+| Model or alias                                     | Meaning                                                                                      |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `Object`, `Item`                                   | Named APRS position reports, with and without an object timestamp.                           |
+| `Extent`, `Bounds`                                 | A latitude/longitude cell's bounds, and a two-number axis interval.                          |
+| `Grid`                                             | A grid locator with optional bounds and center.                                              |
+| `Range`                                            | Radio range.                                                                                 |
+| `Signal`, `Bearing`                                | Direction-finding signal and bearing information.                                            |
+| `Hop`                                              | An address in a packet's path.                                                               |
+| `Definition`                                       | A telemetry definition addressed to a station.                                               |
+| `Parameters`, `Units`, `Equations`, `Bits`         | Telemetry definition variants.                                                               |
+| `DefinitionValue`                                  | The union of telemetry definition variants.                                                  |
+| `Radiogram`                                        | One NTS message record and its delivery envelope, not a guarantee of an assembled radiogram. |
+| `Address`, `Phone`, `Text`, `Signature`, `Routing` | NTS record variants.                                                                         |
+| `Footprint`                                        | A query's geographic scope.                                                                  |
+| `Response`, `ResponseValue`                        | A query response and the union of its content variants.                                      |
+| `Trace`                                            | Trace-route response content.                                                                |
+| `Capability`                                       | A protocol capability token, distinct from runtime `CodecCapability`.                        |
+| `NMEA`                                             | An NMEA report containing a typed sentence.                                                  |
+| `Maidenhead`                                       | The historical bracket-style grid beacon.                                                    |
+| `Beacon`                                           | Uninterpreted non-APRS beacon text.                                                          |
+| `Invalid`                                          | An explicitly invalid/test payload.                                                          |
 
-`Weather` and `Telemetry` also retain their existing names while absorbing the
-other model's fields. `DefinitionValue` and `ResponseValue` remain named unions,
-not instantiable models or JSON tags. `Radiogram` represents one NTS message
-record and its delivery envelope, not a guarantee of an assembled radiogram.
-`Extent` is a latitude/longitude cell's bounds; `Bounds` remains the two-number
-axis interval alias. `Capability` is a protocol capability token, distinct from
-runtime `CodecCapability`. `Range` is radio range; `Grid` is a grid locator.
+Named unions describe allowed values; they are not instantiable models or JSON
+tags. Public policy aliases such as `ValidationProfile`, `TimestampKind` and
+`TelemetryEncoding` include their subject so their values are understandable
+outside a field annotation.
 
-## JSON tags
+## Qualified names
 
-| Before                 | After        |
-| ---------------------- | ------------ |
-| `cell_bounds`          | `extent`     |
-| `grid_locator`         | `grid`       |
-| `radio_range`          | `range`      |
-| `df_signal`            | `signal`     |
-| `df_bearing`           | `bearing`    |
-| `weather_fields`       | `weather`    |
-| `telemetry_data`       | `telemetry`  |
-| `telemetry_parameters` | `parameters` |
-| `telemetry_units`      | `units`      |
-| `telemetry_equations`  | `equations`  |
-| `telemetry_bits`       | `bits`       |
-| `nts_address`          | `address`    |
-| `nts_phone`            | `phone`      |
-| `nts_text`             | `text`       |
-| `nts_signature`        | `signature`  |
-| `nts_routing`          | `routing`    |
-| `query_footprint`      | `footprint`  |
-| `capability_token`     | `capability` |
-| `path_hop`             | `hop`        |
-| `telemetry_definition` | `definition` |
-| `nts_message`          | `radiogram`  |
-| `trace_route`          | `trace`      |
-| `query_response`       | `response`   |
-| `maidenhead_beacon`    | `maidenhead` |
-| `non_aprs_beacon`      | `beacon`     |
-| `invalid_test`         | `invalid`    |
-
-Existing `weather` and `telemetry` payload tags now identify the merged models;
-telemetry's channels move from `data` to direct fields. Tags already short, such
-as `object`, `item` and `nmea`, stay unchanged while Python adopts matching names.
-
-## Retained qualifiers
-
-These names carry distinctions that would be lost by dropping a word. Unchanged
-single-word names and protocol acronyms are not renamed just for uniformity.
-Public policy aliases such as `ValidationProfile`, `TimestampKind` and
-`TelemetryEncoding` retain their subject so their values are understandable
-outside a field annotation. Wire-codec errors/options and runtime capability
-metadata likewise keep their operational role.
+These qualifiers distinguish packet formats, field meanings or operational roles.
 
 | Python / JSON                                   | Reason                                                                                    |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------- |
@@ -128,7 +69,3 @@ metadata likewise keep their operational role.
 | `LegacyPosition` / `legacy_position`            | Historical prefix/position wrapper differs from `Position`.                               |
 | `ExternalExtension` / `external_extension`      | External/vendor grammar and source evidence differ from standard `Extensions`.            |
 | `EncodedPacketFields` / `encoded_packet_fields` | Joint header/information encoding result differs from semantic `Packet` or a radio frame. |
-
-No new codecs or transmissions are introduced. The naming changes preserve
-bytes, default/null distinctions, strict validation, nested packets, and explicit
-unsupported-codec behavior.

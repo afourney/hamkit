@@ -161,4 +161,4 @@ or classes. No comprehensive vector-compliance claim is made.
 
 Weather and telemetry use the same semantic model as a full payload or nested
 field. Metadata is retained in both contexts; neither has a wire codec yet.
-See [the naming audit](NAMING.md) for the public-name changes.
+See [the naming guide](NAMING.md) for model names and their meanings.

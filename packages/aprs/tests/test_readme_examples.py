@@ -2,71 +2,148 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Execute the README cookbook and verify its advertised output and source bytes."""
+"""Keep the README a runnable, independent, one-input/one-output cookbook."""
 
 import ast
 import contextlib
+import dataclasses
 import io
-import json
 import re
 import unittest
 from pathlib import Path
 from typing import Any, ClassVar, get_args
 
-from hamkit.aprs import Payload
+import hamkit.aprs as a
 
 
 class ReadmeTests(unittest.TestCase):
-    namespace: ClassVar[dict[str, Any]]
-    outputs: ClassVar[list[tuple[str, str]]]
+    examples: ClassVar[list[tuple[str, str, str, str]]]
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.namespace = {"__name__": "readme_examples"}
-        cls.outputs = []
-        readme = (Path(__file__).parents[1] / "README.md").read_text()
-        pattern = r"```python\n(.*?)\n```(?:\n\nOutput:\n\n```text\n(.*?)\n```)?"
-        for index, match in enumerate(re.finditer(pattern, readme, re.DOTALL)):
-            code, expected = match.groups()
-            ast.parse(code, feature_version=(3, 10))
-            output = io.StringIO()
-            with contextlib.redirect_stdout(output):
-                exec(  # noqa: S102 - execute trusted repository documentation as tests
-                    compile(code, f"README example {index + 1}", "exec"), cls.namespace
+        document = (Path(__file__).parents[1] / "README.md").read_text()
+        blocks = list(re.finditer(r"```(\w+)\n(.*?)\n```", document, re.DOTALL))
+        cls.examples = []
+        for index in range(0, len(blocks), 2):
+            source, output = blocks[index : index + 2]
+            if source[1] not in ("python", "json") or output[1] != "text":
+                raise AssertionError(
+                    "Each input must immediately pair with text output"
                 )
-            cls.outputs.append((output.getvalue(), expected + "\n" if expected else ""))
+            between = document[source.end() : output.start()]
+            if source[1] == "python":
+                if between != "\n\nOutput:\n\n":
+                    raise AssertionError(
+                        "Python input must have immediate Output block"
+                    )
+                usage = source[2]
+            else:
+                match = re.fullmatch(
+                    r"\n\nRun with the JSON above as `json_text`: `([^`]+)`\n\nOutput:\n\n",
+                    between,
+                )
+                if not match:
+                    raise AssertionError(
+                        "JSON input must pair with its call and output"
+                    )
+                usage = match[1]
+            cls.examples.append((source[1], source[2], usage, output[2] + "\n"))
 
-    def test_printed_results_match_documentation(self) -> None:
-        self.assertGreaterEqual(len(self.outputs), 14)
-        for index, (actual, expected) in enumerate(self.outputs):
-            with self.subTest(example=index + 1):
-                self.assertEqual(actual, expected)
+    def run_example(
+        self, language: str, source: str, code: str, expected: str
+    ) -> dict[str, Any]:
+        # Fresh namespace: examples cannot depend on a setup block or earlier packet.
+        namespace: dict[str, Any] = {"__name__": "readme_example"}
+        if language == "json":
+            namespace["json_text"] = source
+        ast.parse(code, feature_version=(3, 10))
+        captured = io.StringIO()
+        with contextlib.redirect_stdout(captured):
+            exec(compile(code, "README example", "exec"), namespace)  # noqa: S102
+        self.assertEqual(captured.getvalue(), expected)
+        return namespace
 
-    def test_every_payload_has_a_construction_and_decode_example(self) -> None:
-        constructed = self.namespace["constructed"]
-        received = self.namespace["received"]
-        self.assertEqual(constructed.keys(), received.keys())
+    def test_every_example_runs_independently_with_exact_output(self) -> None:
         self.assertEqual(
-            {type(p.payload) for p in constructed.values()}, set(get_args(Payload))
-        )
+            len(self.examples), 63
+        )  # 29 Python/JSON pairs, 4 parsing inputs, and one unsupported encoding.
+        for index, example in enumerate(self.examples):
+            with self.subTest(example=index + 1):
+                self.run_example(*example)
 
-    def test_referenced_vector_bytes_are_exact(self) -> None:
-        document = (
-            Path(__file__).parents[1] / "docs" / "APRS_COMPLIANCE_VECTORS.md"
-        ).read_text()
-        cases = {}
-        for block in re.findall(r"```json\n(.*?)\n```", document, re.DOTALL):
-            case = json.loads(block)
-            if "id" in case:
-                cases[case["id"]] = case
-        for name, packet in self.namespace["received"].items():
-            with self.subTest(vector=name):
-                if name in ("Agrelo", "external-vendor"):
-                    continue  # Explicit grammar/vendor-wrapper illustrations, not corpus IDs.
-                self.assertIn(name, cases)
-                case = cases[name]
-                raw = case["packet"].encode("latin-1")
-                self.assertEqual(packet.original_wire, raw)
-                self.assertEqual(len(raw), case["packet_length_bytes"])
-                if "packet_hex" in case:
-                    self.assertEqual(raw, bytes.fromhex(case["packet_hex"]))
+    def test_one_input_per_block_without_loops_or_shared_helpers(self) -> None:
+        for language, source, code, _ in self.examples:
+            with self.subTest(source=source[:80]):
+                if language == "json":
+                    self.assertIsInstance(a.from_json(source), a.Packet)
+                    continue
+                tree = ast.parse(code)
+                forbidden = (
+                    ast.For,
+                    ast.While,
+                    ast.ListComp,
+                    ast.SetComp,
+                    ast.DictComp,
+                    ast.GeneratorExp,
+                    ast.FunctionDef,
+                    ast.AsyncFunctionDef,
+                )
+                self.assertFalse(any(isinstance(n, forbidden) for n in ast.walk(tree)))
+                inputs = [
+                    n
+                    for n in ast.walk(tree)
+                    if isinstance(n, ast.Assign)
+                    and any(
+                        isinstance(t, ast.Name) and t.id == "packet" for t in n.targets
+                    )
+                ]
+                self.assertEqual(len(inputs), 1)
+                value = inputs[0].value
+                self.assertIsInstance(value, ast.Call)
+                assert isinstance(value, ast.Call)
+                self.assertIsInstance(value.func, ast.Attribute)
+                assert isinstance(value.func, ast.Attribute)
+                self.assertIn(value.func.attr, ("Packet", "parse_packet"))
+                if value.func.attr == "parse_packet":
+                    self.assertEqual(len(value.args), 1)
+                    self.assertIsInstance(value.args[0], ast.Constant)
+                    self.assertIsInstance(ast.literal_eval(value.args[0]), bytes)
+
+    def test_every_family_has_equivalent_python_and_json_construction(self) -> None:
+        families = set()
+        for index, (language, source, _, _) in enumerate(self.examples):
+            if language != "json":
+                continue
+            previous = self.examples[index - 1]
+            self.assertEqual(previous[0], "python")
+            python_packet = self.run_example(*previous)["packet"]
+            json_packet = a.from_json(source, expected_type=a.Packet)
+            self.assertEqual(
+                dataclasses.asdict(python_packet), dataclasses.asdict(json_packet)
+            )
+            families.add(type(json_packet.payload))
+            # Model-only examples really are unencodable. Working ones must emit
+            # the displayed TNC2 line, not a hypothetical future encoding.
+            if a.capability_for(json_packet.payload).encode == "unimplemented":
+                with self.assertRaises(a.CodecNotImplemented):
+                    a.serialize_packet(json_packet)
+            else:
+                self.assertEqual(
+                    a.serialize_packet(json_packet).decode("ascii") + "\n",
+                    self.examples[index][3],
+                )
+        self.assertEqual(families, set(get_args(a.Payload)))
+
+    def test_successful_parsing_shows_both_object_and_pretty_json(self) -> None:
+        count = 0
+        for language, source, _, _ in self.examples:
+            if (
+                language != "python"
+                or "a.parse_packet(" not in source
+                or "try:" in source
+            ):
+                continue
+            self.assertIn("print(packet)", source)
+            self.assertIn("print(a.to_json(packet, indent=2))", source)
+            count += 1
+        self.assertEqual(count, 3)

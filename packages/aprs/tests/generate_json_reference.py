@@ -112,7 +112,7 @@ def generate() -> str:
     samples = catalog_examples()
     doc = """# APRS JSON reference
 
-This is the canonical JSON format for `hamkit-aprs` 0.0.1a5. Examples are
+This is the canonical JSON format for `hamkit-aprs`. Examples are
 pretty-printed, executable data, with nested values expanded. They illustrate
 values, not legal ranges or complete APRS wire support. The field tables are the
 shape contract: every field, requiredness, default, allowed enum, unit and nested
@@ -162,12 +162,11 @@ required. Object property order is not meaningful.
   directly. Weather carries optional timestamp/comment; telemetry carries a
   comment alongside its channels, sequence and encoding evidence. Nothing is
   discarded when either model is nested. Empty payloads are `{"type":"weather"}`
-  and `{"type":"telemetry"}`. See the [naming audit](NAMING.md) for the full map
-  and the reasons some qualified names remain.
+  and `{"type":"telemetry"}`. See the [naming guide](NAMING.md) for the meanings
+  of short names and the reasons for qualified names.
 - Third-party payloads contain `packet`, whose fixed Packet object is untagged;
   the inner `payload` has its own tag. See [ThirdParty](#thirdparty).
-- Older untagged inferred shapes and ambiguity-driven field aliases are not
-  accepted. JSON field names match Python attributes.
+- JSON field names match Python attributes.
 
 ## Values, defaults and constraints
 
