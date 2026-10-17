@@ -79,3 +79,14 @@ explicit_package_bases = true
 # hamkit, as first-party keeps import order the same whichever directory ruff
 # runs from; otherwise package-dir and repository-root runs disagree.
 known-first-party = ["hamkit", "generate_json_reference", "model_examples", "vector_adapter"]
+
+[tool.hatch.envs.default]
+extra-dependencies = ["pytest>=8,<10"]
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+xfail_strict = true

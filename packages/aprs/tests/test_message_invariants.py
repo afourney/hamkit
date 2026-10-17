@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
 # SPDX-License-Identifier: MIT
 """Message-family constructor rules apply before the wire codecs exist."""
+
 import unittest
 from typing import Any
 
@@ -34,8 +35,8 @@ class MessageInvariantTests(unittest.TestCase):
             a.Status("", grid=grid, symbol=symbol, timestamp=a.Timestamp.dhm(1, 1, 2))
         valid = a.Status(" House", grid=grid, symbol=symbol)
         self.assertEqual(a.from_json(a.to_json(valid)), valid)
-        with self.assertRaises(a.CodecNotImplementedError):
-            a.serialize_packet(a.Packet(a.Header("N0CALL", "APRS"), valid))
+        packet = a.Packet(a.Header("N0CALL", "APRS"), valid)
+        self.assertEqual(a.parse_packet(a.serialize_packet(packet)), packet)
 
     def test_reply_ack_is_one_suffix(self) -> None:
         for fields in (
@@ -80,8 +81,8 @@ class MessageInvariantTests(unittest.TestCase):
             self.assert_invalid(a.Query, fields, "query")
         query = a.Query("CUSTOM", arguments=b"\xff")
         self.assertEqual(a.from_json(a.to_json(query)), query)
-        with self.assertRaises(a.CodecNotImplementedError):
-            a.serialize_packet(a.Packet(a.Header("N0CALL", "APRS"), query))
+        packet = a.Packet(a.Header("N0CALL", "APRS"), query)
+        self.assertEqual(a.parse_packet(a.serialize_packet(packet)), packet)
         with self.assertRaises(a.ModelError):
             a.Footprint(a.Coordinates(0, 0), -1)
 

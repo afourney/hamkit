@@ -94,7 +94,6 @@ from ._models import (
     Diagnostic,
     DiagnosticCode,
     DirectStations,
-    EnvelopeProfile,
     ExternalExtension,
     Header,
     HeardStation,
@@ -128,14 +127,17 @@ from ._models import (
     UserDefined,
 )
 from ._nmea import GGA, GLL, RMC, VTG, WPL, NMEAMetadata, NMEASentence
+from ._policy import APRS_IS, RF, EnvelopePolicy
 from ._transport import parse_tnc2_line, serialize_tnc2_line
 
 __all__ = [
+    "APRS_IS",
     "DAO",
     "GGA",
     "GLL",
     "NMEA",
     "PHG",
+    "RF",
     "RMC",
     "VTG",
     "WPL",
@@ -165,7 +167,7 @@ __all__ = [
     "DigitalChannels",
     "DirectStations",
     "EnvelopeError",
-    "EnvelopeProfile",
+    "EnvelopePolicy",
     "Extensions",
     "Extent",
     "ExternalExtension",

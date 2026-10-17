@@ -41,7 +41,7 @@ the packet is sent, not a property of the model.
 | `Malformed`                  | Input with undecodable fields; a parse result, never a Packet or payload.                    |
 
 Named unions describe allowed values; they are not instantiable models or JSON
-tags. Policy aliases such as `EnvelopeProfile`, `TimestampKind` and
+tags. Type aliases such as `TimestampKind` and
 `TelemetryEncoding` include their subject so their values are understandable
 outside a field annotation.
 

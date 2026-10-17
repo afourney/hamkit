@@ -2,7 +2,9 @@
 
 Edition 1 — prepared 2026-10-15. Source baseline: APRS Protocol Reference document 1.0.1, the live APRS 1.1 addendum and selected clarifications it links, and the pinned `hessu/go-aprs-fap` tests.
 
-This document contains **1,545 numbered cases: 1,538 individual packet cases and 7 stateful sequences containing 23 additional packet occurrences**. There are 1,028 specification-derived, historical, policy, ambiguity, and robustness cases, plus 517 FAP compatibility snapshots. The individual cases contain 1,515 distinct byte strings. Repeated strings are intentional where profiles or parser options change the expected result.
+Amended 2026-10-17: added [WX-067](#wx-067)–[WX-069](#wx-069) for the placement of weather software/unit codes (APRS101 pp. 63–66). The verification notes below describe the original edition.
+
+This document contains **1,548 numbered cases: 1,541 individual packet cases and 7 stateful sequences containing 23 additional packet occurrences**. There are 1,031 specification-derived, historical, policy, ambiguity, and robustness cases, plus 517 FAP compatibility snapshots. The individual cases contain 1,518 distinct byte strings. Repeated strings are intentional where profiles or parser options change the expected result.
 
 Every packet is fully expanded. JSON strings preserve padding, backslashes, embedded colons, control bytes, and high-bit bytes. The decoded fields are intended as inputs to an implementation-neutral test adapter; the FAP appendix deliberately uses a separate schema. This is a broad finite corpus, not a claim that all possible APRS byte combinations, products, or later extensions have been enumerated.
 
@@ -20,7 +22,7 @@ Every packet is fully expanded. JSON strings preserve padding, backslashes, embe
 - [CMP: Compressed positions](#family-cmp) — 122 cases
 - [MIC: Mic-E](#family-mic) — 265 cases
 - [OBJ: Objects, items, areas and signposts](#family-obj) — 53 cases
-- [WX: Weather and storms](#family-wx) — 66 cases
+- [WX: Weather and storms](#family-wx) — 69 cases
 - [TLM: Telemetry and definition messages](#family-tlm) — 18 cases
 - [MSG: Messages, bulletins, announcements and radiograms](#family-msg) — 45 cases
 - [QRY: Queries and station capabilities](#family-qry) — 20 cases
@@ -110,7 +112,7 @@ Exact conversions used: 1 knot = 1.852 km/h = 1852/3600 m/s; 1 mph = 0.44704 m/s
 
 | Profile                    | Cases | Purpose                                                                                                                         |
 | -------------------------- | ----: | ------------------------------------------------------------------------------------------------------------------------------- |
-| `core-1.1`                 |   801 | APRS101 plus explicit live-addendum corrections; field decoding and selected application semantics.                             |
+| `core-1.1`                 |   804 | APRS101 plus explicit live-addendum corrections; field decoding and selected application semantics.                             |
 | `historical-1.0`           |    41 | Legacy behavior retained for deliberate backward compatibility; not a modern transmission recommendation.                       |
 | `strict-envelope`          |    14 | RF/TNC2 transmitter and envelope constraints. Do not apply RF address restrictions indiscriminately to APRS-IS.                 |
 | `strict-validation`        |   112 | Malformed fields, width/range limits, or a stated conservative extension-extraction policy. Valid surrounding data may survive. |
@@ -140,26 +142,26 @@ Stateful records have `steps` instead of a single `packet` and `outcome`. Reset 
 
 ## Coverage and verification
 
-| Family             | Cases | Coverage                                                                                                                                                            |
-| ------------------ | ----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [HDR](#family-hdr) |    51 | Envelope splitting; repeated markers; eight-hop boundary; destination dispatch; historical destination-SSID routing.                                                |
-| [POS](#family-pos) |    68 | Four position DTIs; hemispheres and poles; null convention; all ambiguity levels; comments and overlays.                                                            |
-| [TIM](#family-tim) |    20 | DHM UTC/local, HMS, weather MDHM, component boundaries, invalid timestamps, status timestamp restrictions.                                                          |
-| [EXT](#family-ext) |    50 | Course/speed; altitude placement; PHG height/gain/directivity; explicit range; DFS and every DF quality code.                                                       |
-| [CMP](#family-cmp) |   122 | Coordinate quantization; table/overlay encoding; motion/range/altitude precedence; all 64 six-bit compression types.                                                |
-| [MIC](#family-mic) |   265 | All longitude degrees 0–179; minute/hundredth boundaries; message-bit combinations; speed/course encodings; ambiguity; type markers; altitude and legacy telemetry. |
-| [OBJ](#family-obj) |    53 | Object/item live and killed forms; name boundaries; compressed and moving forms; ten area shapes; sixteen colors; signposts.                                        |
-| [WX](#family-wx)   |    66 | Positionless/uncompressed/compressed weather; missing and zero values; temperatures; humidity/pressure; rain windows; luminosity; snowfall; water level; storms.    |
-| [TLM](#family-tlm) |    18 | Numeric/MIC sequence fields; five analog/eight digital channels; definition messages; partial/empty definitions.                                                    |
-| [MSG](#family-msg) |    45 | Text/ID/address limits; groups; ack/rej; reply-ack; automatic answers; bulletins/announcements/NWS; NTS record types.                                               |
-| [QRY](#family-qry) |    20 | General and directed queries; geographic footprints; response payloads; capability tokens.                                                                          |
-| [STA](#family-sta) |    29 | Empty/padded/timed status; Maidenhead cells; beam heading/ERP; suffix anchoring.                                                                                    |
-| [NME](#family-nme) |    36 | GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; historical SSID symbols; symbol precedence.                                                |
-| [NET](#family-net) |    15 | Third-party nested envelopes; no-gate/no-archive; q-token preservation; AEA adapter.                                                                                |
-| [OTH](#family-oth) |    38 | Opaque vendor formats; user-defined binary data; explicit invalid/test; obsolete grids/beacons; reserved DTIs; old/new X1J behavior.                                |
-| [BAD](#family-bad) |   125 | Envelope, field width, coordinate range, truncation, symbol, compression, message, telemetry, weather, and nested-packet failures.                                  |
-| [SEQ](#family-seq) |     7 | Object ownership/lifecycle; case/name identity; duplicate messages/reply-ack; telemetry calibration; bulletins; status precedence; weather association.             |
-| [FAP](#family-fap) |   517 | Every captured root-parser invocation plus eligible full-packet/encoder/CLI supplements from the pinned tests.                                                      |
+| Family             | Cases | Coverage                                                                                                                                                                                       |
+| ------------------ | ----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [HDR](#family-hdr) |    51 | Envelope splitting; repeated markers; eight-hop boundary; destination dispatch; historical destination-SSID routing.                                                                           |
+| [POS](#family-pos) |    68 | Four position DTIs; hemispheres and poles; null convention; all ambiguity levels; comments and overlays.                                                                                       |
+| [TIM](#family-tim) |    20 | DHM UTC/local, HMS, weather MDHM, component boundaries, invalid timestamps, status timestamp restrictions.                                                                                     |
+| [EXT](#family-ext) |    50 | Course/speed; altitude placement; PHG height/gain/directivity; explicit range; DFS and every DF quality code.                                                                                  |
+| [CMP](#family-cmp) |   122 | Coordinate quantization; table/overlay encoding; motion/range/altitude precedence; all 64 six-bit compression types.                                                                           |
+| [MIC](#family-mic) |   265 | All longitude degrees 0–179; minute/hundredth boundaries; message-bit combinations; speed/course encodings; ambiguity; type markers; altitude and legacy telemetry.                            |
+| [OBJ](#family-obj) |    53 | Object/item live and killed forms; name boundaries; compressed and moving forms; ten area shapes; sixteen colors; signposts.                                                                   |
+| [WX](#family-wx)   |    69 | Positionless/uncompressed/compressed weather; missing and zero values; temperatures; humidity/pressure; rain windows; luminosity; snowfall; water level; storms; software/unit code placement. |
+| [TLM](#family-tlm) |    18 | Numeric/MIC sequence fields; five analog/eight digital channels; definition messages; partial/empty definitions.                                                                               |
+| [MSG](#family-msg) |    45 | Text/ID/address limits; groups; ack/rej; reply-ack; automatic answers; bulletins/announcements/NWS; NTS record types.                                                                          |
+| [QRY](#family-qry) |    20 | General and directed queries; geographic footprints; response payloads; capability tokens.                                                                                                     |
+| [STA](#family-sta) |    29 | Empty/padded/timed status; Maidenhead cells; beam heading/ERP; suffix anchoring.                                                                                                               |
+| [NME](#family-nme) |    36 | GGA/GLL/RMC/VTG/WPL; checksum and no-fix isolation; destination symbols; historical SSID symbols; symbol precedence.                                                                           |
+| [NET](#family-net) |    15 | Third-party nested envelopes; no-gate/no-archive; q-token preservation; AEA adapter.                                                                                                           |
+| [OTH](#family-oth) |    38 | Opaque vendor formats; user-defined binary data; explicit invalid/test; obsolete grids/beacons; reserved DTIs; old/new X1J behavior.                                                           |
+| [BAD](#family-bad) |   125 | Envelope, field width, coordinate range, truncation, symbol, compression, message, telemetry, weather, and nested-packet failures.                                                             |
+| [SEQ](#family-seq) |     7 | Object ownership/lifecycle; case/name identity; duplicate messages/reply-ack; telemetry calibration; bulletins; status precedence; weather association.                                        |
+| [FAP](#family-fap) |   517 | Every captured root-parser invocation plus eligible full-packet/encoder/CLI supplements from the pinned tests.                                                                                 |
 
 Verification performed while building this edition:
 
@@ -33244,6 +33246,148 @@ Positionless/uncompressed/compressed weather; missing and zero values; temperatu
 }
 ```
 
+<a id="wx-067"></a>
+
+### WX-067 — APRS101 rain-gauge example: trailing text as software/unit
+
+```json
+{
+  "id": "WX-067",
+  "title": "APRS101 rain-gauge example: trailing text as software/unit",
+  "profile": "core-1.1",
+  "outcome": "accept",
+  "source": "APRS101 pp. 63-64",
+  "packet": "N0CALL>APRS:_10090556c...s...g...t...P012Jim",
+  "expected": {
+    "header": {
+      "source": "N0CALL",
+      "destination": "APRS",
+      "path": []
+    },
+    "kind": "weather",
+    "timestamp": {
+      "raw": "10090556",
+      "format": "MDHM",
+      "zone": "UTC",
+      "month": 10,
+      "day": 9,
+      "hour": 5,
+      "minute": 56
+    },
+    "weather": {
+      "wind_direction_deg": null,
+      "wind_speed_mph": null,
+      "wind_speed_mps": null,
+      "gust_mph": null,
+      "gust_mps": null,
+      "temperature_f": null,
+      "temperature_c": null,
+      "rain_since_midnight_hundredth_in": 12,
+      "rain_since_midnight_mm": 3.048,
+      "software_code": "J",
+      "device_code": "im"
+    }
+  },
+  "note": "The specification's own example. By the p.63 layout a report ends with the optional software code S (1 byte) and unit code uuuu (2-4 bytes), so the trailing 'Jim' is software 'J' and unit 'im'. The grammar cannot distinguish a short name from these codes.",
+  "packet_length_bytes": 44
+}
+```
+
+<a id="wx-068"></a>
+
+### WX-068 — Short trailing text reads as software/unit codes
+
+```json
+{
+  "id": "WX-068",
+  "title": "Short trailing text reads as software/unit codes",
+  "profile": "core-1.1",
+  "outcome": "accept",
+  "source": "APRS101 p. 63",
+  "packet": "N0CALL>APRS:_10090556c220s004g005t077P012Home",
+  "expected": {
+    "header": {
+      "source": "N0CALL",
+      "destination": "APRS",
+      "path": []
+    },
+    "kind": "weather",
+    "timestamp": {
+      "raw": "10090556",
+      "format": "MDHM",
+      "zone": "UTC",
+      "month": 10,
+      "day": 9,
+      "hour": 5,
+      "minute": 56
+    },
+    "weather": {
+      "wind_direction_deg": 220,
+      "wind_speed_mph": 4,
+      "wind_speed_mps": 1.78816,
+      "gust_mph": 5,
+      "gust_mps": 2.2352,
+      "temperature_f": 77,
+      "temperature_c": 25.0,
+      "rain_since_midnight_hundredth_in": 12,
+      "rain_since_midnight_mm": 3.048,
+      "software_code": "H",
+      "device_code": "ome"
+    }
+  },
+  "note": "Unit codes are open-ended ('Users may specify any other 2-4 character code'), so any 3-5 trailing characters that end the report are read as S plus uuuu. Receivers must not reinterpret them as comment text.",
+  "packet_length_bytes": 45
+}
+```
+
+<a id="wx-069"></a>
+
+### WX-069 — Text after software/unit codes is comment
+
+```json
+{
+  "id": "WX-069",
+  "title": "Text after software/unit codes is comment",
+  "profile": "core-1.1",
+  "outcome": "accept",
+  "source": "APRS101 pp. 63-66",
+  "packet": "N0CALL>APRS:_10090556c220s004g005t077P012wRSW home",
+  "expected": {
+    "header": {
+      "source": "N0CALL",
+      "destination": "APRS",
+      "path": []
+    },
+    "kind": "weather",
+    "timestamp": {
+      "raw": "10090556",
+      "format": "MDHM",
+      "zone": "UTC",
+      "month": 10,
+      "day": 9,
+      "hour": 5,
+      "minute": 56
+    },
+    "weather": {
+      "wind_direction_deg": 220,
+      "wind_speed_mph": 4,
+      "wind_speed_mps": 1.78816,
+      "gust_mph": 5,
+      "gust_mps": 2.2352,
+      "temperature_f": 77,
+      "temperature_c": 25.0,
+      "rain_since_midnight_hundredth_in": 12,
+      "rain_since_midnight_mm": 3.048,
+      "software_code": null,
+      "device_code": null
+    },
+    "comment": "wRSW home"
+  },
+  "note": "Every weather format ends with the optional S and uuuu codes; none defines a comment after them. Text that does not end the report as exactly those codes is retained as comment and no codes are inferred. Transmitters must not place a comment after the codes.",
+  "packet_length_bytes": 50
+}
+```
+
 <a id="family-tlm"></a>
 
 ## TLM — Telemetry and definition messages
@@ -35924,7 +36068,7 @@ General and directed queries; geographic footprints; response payloads; capabili
       "ack_requested": false
     },
     "query": {
-      "type": "PING?",
+      "type": "PING",
       "directed": true,
       "ack_requested": false
     }

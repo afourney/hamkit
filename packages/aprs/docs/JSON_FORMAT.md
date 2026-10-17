@@ -178,12 +178,12 @@ Standalone tag: `measurement`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field   | JSON value / allowed values                                                                                                                                                                                                                                                      | Presence / default       |
-| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| `type`  | `"measurement"`                                                                                                                                                                                                                                                                  | see [Tags](#tags)        |
-| `value` | finite number or null                                                                                                                                                                                                                                                            | **required**             |
-| `unit`  | `'degrees'`, `'knots'`, `'mph'`, `'m/s'`, `'km/h'`, `'feet'`, `'meters'`, `'miles'`, `'nautical_miles'`, `'fahrenheit'`, `'celsius'`, `'percent'`, `'hPa'`, `'inches'`, `'mm'`, `'W/m2'`, `'watts'`, `'dBi'`, `'dB'`, `'S_units'`, `'count'`, `'raw'`, `'disputed_knots_or_mph'` | **required**             |
-| `raw`   | Latin-1 byte string or null                                                                                                                                                                                                                                                      | optional; default `null` |
+| Field   | JSON value / allowed values                                                                                                                                                                                                                                                                            | Presence / default       |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
+| `type`  | `"measurement"`                                                                                                                                                                                                                                                                                        | see [Tags](#tags)        |
+| `value` | finite number or null                                                                                                                                                                                                                                                                                  | **required**             |
+| `unit`  | `'degrees'`, `'knots'`, `'mph'`, `'m/s'`, `'km/h'`, `'feet'`, `'meters'`, `'miles'`, `'nautical_miles'`, `'fahrenheit'`, `'celsius'`, `'percent'`, `'hPa'`, `'inches'`, `'mm'`, `'W/m2'`, `'nSv/h'`, `'volts'`, `'watts'`, `'dBi'`, `'dB'`, `'S_units'`, `'count'`, `'raw'`, `'disputed_knots_or_mph'` | **required**             |
+| `raw`   | Latin-1 byte string or null                                                                                                                                                                                                                                                                            | optional; default `null` |
 
 ### Timestamp
 
@@ -563,6 +563,8 @@ Weather measurements are direct JSON properties; `weather` is not a JSON propert
   "luminosity": null,
   "rain_counter": null,
   "water_height": null,
+  "radiation": null,
+  "battery_voltage": null,
   "software_code": null,
   "device_code": null,
   "timestamp": {
@@ -595,6 +597,8 @@ Weather measurements are direct JSON properties; `weather` is not a JSON propert
 | `luminosity`          | [Measurement](#measurement) or null | optional; default `null` |
 | `rain_counter`        | [Measurement](#measurement) or null | optional; default `null` |
 | `water_height`        | [WaterHeight](#waterheight) or null | optional; default `null` |
+| `radiation`           | [Measurement](#measurement) or null | optional; default `null` |
+| `battery_voltage`     | [Measurement](#measurement) or null | optional; default `null` |
 | `software_code`       | string or null                      | optional; default `null` |
 | `device_code`         | string or null                      | optional; default `null` |
 | `timestamp`           | [Timestamp](#timestamp) or null     | optional; default `null` |
@@ -650,16 +654,16 @@ Standalone tag: `telemetry`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field          | JSON value / allowed values                                                         | Presence / default            |
-| -------------- | ----------------------------------------------------------------------------------- | ----------------------------- |
-| `type`         | `"telemetry"`                                                                       | see [Tags](#tags)             |
-| `analog`       | array of finite number or null                                                      | optional; default `[]`        |
-| `digital`      | array of boolean or null                                                            | optional; default `[]`        |
-| `sequence`     | integer or `'MIC'` or null                                                          | optional; default `null`      |
-| `encoding`     | `'classic'`, `'mic_e_hex'`, `'mic_e_binary'`, `'base91_comment'`, `'compatibility'` | optional; default `'classic'` |
-| `comment`      | string                                                                              | optional; default `""`        |
-| `sequence_raw` | Latin-1 byte string or null                                                         | optional; default `null`      |
-| `raw`          | Latin-1 byte string or null                                                         | optional; default `null`      |
+| Field          | JSON value / allowed values                                      | Presence / default            |
+| -------------- | ---------------------------------------------------------------- | ----------------------------- |
+| `type`         | `"telemetry"`                                                    | see [Tags](#tags)             |
+| `analog`       | array of finite number or null                                   | optional; default `[]`        |
+| `digital`      | array of boolean or null                                         | optional; default `[]`        |
+| `sequence`     | integer or `'MIC'` or null                                       | optional; default `null`      |
+| `encoding`     | `'classic'`, `'mic_e_hex'`, `'mic_e_binary'`, `'base91_comment'` | optional; default `'classic'` |
+| `comment`      | string                                                           | optional; default `""`        |
+| `sequence_raw` | Latin-1 byte string or null                                      | optional; default `null`      |
+| `raw`          | Latin-1 byte string or null                                      | optional; default `null`      |
 
 ### Extensions
 
@@ -695,6 +699,8 @@ Standalone tag: `extensions`. [Back to type map](#type-map-and-object-catalog).
     "luminosity": null,
     "rain_counter": null,
     "water_height": null,
+    "radiation": null,
+    "battery_voltage": null,
     "software_code": null,
     "device_code": null,
     "timestamp": null,
@@ -2472,6 +2478,8 @@ Each allowed member is shown in its actual container, where it carries its tag.
     "luminosity": null,
     "rain_counter": null,
     "water_height": null,
+    "radiation": null,
+    "battery_voltage": null,
     "software_code": null,
     "device_code": null,
     "timestamp": {

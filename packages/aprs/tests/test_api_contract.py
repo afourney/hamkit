@@ -20,7 +20,14 @@ class ModelContractTests(unittest.TestCase):
         self.assertEqual({c.model for c in a.codec_support()}, set(get_args(a.Payload)))
         for payload in examples:
             with self.subTest(model=type(payload).__name__):
-                packet = a.Packet(HEADER, payload)
+                packet = a.Packet(
+                    (
+                        a.Header("N0CALL", "TY0P0P")
+                        if isinstance(payload, a.MicE)
+                        else HEADER
+                    ),
+                    payload,
+                )
                 self.assertIs(packet.payload, payload)
                 self.assertEqual(a.check_packet(packet), ())
                 if a.codec_support_for(payload).encode == "unimplemented":
@@ -37,7 +44,9 @@ class ModelContractTests(unittest.TestCase):
             and dataclasses.is_dataclass(getattr(a, name))
         }
         self.assertEqual(
-            {type(v) for v in (*field_examples(), *payload_examples())}, public
+            # EnvelopePolicy is configuration data, not a packet JSON model.
+            {type(v) for v in (*field_examples(), *payload_examples(), a.RF)},
+            public,
         )
 
     def test_public_annotations_resolve(self) -> None:
@@ -63,6 +72,7 @@ class ModelContractTests(unittest.TestCase):
             "Path",
             "HeaderSemantics",
             "EncodedPacketFields",
+            "EnvelopeProfile",
             "DecodeOptions",
             "EncodeOptions",
             "get_capabilities",
@@ -183,22 +193,15 @@ class ModelContractTests(unittest.TestCase):
         )
         with self.assertRaises(a.ContextRequiredError):
             a.serialize_payload(mic_e)
-        with self.assertRaises(a.CodecNotImplementedError):
+        with self.assertRaises(a.FieldError):
             a.serialize_packet(a.Packet(HEADER, mic_e))
-        with self.assertRaises(a.CodecNotImplementedError):
-            a.parse_payload(
-                b"`12345678",
-                header=a.Header("N0CALL", "490S5P"),
-                unsupported="raise",
-            )
-        parsed = a.parse_packet(b"N0CALL>490S5P:`12345678")
-        assert isinstance(parsed, a.Packet)
+        parsed = a.parse_packet(b"N0CALL>490S5P:`123456>/")
+        assert isinstance(parsed, a.Packet) and isinstance(parsed.payload, a.MicE)
         self.assertEqual(parsed.header.destination, "490S5P")
-        self.assertIsInstance(parsed.payload, a.Opaque)
+        self.assertEqual(a.parse_packet(a.serialize_packet(parsed)), parsed)
 
     def test_option_values_are_checked(self) -> None:
         for kwargs in (
-            {"profile": "radio"},
             {"unsupported": "ignore"},
             {"malformed": "opaque"},
             {"max_third_party_depth": -1},

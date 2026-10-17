@@ -1,0 +1,410 @@
+{
+  "reasons": {
+    "whitespace": "Comment text keeps its leading and trailing spaces exactly as transmitted; FAP trims them.",
+    "case": "Callsigns keep the case transmitted; FAP uppercases them.",
+    "course_zero": "A compressed course byte of 0 is reported as 0 degrees, as transmitted; FAP rewrites it to 360.",
+    "mic_e_sequence": "Mic-E hex telemetry carries no sequence number, so none is reported; FAP reports 0.",
+    "nmea_precision": "NMEA course keeps the transmitted precision; FAP rounds to whole degrees.",
+    "nmea_symbol": "APRS101 assigns a default symbol from the source SSID when NMEA has no symbol destination (SSID 11 is the balloon, /O); FAP reports no symbol.",
+    "parm_case": "APRS101 defines the telemetry keywords in upper case, so 'parm.' is ordinary message text; FAP matches them case-insensitively.",
+    "wx_symbol": "A weather-station symbol with no weather fields is a position with a comment; FAP reports an empty weather report and discards the comment.",
+    "disputed_wind": "The uncompressed wind-speed unit is disputed between the specifications and stays marked as disputed; FAP assumes mph.",
+    "user_defined": "'{' is APRS101's user-defined data type, so this decodes as user-defined data; FAP rejects experimental formats.",
+    "unknown_nmea": "Unknown NMEA sentences are kept as opaque data with an 'unsupported' diagnostic, not rejected.",
+    "vtg": "$GPVTG is a supported NMEA sentence (course and speed only, so no usable position); FAP rejects it.",
+    "beacon": "Text with no position in the first 40 bytes is a non-APRS beacon, kept as text; FAP rejects it.",
+    "mic_e_type_suffix": "APRS 1.2 Mic-E type codes end the status text with a declared version suffix (\"=\" after \"]\" is the TM-D710); it is part of device_code, not comment text.",
+    "mic_e_type_byte": "APRS 1.2 redefines a leading ` or ' as a Mic-E type byte; APRS101 hex telemetry needs the complete form (10 hex digits after '), so this is a type code followed by comment text. FAP reads two channels.",
+    "mic_e_manufacturer": "APRS 1.2 Mic-E type code ' with the Byonics TinyTrack3 suffix |3 is stored in device_code; FAP keeps both in the comment.",
+    "mic_e_corrupt": "A byte was lost in transit, so the symbol table is invalid; FAP's accept_broken_mice option guesses the repair, while the public parser reports the packet as Malformed.",
+    "timestamp_day_zero": "Day 00 is not a valid timestamp, so the packet is Malformed and Malformed.recovered keeps the other fields; FAP decodes them with a warning. TIM-011 allows either.",
+    "gll_minimal": "This GLL sentence has no time or fix status, which the GLL model requires and the parser does not invent, so it is Malformed; FAP accepts the coordinates alone.",
+    "telemetry_short": "A short telemetry report decodes with only the channels transmitted and is marked nonconforming; FAP pads it to five channels.",
+    "telemetry_invalid": "A non-numeric telemetry channel cannot be decoded, so the report is Malformed; FAP keeps the channels before it.",
+    "telemetry_comment": "Text after the telemetry digital bits is kept as the comment; FAP discards it.",
+    "weather_unknown_field": "'O' is not a weather field in APRS101, the APRS 1.1 clarification or the APRS 1.2 proposal, so the report ends there and the rest stays in the comment; FAP skips it."
+  },
+  "rows": {
+    "FAP-005": {
+      "reasons": ["mic_e_type_suffix"],
+      "set": {
+        "$.payload.comment": "",
+        "$.payload.device_code": "]="
+      }
+    },
+    "FAP-013": {
+      "reasons": ["case"],
+      "set": {
+        "$.header.source": "oh7lzb"
+      }
+    },
+    "FAP-016": {
+      "reasons": ["case"],
+      "set": {
+        "$.header.destination": "aprs"
+      }
+    },
+    "FAP-022": {
+      "reasons": ["user_defined"],
+      "accept": {
+        "payload": {
+          "type": "user_defined",
+          "user_id": "{",
+          "user_type": " ",
+          "data": "unsupported experimental format"
+        }
+      }
+    },
+    "FAP-030": {
+      "reasons": ["course_zero", "whitespace"],
+      "set": {
+        "$.payload.comment": " Tero, Green Volvo 960, GGL-880",
+        "$.payload.extensions.motion.course_deg": 0
+      }
+    },
+    "FAP-034": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 12.3V 21C"
+      }
+    },
+    "FAP-035": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " http://aprs.fi/"
+      }
+    },
+    "FAP-346": {
+      "reasons": ["mic_e_type_suffix"],
+      "set": {
+        "$.payload.comment": "",
+        "$.payload.device_code": "]="
+      }
+    },
+    "FAP-347": {
+      "reasons": ["mic_e_sequence", "whitespace"],
+      "set": {
+        "$.payload.comment": " commeeeent",
+        "$.payload.extensions.telemetry.sequence": null
+      }
+    },
+    "FAP-348": {
+      "reasons": ["mic_e_type_byte"],
+      "set": {
+        "$.payload.comment": "1020 commeeeent",
+        "$.payload.device_code": "'"
+      },
+      "remove": ["$.payload.extensions.telemetry"]
+    },
+    "FAP-349": {
+      "reasons": ["mic_e_corrupt"],
+      "replace": {
+        "type": "malformed"
+      },
+      "drop_unmapped": ["$."]
+    },
+    "FAP-357": {
+      "reasons": ["nmea_precision", "nmea_symbol"],
+      "set": {
+        "$.payload.sentence.course_deg": 27.9,
+        "$.payload.symbol": {
+          "table_id": "/",
+          "code": "O"
+        }
+      }
+    },
+    "FAP-359": {
+      "reasons": ["nmea_symbol"],
+      "set": {
+        "$.payload.symbol": {
+          "table_id": "/",
+          "code": "O"
+        }
+      }
+    },
+    "FAP-361": {
+      "reasons": ["nmea_symbol"],
+      "set": {
+        "$.payload.symbol": {
+          "table_id": "/",
+          "code": "O"
+        }
+      }
+    },
+    "FAP-362": {
+      "reasons": ["gll_minimal"],
+      "replace": {
+        "type": "malformed"
+      },
+      "drop_unmapped": ["$."]
+    },
+    "FAP-363": {
+      "reasons": ["unknown_nmea"],
+      "accept": {
+        "payload": {
+          "type": "opaque",
+          "information": "$XXXXX,A,B,C",
+          "diagnostic": {
+            "code": "unsupported",
+            "path": "$"
+          }
+        }
+      }
+    },
+    "FAP-366": {
+      "reasons": ["vtg"],
+      "accept": {
+        "payload": {
+          "type": "nmea",
+          "sentence": {
+            "type": "vtg",
+            "course_true_deg": 0.0,
+            "course_magnetic_deg": 0.0,
+            "speed_knots": 0.0,
+            "speed_kmh_reported": 0.0
+          },
+          "metadata": {
+            "talker": "GP",
+            "checksum_supplied": null,
+            "checksum_valid": null,
+            "fields_raw": ["0", "T", "0", "M", "0", "N", "0", "K"]
+          },
+          "position_usable": false,
+          "symbol": null,
+          "comment": ""
+        }
+      }
+    },
+    "FAP-408": {
+      "reasons": ["beacon"],
+      "accept": {
+        "payload": {
+          "type": "beacon",
+          "text": "0123456789012345678901234567890123456789!6028.51N/02505.68E#"
+        }
+      }
+    },
+    "FAP-409": {
+      "reasons": ["beacon"],
+      "accept": {
+        "payload": {
+          "type": "beacon",
+          "text": "Tno position here at all"
+        }
+      }
+    },
+    "FAP-417": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": "test "
+      }
+    },
+    "FAP-418": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " "
+      }
+    },
+    "FAP-419": {
+      "reasons": ["course_zero", "whitespace"],
+      "set": {
+        "$.payload.comment": " Tero, Green Volvo 960, GGL-880",
+        "$.payload.extensions.motion.course_deg": 0
+      }
+    },
+    "FAP-421": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": "a|b "
+      }
+    },
+    "FAP-428": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " comment "
+      }
+    },
+    "FAP-429": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " comment "
+      }
+    },
+    "FAP-430": {
+      "reasons": ["mic_e_manufacturer"],
+      "set": {
+        "$.payload.comment": "|",
+        "$.payload.device_code": "'|3"
+      }
+    },
+    "FAP-431": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " comment "
+      }
+    },
+    "FAP-433": {
+      "reasons": ["telemetry_comment"],
+      "set": {
+        "$.payload.comment": " comment"
+      }
+    },
+    "FAP-434": {
+      "reasons": ["telemetry_short"],
+      "set": {
+        "$.payload.analog": [42.0]
+      }
+    },
+    "FAP-436": {
+      "reasons": ["telemetry_invalid"],
+      "replace": {
+        "type": "malformed"
+      },
+      "drop_unmapped": ["$."]
+    },
+    "FAP-444": {
+      "reasons": ["parm_case"],
+      "set": {
+        "$.payload": {
+          "type": "message",
+          "addressee": "N0CALL",
+          "text": "parm.Vin,Rx1h",
+          "message_id": null,
+          "reply_ack": null
+        }
+      }
+    },
+    "FAP-446": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " {UIV32N}"
+      }
+    },
+    "FAP-447": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " {UIV32N}"
+      }
+    },
+    "FAP-448": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 14.3V 27C HDOP01.0 SATS09"
+      }
+    },
+    "FAP-449": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 14.3V 27C HDOP01.0 SATS09"
+      }
+    },
+    "FAP-450": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 14.3V 27C HDOP01.0 SATS09"
+      }
+    },
+    "FAP-451": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 14.3V 27C HDOP01.0 SATS09"
+      }
+    },
+    "FAP-452": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " {UIV32N}"
+      }
+    },
+    "FAP-453": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 14.3V 27C HDOP01.0 SATS09"
+      }
+    },
+    "FAP-454": {
+      "reasons": ["timestamp_day_zero"],
+      "replace": {
+        "type": "malformed"
+      },
+      "drop_unmapped": ["$."]
+    },
+    "FAP-455": {
+      "reasons": ["timestamp_day_zero"],
+      "replace": {
+        "type": "malformed"
+      },
+      "drop_unmapped": ["$."]
+    },
+    "FAP-456": {
+      "reasons": ["timestamp_day_zero"],
+      "replace": {
+        "type": "malformed"
+      },
+      "drop_unmapped": ["$."]
+    },
+    "FAP-457": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " "
+      }
+    },
+    "FAP-465": {
+      "reasons": ["wx_symbol"],
+      "set": {
+        "$.payload.comment": "Home of KA0RID"
+      },
+      "remove": ["$.payload.extensions.weather"],
+      "drop_unmapped": ["$.fap_fields.Wx."]
+    },
+    "FAP-471": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 13.8V 15CYB1RUS-9 Mobile Tracker"
+      }
+    },
+    "FAP-472": {
+      "reasons": ["whitespace"],
+      "set": {
+        "$.payload.comment": " 13.8V 15CYB1RUS-9 Mobile Tracker"
+      }
+    },
+    "FAP-474": {
+      "reasons": ["disputed_wind"],
+      "set": {
+        "$.payload.extensions.weather.wind_speed.unit": "disputed_knots_or_mph"
+      }
+    },
+    "FAP-475": {
+      "reasons": ["disputed_wind"],
+      "set": {
+        "$.payload.extensions.weather.wind_speed.unit": "disputed_knots_or_mph"
+      }
+    },
+    "FAP-476": {
+      "reasons": ["disputed_wind"],
+      "set": {
+        "$.payload.extensions.weather.wind_speed.unit": "disputed_knots_or_mph"
+      }
+    },
+    "FAP-489": {
+      "reasons": ["weather_unknown_field"],
+      "set": {
+        "$.payload.comment": "Os...L...F....X...V..."
+      }
+    },
+    "FAP-490": {
+      "reasons": ["weather_unknown_field"],
+      "set": {
+        "$.payload.comment": "Os010L500"
+      },
+      "remove": ["$.payload.snow_24h", "$.payload.luminosity"]
+    },
+    "FAP-497": {
+      "reasons": ["disputed_wind"],
+      "set": {
+        "$.payload.extensions.weather.wind_speed.unit": "disputed_knots_or_mph"
+      }
+    }
+  }
+}

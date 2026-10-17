@@ -11,12 +11,12 @@ A collection of useful submodules for HAM Radio. At present, HamKit includes the
 
 ## In development
 
-- [hamkit-aprs](packages/aprs/README.md): typed APRS parsing and composition
-  foundation, with byte-preserving handling of unsupported payloads. The
-  [packet cookbook](packages/aprs/README.md#setup-and-printable-packets) shows
-  construction and actual decoding results for every modeled family; the
-  [coverage matrix](packages/aprs/docs/API_COVERAGE.md) distinguishes models
-  from implemented codecs.
+- [hamkit-aprs](packages/aprs/README.md): typed APRS parsing, validation and
+  composition foundation, with byte-preserving handling of unsupported payloads.
+  The [packet cookbook](packages/aprs/README.md#find-an-example) shows Python
+  and JSON construction for every modeled family, with wire output where a
+  codec exists; the [coverage matrix](packages/aprs/docs/API_COVERAGE.md)
+  distinguishes models from implemented codecs.
 
 ## License
 

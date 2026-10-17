@@ -6,8 +6,8 @@ exist on the wire or contradict another field, and conformance rules report APRS
 limits that a transmitter could still break. Received packets keep conformance
 findings as diagnostics; `serialize_packet` refuses to send them. The questions below are deliberately not resolved by guessing
 values, inventing sensor observations, or treating interoperability examples as
-normative specifications. Wire codecs remain unavailable for these families
-unless [API_COVERAGE.md](API_COVERAGE.md) states otherwise.
+normative specifications. Implemented layouts and selected receiver policies are documented in
+[API_COVERAGE.md](API_COVERAGE.md).
 
 APRS101 page numbers below are printed page numbers. PDF viewer pages are ten
 higher. The [APRS 1.1 addendum](https://www.aprs.org/aprs11.html) evolves over time;
@@ -30,7 +30,8 @@ services such as aprs.fi decode UTF-8 in these fields.
 **Current behavior:** free-text fields decode as UTF-8; invalid UTF-8 falls back
 to Latin-1, one character per byte, with a nonconforming diagnostic. That fallback
 is a reversible reading, not proof of the sender's encoding; the exact bytes
-remain in `original_wire`. The envelope profile (`monitor` or `rf`) selects
+remain in `original_wire`. The envelope policy (`APRS_IS`, `RF`, or a custom
+`EnvelopePolicy`) selects
 address and size rules, not a text encoding, so RF output also carries UTF-8. Free text is sent as UTF-8 and length limits
 count encoded bytes. Control characters are nonconforming. Protocol tokens
 (callsigns, addressees, message IDs, object and item names, query names, NTS
@@ -52,7 +53,7 @@ fixes, but their keys remain required. Time, and the RMC date, remain required
 even for a void fix. No zero position, clock, date, talker ID or usable-fix flag
 is invented. GGA quality remains 0..8; newer mode fields are not represented.
 This is a limited model contract, not proof that absent times are prohibited by
-every NMEA version. No NMEA wire codec exists. Unsupported sentences stay opaque.
+every NMEA version. GGA/GLL/RMC/VTG/WPL codecs preserve these requirements. Unsupported sentences stay opaque.
 
 **What resolves it:** consult the versioned normative sentence tables and select
 the intended core and receiver extensions before changing omission semantics,
@@ -72,12 +73,12 @@ describes date and variation, but a two-digit year does not identify a century.
 
 **Current behavior:** `VTG.speed_knots` and `speed_kmh_reported` remain separately
 reported observations; agreement is not enforced because numeric fields do not
-retain the precision needed to compare rounded wire readings. They are not two
-independent authoring sources for a future encoder. Calendar validation rejects
+retain the precision needed to compare rounded wire readings. The encoder preserves both reported observations. Calendar validation rejects
 impossible dates, allowing February 29 in YY=00 without assigning a century.
 `checksum_valid` requires a supplied checksum, but is evidence about original
-input, not certification of an edited sentence. No checksum is invented or
-recomputed by the model.
+input, not certification of an edited sentence. The model does not calculate
+checksums; the encoder recomputes a supplied checksum, and refuses to send a
+sentence still marked `checksum_valid=False` until the caller repairs it.
 
 **What resolves it:** define which speed is authoritative for composition and
 retain each received field's precision, or define an explicitly selected rounding
@@ -92,8 +93,7 @@ allows sequence-only telemetry. The extension describes itself as experimental.
 **Current behavior:** conformance for `base91_comment` follows §3.7: a sequence
 in 0..8280 and at least one analog value are required. Digital data follows all five analog fields.
 Sequence-only data is unsupported by this model contract, not declared universally
-malformed on receipt; there is no wire decoder for it. `compatibility` is an
-explicitly unverified representation, not a named normative encoding.
+malformed on receipt; the core decoder retains sequence-only blocks as comment text.
 
 **What resolves it:** choose a versioned extension profile or obtain an author
 clarification reconciling the documents. Do not silently expand the baseline by
@@ -112,10 +112,16 @@ slot presence. There is no extra requirement for a numeric observation. A
 `Weather` model may be incomplete; only sending an incomplete report is refused.
 
 The later minimum flood example omits gust; proposed water units and examples
-disagree across the documents. `WaterHeight` consequently remains a signed
-measurement with explicit feet/meters and optional external datum metadata; no
-water-wire encoding is inferred. `disputed_knots_or_mph` explicitly records
-unresolved velocity units and must not be converted without a selected profile.
+disagree across the documents. `WaterHeight` remains a signed measurement with
+explicit feet/meters and optional external datum metadata. The two water-level
+spellings are told apart by their syntax: a decimal value (`F20.1`, `f-1.2`) is
+the 1.1 clarification's feet or meters, and four bytes without a decimal point
+(`F0123`, `F-042`, `F....`) are the 1.2 proposal's tenths of a foot. The 1.2
+proposal's `Xnnn` radiation (two digits times a power of ten, nSv/h) and `Vnnn`
+battery volts (tenths) decode into `radiation` and `battery_voltage`, with `...`
+for unavailable, so they are never read as software/unit codes.
+`disputed_knots_or_mph` explicitly records unresolved velocity units and must
+not be converted without a selected profile.
 
 **What resolves it:** a chosen, cited water/flood profile and clarification of
 units, unavailable markers, field widths and mandatory slots. The blanket baseline
@@ -145,19 +151,27 @@ and delimiter accounting before implementing a wire codec.
 **Authority:** [APRS101 pp28–30](https://www.aprs.org/doc/APRS101.PDF#page=38),
 [original protocol notes](https://www.aprs.org/APRS-docs/PROTOCOL.TXT),
 [DF notes](https://www.aprs.org/APRS-docs/DF.TXT), and
-[PHG display guidance](https://www.aprs.org/symbols/PHGmobile.txt).
+[PHG display guidance](https://www.aprs.org/symbols/PHGmobile.txt), and the
+[PHGR proposal dated 26 February 2003](https://www.aprs.org/aprs12/probes.txt).
 
 **Current behavior:** code ranges and positive accuracy bounds are checked. The
 manual flag, bearing range and PHG radii are computed properties, so they cannot
 disagree with the codes. A single Q-to-accuracy
 or usability mapping is not imposed: the original notes omit Q=6 and differ from
 APRS101 at low Q values. `Bearing.usable` and accuracy remain reported
-interpretations, not certified derivations. PHG rate-per-hour has no verified
-extension authority here. Display half-radius is a documented display choice,
+interpretations, not certified derivations. PHGR uses the documented
+`PHGabcdr/` layout: `r` is `0`–`9` or `A`–`Z` (0–35 reports per hour), with zero
+denoting an unscheduled transmission. Its slash is required and consumed by the
+public decoder. The encoder emits the rate and slash before other extensions.
+The older PHG form accepts an optional slash before the comment; surrounding
+ASCII whitespace is trimmed for PHG comments. Other position comments and message
+text do not acquire this normalization. This follows the PHGR note's delimiter
+convention, not a universal rule in APRS101 (p20 says there is no separator unless
+otherwise specified). Display half-radius is a documented display choice,
 not an independently transmitted observation.
 
-**What resolves it:** identify a versioned DF mapping and a primary specification
-for PHG rate. Do not silently combine conflicting tables or treat UI guidance as
+**What resolves it:** identify a versioned DF mapping. Do not silently combine
+conflicting tables or treat UI guidance as
 another on-air field.
 
 ## NWS, historical beacons and vendor weather
@@ -192,19 +206,18 @@ contradictory overview's optional-timestamp wording. Semantic names exclude oute
 padding but do not impose every waypoint-friendly punctuation recommendation.
 Reply-ack is one `reply_ack` suffix on the message or acknowledgment ID, so the
 two cannot disagree; conformance checks that the combined field fits five
-characters, and exact two-character halves are not forced. Obsolete object and
-bulletin forms are not modeled as flags; they remain Opaque until a historical
-profile defines them.
+characters, and exact two-character halves are not forced. Truncated historical objects cannot construct the required public fields and
+remain Malformed; no missing timestamp or position is invented.
 
 **What resolves it:** a documented compatibility profile for truncated kills,
 obsolete reports, stricter name conventions or shorter reply-ack halves. These
 choices must not weaken strict modern construction silently.
 
-## Quantization and unimplemented codecs
+## Quantization and wire precision
 
 Physical measurements and some derived fields can have more precision or a
 larger magnitude than a selected wire format can express. Current semantic
-validation is not universal representability validation. Future encoders must
+validation is not universal representability validation. Encoders must
 choose and document exact conversion, rounding, saturation-versus-rejection and
 field-budget rules. They must not round implicitly in constructors, truncate text,
 reuse stale raw evidence, or invent unavailable data. The original APRS101 widths

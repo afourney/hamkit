@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
 # SPDX-License-Identifier: MIT
 """APRS rules a well-formed model can break: reported, and never sent."""
+
 from __future__ import annotations
 
 import unittest
@@ -12,8 +13,8 @@ HEADER = a.Header("N0CALL", "APRS")
 SYMBOL = a.Symbol("/", "-")
 
 
-def findings(payload: Any, profile: a.EnvelopeProfile = "monitor") -> set[str]:
-    return {d.path for d in a.check_packet(a.Packet(HEADER, payload), profile=profile)}
+def findings(payload: Any, policy: a.EnvelopePolicy = a.APRS_IS) -> set[str]:
+    return {d.path for d in a.check_packet(a.Packet(HEADER, payload), policy=policy)}
 
 
 def complete_weather(**changes: Any) -> a.Weather:
@@ -48,40 +49,40 @@ class SendingTests(unittest.TestCase):
             a.Status("bad|status" + "x" * 60),
         )
         self.assertEqual(
-            {d.path for d in a.check_packet(packet, profile="rf")},
+            {d.path for d in a.check_packet(packet, policy=a.RF)},
             {"$.header.source", "$.header.path", "$.payload.text"},
         )
         self.assertEqual({d.path for d in a.check_packet(packet)}, {"$.payload.text"})
 
-    def test_rf_profile_limits(self) -> None:
+    def test_rf_policy_limits(self) -> None:
         for source in ("N0CALL-16", "TOOLONG", "n0call"):
             packet = a.Packet(a.Header(source, "APRS"), a.Status(""))
             self.assertIsInstance(a.serialize_packet(packet), bytes)
             with self.subTest(source=source), self.assertRaises(a.ConformanceError):
-                a.serialize_packet(packet, profile="rf")
+                a.serialize_packet(packet, policy=a.RF)
         hops = tuple(a.Hop("D1") for _ in range(8))
         a.validate_packet(
-            a.Packet(a.Header("N0CALL", "APRS", hops), a.Status("")), profile="rf"
+            a.Packet(a.Header("N0CALL", "APRS", hops), a.Status("")), policy=a.RF
         )
         with self.assertRaises(a.ConformanceError):
             a.validate_packet(
                 a.Packet(a.Header("N0CALL", "APRS", hops * 2), a.Status("")),
-                profile="rf",
+                policy=a.RF,
             )
         large = a.Packet(HEADER, a.UserDefined(b"A", b"B", b"x" * 260))
         self.assertEqual(
-            [d.path for d in a.check_packet(large, profile="rf")], ["$.payload"]
+            [d.path for d in a.check_packet(large, policy=a.RF)], ["$.payload"]
         )
         self.assertEqual(a.check_packet(large), ())
         with self.assertRaises(a.ConformanceError):
-            a.serialize_packet(a.Packet(HEADER, a.Opaque(b"~" * 257)), profile="rf")
+            a.serialize_packet(a.Packet(HEADER, a.Opaque(b"~" * 257)), policy=a.RF)
 
     def test_rf_header_rules_skip_third_party_inner_headers(self) -> None:
         inner = a.Packet(
             a.Header("w1aw", "APRS", (a.Hop("TCPIP", True),)), a.Status("")
         )
         packet = a.Packet(HEADER, a.ThirdParty(inner))
-        self.assertEqual(a.check_packet(packet, profile="rf"), ())
+        self.assertEqual(a.check_packet(packet, policy=a.RF), ())
 
     def test_control_characters_are_never_sent(self) -> None:
         for payload in (a.Status("bell\x07"), a.Message("W1AW", "line\nbreak")):
@@ -269,10 +270,18 @@ class PlaceTests(unittest.TestCase):
                 value = a.Position(1, 2, symbol, extensions=a.Extensions(motion=motion))
                 self.assertEqual(a.parse_payload(a.serialize_payload(value)), value)
 
+    def test_phg_rate_roundtrip(self) -> None:
+        for rate in (0, 5):
+            value = a.Position(
+                1,
+                2,
+                SYMBOL,
+                extensions=a.Extensions(phg=a.PHG(25, 80, 3, rate_per_hour=rate)),
+            )
+            self.assertEqual(a.parse_payload(a.serialize_payload(value)), value)
+
     def test_unencoded_extension_fields_are_explicitly_unsupported(self) -> None:
         for extensions, symbol in (
-            (a.Extensions(phg=a.PHG(25, 80, 3, rate_per_hour=5)), SYMBOL),
-            (a.Extensions(phg=a.PHG(25, 80, 3, rate_per_hour=0)), SYMBOL),
             (
                 a.Extensions(
                     altitude=a.Altitude(
@@ -302,7 +311,7 @@ class PlaceTests(unittest.TestCase):
                 with self.assertRaises(a.CodecNotImplementedError):
                     a.serialize_payload(value)
                 with self.assertRaises(a.CodecNotImplementedError):
-                    a.serialize_packet(a.Packet(HEADER, value), profile="rf")
+                    a.serialize_packet(a.Packet(HEADER, value), policy=a.RF)
 
     def test_extension_symbols_and_slots(self) -> None:
         storm = a.Storm(
@@ -381,7 +390,7 @@ class PlaceTests(unittest.TestCase):
     def test_mic_e_motion_and_telemetry(self) -> None:
         self.assertEqual(
             findings(a.MicE(1, 2, SYMBOL, message="en_route")),
-            {"$.payload.extensions.motion"},
+            {"$.header.destination", "$.payload.extensions.motion"},
         )
         telemetry = a.Telemetry((1, 2), sequence=1, encoding="base91_comment")
         self.assertEqual(
@@ -394,7 +403,7 @@ class PlaceTests(unittest.TestCase):
                     extensions=a.Extensions(motion=a.Motion(), telemetry=telemetry),
                 )
             ),
-            {"$.payload.extensions.telemetry.encoding"},
+            {"$.header.destination"},
         )
 
 
