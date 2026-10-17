@@ -346,7 +346,7 @@ def _position(v: Position, profile: EnvelopeProfile) -> Iterator[Finding]:
             from ._position_codec import compressed_bytes
 
             _, extensions = compressed_bytes(v)
-        prefix = _extensions.write(extensions, v.symbol)
+        prefix = _extensions.write(extensions, v.symbol, v.comment.encode("utf-8"))
     except CodecNotImplementedError:
         return
     except _extensions.Unrepresentable as exc:

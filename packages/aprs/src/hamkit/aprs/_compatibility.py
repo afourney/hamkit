@@ -312,16 +312,10 @@ def view(
             p["extensions"]["telemetry"]["sequence"] = 0
     if p.get("type") == "telemetry":
         p["comment"] = ""
-    if "comment" in p:
+    if "comment" in p and not p.get("extensions", {}).get("phg"):
         p["comment"] = p["comment"].strip()
-        if p.get("extensions", {}).get("phg"):
-            p["comment"] = re.sub(r"^[A-Za-z]?/", "", p["comment"]).strip()
     if p.get("type") == "object":
         p["name"] = p["name"].rstrip()
-    if p.get("extensions", {}).get("telemetry"):
-        t = p["extensions"]["telemetry"]
-        if t.get("encoding") == "base91_comment":
-            t["analog"] += [None] * (5 - len(t["analog"]))
     compression = p.get("compression")
     if compression:
         motion = p.get("extensions", {}).get("motion")

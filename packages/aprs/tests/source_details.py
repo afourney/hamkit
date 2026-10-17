@@ -363,6 +363,56 @@ def check_core(row):
     return errors
 
 
+def check_public_phg(row, packet):
+    """Express source fields from public models, without a historical decoder."""
+    from packets.test_corpus import differences
+
+    p = packet.payload
+    if isinstance(p, a.LegacyPosition):
+        p = p.position
+    assert isinstance(p, a.Position) and p.extensions.phg is not None
+    phg = p.extensions.phg
+    assert phg.raw is not None
+    code = phg.raw.decode("ascii")
+    if phg.rate_per_hour is not None:
+        code += "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"[phg.rate_per_hour]
+    facts = {
+        "Capabilities": None,
+        "ChecksumOK": None,
+        "DaoDatumByte": None,
+        "GPSFixStatus": None,
+        "MBits": "",
+        "MiceMangled": False,
+        "ObjectName": "",
+        "PosResolution": (18.52, 185.2, 1852, 18520, 111120)[p.ambiguity],
+        "RawTimestamp": "",
+        "Warnings": None,
+        "PHG": code,
+    }
+    # Fail if future PHG rows need additional source-field derivations.
+    assert p.extensions.dao is None and p.compression is None and p.timestamp is None
+    actual = {"fap_fields": facts}
+    paths = [*row.get("unmapped", []), "$.fap_fields.PHG"]
+    errors = []
+    for path in paths:
+        errors.extend(
+            differences(at(actual, path), at(row["source_expected"], path), path)
+        )
+    if p.extensions.telemetry is not None:
+        # FAP has five slots even when the wire omits trailing channels. Assert
+        # those source nulls as well as the variable-length public JSON array.
+        analog = list(p.extensions.telemetry.analog)
+        analog += [None] * (5 - len(analog))
+        errors.extend(
+            differences(
+                analog,
+                row["source_expected"]["fap_fields"]["TelemetryData"]["Vals"],
+                "$.fap_fields.TelemetryData.Vals",
+            )
+        )
+    return errors
+
+
 def check_fap(row):
     from packets.test_corpus import differences
 

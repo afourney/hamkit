@@ -653,7 +653,7 @@ def _encode_payload(
         return (
             raw
             + position_wire
-            + _extensions.write(extensions, symbol)
+            + _extensions.write(extensions, symbol, payload.comment.encode("utf-8"))
             + payload.comment.encode("utf-8")
         )
     if isinstance(payload, (Message, Acknowledgment)):

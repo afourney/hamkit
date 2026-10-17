@@ -205,7 +205,13 @@ Output:
 
 Course/speed (`088/036`) is decoded into `extensions.motion`, and `comment`
 holds the text after it, including its leading space. PHG, RNG, DFS, DF
-bearing and `/A=` altitude are decoded the same way. Extension-shaped text with
+bearing and `/A=` altitude also decode into structured extensions. PHG comments
+consume an optional `/` separator and trim surrounding ASCII whitespace. The
+[PHGR extension](https://www.aprs.org/aprs12/probes.txt) requires a rate character
+(`0`–`9`, `A`–`Z`, representing 0–35 reports per hour) followed by `/`; the public
+codec consumes that delimiter and emits it on serialization. A rate without its
+slash stays in the comment. These PHG conventions do not strip slashes or
+whitespace from ordinary messages or other position comments. Extension-shaped text with
 invalid values stays in `comment` with a diagnostic. DAO precision, base91
 telemetry, weather, storm, area and signpost extensions also have structured
 decoders and encoders.

@@ -249,6 +249,6 @@ def write(p: MicE, header: Header) -> bytes:
     return (
         (b"`" if p.fix == "current" else b"'")
         + body
-        + _extensions.write(e, p.symbol)
+        + _extensions.write(e, p.symbol, p.comment.encode())
         + p.comment.encode()
     )

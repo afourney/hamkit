@@ -62,11 +62,25 @@ def load() -> list[Any]:
     return [pytest.param(row, id=row["id"]) for row in rows()]
 
 
-def check(row: dict[str, Any]) -> None:
-    from hamkit.aprs._compatibility import view
+def public_phg_row(row: dict[str, Any]) -> bool:
+    """PHG/PHGR expectations must be met by the public API without rewrites."""
+    payload = row.get("expected", {}).get("payload", {})
+    if payload.get("type") == "legacy_position":
+        payload = payload["position"]
+    return bool(payload.get("extensions", {}).get("phg"))
 
+
+def check(row: dict[str, Any]) -> None:
     raw = row["packet"].encode("latin-1")
-    actual, rejected = view(raw, row["profile"], row.get("options"))
+    if public_phg_row(row):
+        packet = aprs.parse_packet(raw)
+        assert isinstance(packet, aprs.Packet)
+        actual = aprs.to_json_dict(packet, include_defaults=True)
+        rejected = any(d.code == "nonconforming" for d in packet.diagnostics)
+    else:
+        from hamkit.aprs._compatibility import view
+
+        actual, rejected = view(raw, row["profile"], row.get("options"))
     assert actual["original_wire"] == row["packet"], "original bytes changed"
     assert not row.get("gap") and not row.get("unresolved")
     errors = differences(actual, row["expected"])
@@ -77,11 +91,14 @@ def check(row: dict[str, Any]) -> None:
 
         errors.extend(check_rejection(row))
     if row.get("unmapped"):
-        from source_details import check_core, check_fap
+        from source_details import check_core, check_fap, check_public_phg
 
-        errors.extend(
-            (check_fap if row["profile"] == "compatibility-fap" else check_core)(row)
-        )
+        if row["profile"] != "compatibility-fap":
+            errors.extend(check_core(row))
+        elif public_phg_row(row):
+            errors.extend(check_public_phg(row, packet))
+        else:
+            errors.extend(check_fap(row))
     if row.get("sequence"):
         from receiver import Receiver
 

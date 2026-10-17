@@ -91,9 +91,13 @@ including partial values recovered before a rejection.
 All original packet bytes, semantic expectations, options and provenance have a
 frozen integrity hash tied to PR #4's head commit.
 
-Every vector also has an encoding test. 1,294 occurrences encode and stabilize
+Every vector also has an encoding test. 1,296 occurrences encode and stabilize
 through semantic decode/encode round trips with all raw evidence removed. The
-other 267 have explicit refusal records: 181 malformed public packets and 86
+other 265 have explicit refusal records: 181 malformed public packets and 84
 violations of the existing transmit-conformance rules. Those refusal tests assert
 the reason; they are not broad exception catches or skipped tests. Three bad
-NMEA checksums are repaired as part of the 1,294 successful encodings.
+NMEA checksums are repaired as part of the 1,296 successful encodings.
+
+PHG/PHGR vectors exercise the public API directly, without compatibility
+decoding. The PHGR rate character and required slash, ordinary PHG separators,
+and PHG comment whitespace are handled by the shared public decoder/encoder.

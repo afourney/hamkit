@@ -587,14 +587,22 @@ def fap_projection(e: JSON, packet: str) -> JSON:
         }
     if f.get("TelemetryData") is not None:
         t = f["TelemetryData"]
-        mapped = {"sequence": t["Seq"], "analog": t["Vals"]}
+        analog = list(t["Vals"])
+        if payload.get("type") != "telemetry" and re.search(
+            r"\|(?:[\x21-\x7b]{2}){2,7}\|", packet.partition(":")[2]
+        ):
+            # FAP pads omitted base91 channels to five null-capable slots;
+            # the public schema stores only the transmitted analog channels.
+            while analog and analog[-1] is None:
+                analog.pop()
+        mapped = {"sequence": t["Seq"], "analog": analog}
         if t["Bits"]:
             mapped["digital"] = [x == "1" for x in t["Bits"]]
         if payload.get("type") == "telemetry":
             payload.update(mapped)
         else:
             payload.setdefault("extensions", {})["telemetry"] = mapped
-    if f.get("PHG") and re.fullmatch(r"[0-9][0-9:;][0-9][0-8][0-9]?", f["PHG"]):
+    if f.get("PHG") and re.fullmatch(r"[0-9][0-9:;][0-9][0-8][0-9A-Z]?", f["PHG"]):
         code = f["PHG"]
         phg: JSON = {
             "power_w": int(code[0]) ** 2,
@@ -603,7 +611,7 @@ def fap_projection(e: JSON, packet: str) -> JSON:
             "directivity_deg": int(code[3]) * 45 if code[3] != "0" else None,
         }
         if len(code) == 5:
-            phg["rate_per_hour"] = int(code[4])
+            phg["rate_per_hour"] = int(code[4], 36)
         payload.setdefault("extensions", {})["phg"] = phg
     if f.get("Altitude") is not None and f.get("Format") in (
         "uncompressed",
@@ -649,6 +657,18 @@ def fap_projection(e: JSON, packet: str) -> JSON:
         # The snapshot does not capture individual NMEA sentence fields; do not
         # invent them from FAP's flattened station fix. Assert the public family.
         result["payload"] = {"type": "nmea"}
+    if payload.get("extensions", {}).get("phg") and payload.get("type") == "position":
+        body = packet.partition(":")[2]
+        prefix, marker, _ = body.partition("!")
+        if marker and prefix and not body.startswith(("!", "=", "/", "@")):
+            # FAP flattens legacy beacon positions; our public model preserves
+            # both the beacon prefix and the nested decoded position.
+            payload.pop("type")
+            result["payload"] = {
+                "type": "legacy_position",
+                "prefix": prefix,
+                "position": payload,
+            }
     return result
 
 

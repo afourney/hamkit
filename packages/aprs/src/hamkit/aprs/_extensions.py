@@ -33,6 +33,7 @@ _FIELD = rb"(\d{3}|\.{3}| {3})"
 _COURSE_SPEED = re.compile(_FIELD + rb"/" + _FIELD)
 _BEARING = re.compile(rb"/(\d{3})/(\d)(\d)(\d)")
 _PHG = re.compile(rb"PHG(\d)([0-9:;])(\d)([0-8])")
+_PHGR_RATES = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 _RNG = re.compile(rb"RNG(\d{4})")
 _DFS = re.compile(rb"DFS(\d)([0-9:;])(\d)([0-8])")
 _ALTITUDE = re.compile(rb"/A=(-\d{5}|\d{6})")
@@ -136,8 +137,16 @@ def read(tail: bytes, symbol: Symbol) -> tuple[Extensions, bytes]:
             raw=match[0][3:],
         )
         tail = tail[7:]
-        if re.match(rb"[0-9](?:/|$)", tail):
-            found["phg"] = replace(found["phg"], rate_per_hour=int(tail[:1]))
+        # PHGR (aprs.org/aprs12/probes.txt) requires both the rate character
+        # and its delimiter. Without '/', a digit/letter belongs to the comment.
+        if re.match(rb"[0-9A-Z]/", tail):
+            found["phg"] = replace(
+                found["phg"], rate_per_hour=_PHGR_RATES.index(tail[0])
+            )
+            tail = tail[2:]
+        elif tail.startswith(b"/") and not _ALTITUDE.match(tail):
+            # The older PHG form also commonly separates its comment with '/'.
+            # Consume one delimiter, but leave /A= altitude for the decoder below.
             tail = tail[1:]
     elif match := _RNG.match(tail):
         found["range"] = Range(int(match[1]), raw=match[0])
@@ -222,6 +231,10 @@ def read(tail: bytes, symbol: Symbol) -> tuple[Extensions, bytes]:
             Measurement(feet, "feet", raw=match[1]), "feet_extension"
         )
         tail = tail[: match.start()] + tail[match.end() :]
+    if "phg" in found:
+        # PHG/PHGR's presentation convention ignores surrounding whitespace.
+        # This is not a general rule for message text or other position comments.
+        tail = tail.strip()
     return Extensions(**found), tail
 
 
@@ -293,7 +306,9 @@ def _motion_bytes(m: Motion) -> bytes:
     return b"%03d/%03d" % (course, speed)
 
 
-def _write_primary(extensions: Extensions, symbol: Symbol) -> bytes:
+def _write_primary(
+    extensions: Extensions, symbol: Symbol, comment: bytes = b""
+) -> bytes:
     """The bytes read() would split back into these extensions."""
     e = extensions
     for name in ("dao", "area", "signpost", "weather", "storm", "telemetry"):
@@ -348,6 +363,17 @@ def _write_primary(extensions: Extensions, symbol: Symbol) -> bytes:
         )
         raw += b"%d" % _code("$.extensions.phg.gain_dbi", p.gain_dbi, 0, 9)
         raw += _directivity_code("$.extensions.phg.directivity_deg", p.directivity_deg)
+        if p.rate_per_hour is not None:
+            if not 0 <= p.rate_per_hour < len(_PHGR_RATES):
+                raise Unrepresentable(
+                    "$.extensions.phg.rate_per_hour", "requires 0..35 (0-9 or A-Z)"
+                )
+            # Terminate PHGR before altitude or other extensions, too.
+            raw += _PHGR_RATES[p.rate_per_hour : p.rate_per_hour + 1] + b"/"
+        elif comment.startswith(b"/") or re.match(rb"[0-9A-Z]/", comment):
+            # The optional separator protects comments that would otherwise
+            # lose their leading slash or be read as a PHGR rate.
+            raw += b"/"
     elif e.range is not None:
         raw += b"RNG%04d" % _rounded("$.extensions.range.miles", e.range.miles, 0, 9999)
     elif e.signal is not None:
@@ -372,7 +398,7 @@ def _write_primary(extensions: Extensions, symbol: Symbol) -> bytes:
     return raw
 
 
-def write(extensions: Extensions, symbol: Symbol) -> bytes:
+def write(extensions: Extensions, symbol: Symbol, comment: bytes = b"") -> bytes:
     e = extensions
     extra = b""
     if e.weather:
@@ -478,8 +504,4 @@ def write(extensions: Extensions, symbol: Symbol) -> bytes:
     primary = replace(
         e, dao=None, area=None, signpost=None, weather=None, storm=None, telemetry=None
     )
-    if primary.phg and primary.phg.rate_per_hour is not None:
-        rate = primary.phg.rate_per_hour
-        primary = replace(primary, phg=replace(primary.phg, rate_per_hour=None))
-        return _write_primary(primary, symbol) + str(rate).encode() + extra
-    return _write_primary(primary, symbol) + extra
+    return _write_primary(primary, symbol, comment) + extra

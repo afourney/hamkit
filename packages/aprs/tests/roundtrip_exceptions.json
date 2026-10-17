@@ -1083,10 +1083,6 @@
     "kind": "malformed",
     "reasons": ["invalid compressed symbol table"]
   },
-  "FAP-415": {
-    "kind": "conformance",
-    "reasons": ["would be read back as a data extension"]
-  },
   "FAP-419": {
     "kind": "conformance",
     "reasons": ["extensions and comment exceed 43 bytes"]
@@ -1171,10 +1167,6 @@
   "FAP-462": {
     "kind": "malformed",
     "reasons": ["longitude cannot be more ambiguous than latitude"]
-  },
-  "FAP-466": {
-    "kind": "conformance",
-    "reasons": ["text contains control characters"]
   },
   "FAP-469": {
     "kind": "conformance",

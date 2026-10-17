@@ -142,18 +142,27 @@ and delimiter accounting before implementing a wire codec.
 **Authority:** [APRS101 pp28–30](https://www.aprs.org/doc/APRS101.PDF#page=38),
 [original protocol notes](https://www.aprs.org/APRS-docs/PROTOCOL.TXT),
 [DF notes](https://www.aprs.org/APRS-docs/DF.TXT), and
-[PHG display guidance](https://www.aprs.org/symbols/PHGmobile.txt).
+[PHG display guidance](https://www.aprs.org/symbols/PHGmobile.txt), and the
+[PHGR proposal dated 26 February 2003](https://www.aprs.org/aprs12/probes.txt).
 
 **Current behavior:** code ranges and positive accuracy bounds are checked. The
 manual flag, bearing range and PHG radii are computed properties, so they cannot
 disagree with the codes. A single Q-to-accuracy
 or usability mapping is not imposed: the original notes omit Q=6 and differ from
 APRS101 at low Q values. `Bearing.usable` and accuracy remain reported
-interpretations, not certified derivations. PHG rate-per-hour uses the explicit pinned FAP compatibility layout. Display half-radius is a documented display choice,
+interpretations, not certified derivations. PHGR uses the documented
+`PHGabcdr/` layout: `r` is `0`–`9` or `A`–`Z` (0–35 reports per hour), with zero
+denoting an unscheduled transmission. Its slash is required and consumed by the
+public decoder. The encoder emits the rate and slash before other extensions.
+The older PHG form accepts an optional slash before the comment; surrounding
+ASCII whitespace is trimmed for PHG comments. Other position comments and message
+text do not acquire this normalization. This follows the PHGR note's delimiter
+convention, not a universal rule in APRS101 (p20 says there is no separator unless
+otherwise specified). Display half-radius is a documented display choice,
 not an independently transmitted observation.
 
-**What resolves it:** identify a versioned DF mapping and a primary specification
-for PHG rate. Do not silently combine conflicting tables or treat UI guidance as
+**What resolves it:** identify a versioned DF mapping. Do not silently combine
+conflicting tables or treat UI guidance as
 another on-air field.
 
 ## NWS, historical beacons and vendor weather
