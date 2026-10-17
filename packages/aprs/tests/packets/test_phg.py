@@ -15,14 +15,7 @@ PHG_ROWS = [row for row in rows() if public_phg_row(row)]
 
 
 @pytest.mark.parametrize("row", PHG_ROWS, ids=lambda row: row["id"])
-def test_phg_vectors_without_compatibility(monkeypatch, row):
-    from hamkit.aprs import _compatibility
-
-    def forbidden(*args, **kwargs):
-        raise AssertionError("PHG vectors must not use historical decoders")
-
-    for name in ("view", "facts", "rejected_facts"):
-        monkeypatch.setattr(_compatibility, name, forbidden)
+def test_phg_vectors(row):
     check(row)
 
 

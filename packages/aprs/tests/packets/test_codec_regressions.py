@@ -387,3 +387,88 @@ def test_embedded_position_search_is_opt_in():
     assert isinstance(a.parse_packet(beyond, legacy_positions=True).payload, a.Beacon)
     with pytest.raises(TypeError):
         a.parse_packet(raw, legacy_positions="yes")
+
+
+WX = b"N0CALL>APRS:_12032359c000s000g000t033"
+
+
+@pytest.mark.parametrize(
+    ("tail", "field", "value", "unit"),
+    [
+        (b"X123", "radiation", 12000, "nSv/h"),  # 12 x 10^3 nanosieverts/hour
+        (b"X100", "radiation", 10, "nSv/h"),
+        (b"X...", "radiation", None, "nSv/h"),
+        (b"V128", "battery_voltage", 12.8, "volts"),
+        (b"V...", "battery_voltage", None, "volts"),
+        (b"F0123", "water_height", 12.3, "feet"),  # APRS 1.2: tenths of a foot
+        (b"F-042", "water_height", -4.2, "feet"),
+        (b"F....", "water_height", None, "feet"),
+        (b"F20.1", "water_height", 20.1, "feet"),  # APRS 1.1: decimal feet
+        (b"f-1.2", "water_height", -1.2, "meters"),
+    ],
+)
+def test_aprs_1_2_weather_fields(tail, field, value, unit):
+    # aprs.org/aprs12/weather-new.txt; X and V are no longer read as codes.
+    decoded = packet(WX + tail)
+    reading = getattr(decoded.payload, field)
+    if field == "water_height":
+        reading = reading.measurement
+    assert (reading.value, reading.unit) == (value, unit)
+    assert decoded.payload.software_code is None
+    assert decoded.diagnostics == ()
+    assert packet(a.serialize_packet(without_evidence(decoded))) == without_evidence(
+        decoded
+    )
+
+
+def test_weather_codes_still_follow_new_fields():
+    decoded = packet(WX + b"X123V128XRSW")
+    w = decoded.payload
+    assert (w.radiation.value, w.battery_voltage.value) == (12000, 12.8)
+    assert (w.software_code, w.device_code) == ("X", "RSW")
+
+
+def test_new_weather_fields_are_checked_before_sending():
+    w = packet(WX).payload
+    odd = dataclasses.replace(w, radiation=a.Measurement(123, "nSv/h"))
+    with pytest.raises(a.ConformanceError):
+        a.serialize_packet(a.Packet(a.Header("N0CALL", "APRS"), odd))
+    hidden = dataclasses.replace(w, comment="X123 hot")
+    assert [
+        d.message for d in a.check_packet(a.Packet(a.Header("N0CALL", "APRS"), hidden))
+    ] == ["comment would be read back as weather fields"]
+
+
+@pytest.mark.parametrize(
+    ("information", "analog", "digital"),
+    [
+        (b"T#001,42", (42.0,), ()),
+        (b"T#1,1,,3,,5", (1.0, None, 3.0, None, 5.0), ()),
+        (b"T#005,001,002,003,004,00000000", (1.0, 2.0, 3.0, 4.0), (False,) * 8),
+    ],
+)
+def test_short_telemetry_is_a_nonconforming_packet(information, analog, digital):
+    decoded = packet(b"N0CALL>APRS:" + information)
+    assert (decoded.payload.analog, decoded.payload.digital) == (analog, digital)
+    assert any(d.code == "nonconforming" for d in decoded.diagnostics)
+    with pytest.raises(a.ConformanceError):
+        a.serialize_packet(decoded)
+
+
+@pytest.mark.parametrize("value", [b"f", b"-", b"-1.", b"inf", b"nan", b"1e5"])
+def test_telemetry_channels_are_plain_decimals(value):
+    raw = b"N0CALL>APRS:T#001,1," + value + b",3,4,5,00000000"
+    assert isinstance(a.parse_packet(raw), a.Malformed)
+
+
+def test_invalid_object_timestamp_keeps_recovered_fields():
+    result = a.parse_packet(b"N0CALL>APRS:;TestObj  *000000z4903.50N/07201.75W-Test")
+    assert isinstance(result, a.Malformed)
+    recovered = result.recovered["payload"]
+    assert recovered["type"] == "object"
+    assert (recovered["name"], recovered["alive"], recovered["comment"]) == (
+        "TestObj",
+        True,
+        "Test",
+    )
+    assert recovered["latitude_deg"] == pytest.approx(49.058333333)

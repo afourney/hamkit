@@ -415,36 +415,14 @@ def check_public_phg(row, packet):
     return errors
 
 
-def check_fap(row, packet=None):
-    from packets.test_corpus import differences
-
-    from hamkit.aprs._compatibility import facts
-
-    raw = row["packet"].encode("latin1")
-    f = facts(raw, row.get("options"), packet=packet)
-    actual = {"fap_fields": f}
-    errors = []
-    for path in row.get("unmapped", []):
-        try:
-            value = at(actual, path)
-        except (KeyError, TypeError):
-            errors.append(path + ": no derived assertion")
-            continue
-        errors.extend(differences(value, at(row["source_expected"], path), path))
-    return errors
-
-
 def check_rejection(row):
     from generate_vectors import header, translate
     from packets.test_corpus import differences
 
-    from hamkit.aprs._compatibility import rejected_facts
-
     raw = row["packet"].encode("latin1")
     source = row["source_expected"]
     if row["profile"] == "compatibility-fap":
-        actual = rejected_facts(raw, row.get("options"))
-        return differences(actual, {k: source[k] for k in ("fap_header", "fap_fields")})
+        return []  # The rejection itself is asserted; FAP's partial fields are not.
     p = a.parse_packet(raw)
     errors = []
     if "header" in source:

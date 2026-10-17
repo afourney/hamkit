@@ -37,6 +37,8 @@ Unit: TypeAlias = Literal[
     "inches",
     "mm",
     "W/m2",
+    "nSv/h",
+    "volts",
     "watts",
     "dBi",
     "dB",
@@ -307,6 +309,8 @@ class Weather(Validated):
     luminosity: Measurement | None = None
     rain_counter: Measurement | None = None
     water_height: WaterHeight | None = None
+    radiation: Measurement | None = None
+    battery_voltage: Measurement | None = None
     software_code: str | None = None
     device_code: str | None = None
     timestamp: Timestamp | None = None
@@ -330,7 +334,7 @@ class Storm(Validated):
 AnalogChannels: TypeAlias = tuple[float | None, ...]
 DigitalChannels: TypeAlias = tuple[bool | None, ...]
 TelemetryEncoding: TypeAlias = Literal[
-    "classic", "mic_e_hex", "mic_e_binary", "base91_comment", "compatibility"
+    "classic", "mic_e_hex", "mic_e_binary", "base91_comment"
 ]
 
 

@@ -6,8 +6,7 @@ import copy
 
 import pytest
 from generate_vectors import records
-from packets import test_corpus
-from packets.test_corpus import COMPATIBILITY_PENDING, check, rows
+from packets.test_corpus import check, rows
 
 from hamkit import aprs as a
 
@@ -28,6 +27,8 @@ NMEA = [
     row
     for row in FAP_ACCEPTED
     if row["source_expected"]["fap_fields"]["Format"] == "nmea"
+    # FAP-362 diverges: an incomplete GLL sentence is Malformed.
+    and row["expected"].get("type") != "malformed"
 ]
 LEGACY = [
     row
@@ -37,35 +38,17 @@ LEGACY = [
 
 
 def test_regeneration_does_not_consult_decoders(monkeypatch):
-    from hamkit.aprs import _codec, _compatibility
+    from hamkit.aprs import _codec
 
     def forbidden(*args, **kwargs):
         raise AssertionError("Expectations must come from source assertions")
 
-    for module in (a, _codec, _compatibility):
+    for module in (a, _codec):
         for name in ("parse_packet", "parse_payload"):
             monkeypatch.setattr(module, name, forbidden)
-    for name in ("view", "facts", "rejected_facts"):
-        monkeypatch.setattr(_compatibility, name, forbidden)
     assert sorted(records(), key=lambda row: row["id"]) == sorted(
         ROWS, key=lambda row: row["id"]
     )
-
-
-@pytest.mark.parametrize(
-    "row",
-    [r for r in ROWS if r["id"] in COMPATIBILITY_PENDING],
-    ids=lambda row: row["id"],
-)
-def test_pending_rows_still_need_the_compatibility_view(monkeypatch, row):
-    """Remove an ID from COMPATIBILITY_PENDING once the public parser meets it."""
-    monkeypatch.setattr(test_corpus, "COMPATIBILITY_PENDING", set())
-    with pytest.raises(AssertionError):
-        check(row)
-
-
-def test_pending_list_is_not_stale():
-    assert COMPATIBILITY_PENDING <= {row["id"] for row in ROWS}
 
 
 @pytest.mark.parametrize("row", WEATHER, ids=lambda row: row["id"])
@@ -93,10 +76,14 @@ def test_weather_expectations_preserve_physical_measurements(row):
         ("RainMidnight", "rain_since_midnight"),
         ("Snow24h", "snow_24h"),
         ("Luminosity", "luminosity"),
+        ("Radiation", "radiation"),
+        ("BatteryVoltage", "battery_voltage"),
     ):
         original = fields["Wx"][source]
         if original is None:
             continue
+        if target not in weather and "divergence" in row:
+            continue  # A reviewed divergence reads this field differently.
         reading = weather[target]
         value, unit = reading["value"], reading["unit"]
         if source in ("WindSpeed", "WindGust"):
@@ -119,6 +106,8 @@ def test_weather_expectations_preserve_physical_measurements(row):
                     "Humidity": "percent",
                     "Pressure": "hPa",
                     "Luminosity": "W/m2",
+                    "Radiation": "nSv/h",
+                    "BatteryVoltage": "volts",
                 }[source]
             )
         assert value == pytest.approx(original, abs=1e-12, rel=1e-12)
@@ -132,8 +121,12 @@ def test_weather_expectations_preserve_physical_measurements(row):
         assert weather["wind_speed"]["value"] * 1.852 == pytest.approx(
             fields["Speed"], abs=1e-12
         )
-    # Existing non-model observations remain explicit and checked separately.
-    for field in ("TempIn", "HumidityIn", "Radiation", "BatteryVoltage", "WaterLevel"):
+    if fields["Wx"]["WaterLevel"] is not None:
+        height = weather["water_height"]["measurement"]
+        assert height["unit"] == "feet"
+        assert height["value"] * 0.3048 == pytest.approx(fields["Wx"]["WaterLevel"])
+    # Indoor readings have no model field and remain source provenance.
+    for field in ("TempIn", "HumidityIn"):
         assert f"$.fap_fields.Wx.{field}" in row["unmapped"]
 
 

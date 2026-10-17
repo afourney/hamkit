@@ -321,6 +321,8 @@ WEATHER_UNITS: dict[str, tuple[str, ...]] = {
     "snow_24h": ("inches", "mm"),
     "luminosity": ("W/m2",),
     "rain_counter": ("count", "raw"),
+    "radiation": ("nSv/h",),
+    "battery_voltage": ("volts",),
 }
 
 

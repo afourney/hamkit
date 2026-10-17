@@ -15,31 +15,6 @@ from hamkit import aprs
 
 DIRECTORY = Path(__file__).parents[1] / "vectors"
 
-# Rows still checked through the private compatibility view; every other row
-# compares parse_packet output directly. Each waits on a decision: 000000z
-# timestamps, short or decimal telemetry, minimal GLL and trailing APRS 1.2
-# weather fields (X/V tails also read as software/unit codes).
-COMPATIBILITY_PENDING = {
-    "FAP-362",
-    "FAP-433",
-    "FAP-434",
-    "FAP-435",
-    "FAP-436",
-    "FAP-454",
-    "FAP-455",
-    "FAP-456",
-    "FAP-482",
-    "FAP-483",
-    "FAP-484",
-    "FAP-485",
-    "FAP-486",
-    "FAP-487",
-    "FAP-488",
-    "FAP-489",
-    "FAP-490",
-    "FAP-497",
-}
-
 
 def differences(actual: Any, expected: Any, path: str = "$") -> list[str]:
     if isinstance(expected, dict):
@@ -111,17 +86,11 @@ def public_phg_row(row: dict[str, Any]) -> bool:
 
 def check(row: dict[str, Any]) -> None:
     raw = row["packet"].encode("latin-1")
-    packet: aprs.Packet | aprs.Malformed | None = None
-    if row["id"] in COMPATIBILITY_PENDING:
-        from hamkit.aprs._compatibility import view
-
-        actual, rejected = view(raw, row["profile"], row.get("options"))
-    else:
-        packet = parse_row(row, raw)
-        actual = aprs.to_json_dict(packet, include_defaults=True)
-        rejected = isinstance(packet, aprs.Malformed) or any(
-            d.code == "nonconforming" for d in packet.diagnostics
-        )
+    packet = parse_row(row, raw)
+    actual = aprs.to_json_dict(packet, include_defaults=True)
+    rejected = isinstance(packet, aprs.Malformed) or any(
+        d.code == "nonconforming" for d in packet.diagnostics
+    )
     assert actual["original_wire"] == row["packet"], "original bytes changed"
     assert not row.get("gap") and not row.get("unresolved")
     errors = differences(actual, row["expected"])
@@ -131,17 +100,15 @@ def check(row: dict[str, Any]) -> None:
         from source_details import check_rejection
 
         errors.extend(check_rejection(row))
+    # FAP's own extra fields (resolution, raw timestamp, warnings and so on)
+    # describe that library's output, not this schema, so they stay provenance.
     if row.get("unmapped"):
-        from source_details import check_core, check_fap, check_public_phg
+        from source_details import check_core, check_public_phg
 
         if row["profile"] != "compatibility-fap":
             errors.extend(check_core(row))
         elif public_phg_row(row):
             errors.extend(check_public_phg(row, packet))
-        else:
-            errors.extend(
-                check_fap(row, packet if isinstance(packet, aprs.Packet) else None)
-            )
     if row.get("sequence"):
         from receiver import Receiver
 

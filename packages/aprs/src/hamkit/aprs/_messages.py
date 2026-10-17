@@ -225,24 +225,33 @@ def telemetry(raw: bytes, diagnostics: list) -> d.Telemetry:
     sequence = match[1]
     if len(sequence) > 32:
         raise FieldError("telemetry sequence exceeds numeric field budget")
-    fields = raw[match.end() :].split(b",", 5)
-    if len(fields) != 6:
-        raise FieldError("telemetry requires five analog channels and digital bits")
+    rest = raw[match.end() :]
+    fields = rest.split(b",", 5) if rest else []
+    # Missing analog channels are a departure, not undecodable data: they
+    # decode as fewer channels and conformance reports the short report.
+    # Eight binary digits are never an APRS101 analog value (0..255), so a
+    # short report still ends with its digital bits.
+    if len(fields) == 6 or fields and re.match(rb"[01]{8}(?![0-9.])", fields[-1]):
+        values, tail = fields[:-1], fields[-1]
+    else:
+        values, tail = fields, None
     analog = []
-    try:
-        for value in fields[:5]:
-            analog.append(None if not value else float(value))
-    except ValueError as exc:
-        raise FieldError("invalid telemetry channel") from exc
-    bits = fields[5][:8]
-    if len(bits) != 8 or any(v not in b"01" for v in bits):
-        raise FieldError("telemetry requires eight binary digits")
+    for value in values:
+        # Plain decimals only: float() would also accept inf, nan and 1e5.
+        if value and not re.fullmatch(rb"-?(?:\d+(?:\.\d+)?|\.\d+)", value):
+            raise FieldError("invalid telemetry channel")
+        analog.append(float(value) if value else None)
+    bits, comment = b"", b""
+    if tail is not None:
+        bits, comment = tail[:8], tail[8:]
+        if len(bits) != 8 or any(v not in b"01" for v in bits):
+            raise FieldError("telemetry requires eight binary digits")
     return d.Telemetry(
         tuple(analog),
         tuple(v == 49 for v in bits),
         sequence="MIC" if sequence == b"MIC" else int(sequence),
         sequence_raw=sequence,
-        comment=free_text(fields[5][8:], "$.comment", diagnostics),
+        comment=free_text(comment, "$.comment", diagnostics),
     )
 
 
@@ -301,7 +310,7 @@ def write(payload):
             for c in p.tokens
         )
     if isinstance(p, d.Telemetry):
-        if p.encoding not in ("classic", "compatibility"):
+        if p.encoding != "classic":
             raise FieldError("telemetry encoding requires an enclosing position")
         seq = b"MIC" if p.sequence in (None, "MIC") else f"{p.sequence:03d}".encode()
         values = b",".join(
@@ -312,15 +321,10 @@ def write(payload):
             )
             for v in p.analog
         )
-        return (
-            b"T#"
-            + seq
-            + b","
-            + values
-            + b","
-            + bytes(49 if v else 48 for v in p.digital)
-            + p.comment.encode()
-        )
+        raw = b"T#" + seq + (b"," + values if p.analog else b"")
+        if p.digital or p.comment:
+            raw += b"," + bytes(49 if v else 48 for v in p.digital) + p.comment.encode()
+        return raw
     if isinstance(p, m.Bulletin):
         address = "BLN" + p.identifier + (p.group or "")
         body = p.text.encode()

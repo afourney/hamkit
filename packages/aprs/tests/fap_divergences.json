@@ -16,7 +16,13 @@
     "mic_e_type_suffix": "APRS 1.2 Mic-E type codes end the status text with a declared version suffix (\"=\" after \"]\" is the TM-D710); it is part of device_code, not comment text.",
     "mic_e_type_byte": "APRS 1.2 redefines a leading ` or ' as a Mic-E type byte; APRS101 hex telemetry needs the complete form (10 hex digits after '), so this is a type code followed by comment text. FAP reads two channels.",
     "mic_e_manufacturer": "APRS 1.2 Mic-E type code ' with the Byonics TinyTrack3 suffix |3 is stored in device_code; FAP keeps both in the comment.",
-    "mic_e_corrupt": "A byte was lost in transit, so the symbol table is invalid; FAP's accept_broken_mice option guesses the repair, while the public parser reports the packet as Malformed."
+    "mic_e_corrupt": "A byte was lost in transit, so the symbol table is invalid; FAP's accept_broken_mice option guesses the repair, while the public parser reports the packet as Malformed.",
+    "timestamp_day_zero": "Day 00 is not a valid timestamp, so the packet is Malformed and Malformed.recovered keeps the other fields; FAP decodes them with a warning. TIM-011 allows either.",
+    "gll_minimal": "This GLL sentence has no time or fix status, which the GLL model requires and the parser does not invent, so it is Malformed; FAP accepts the coordinates alone.",
+    "telemetry_short": "A short telemetry report decodes with only the channels transmitted and is marked nonconforming; FAP pads it to five channels.",
+    "telemetry_invalid": "A non-numeric telemetry channel cannot be decoded, so the report is Malformed; FAP keeps the channels before it.",
+    "telemetry_comment": "Text after the telemetry digital bits is kept as the comment; FAP discards it.",
+    "weather_unknown_field": "'O' is not a weather field in APRS101, the APRS 1.1 clarification or the APRS 1.2 proposal, so the report ends there and the rest stays in the comment; FAP skips it."
   },
   "rows": {
     "FAP-005": {
@@ -125,6 +131,13 @@
         }
       }
     },
+    "FAP-362": {
+      "reasons": ["gll_minimal"],
+      "replace": {
+        "type": "malformed"
+      },
+      "drop_unmapped": ["$."]
+    },
     "FAP-363": {
       "reasons": ["unknown_nmea"],
       "accept": {
@@ -230,6 +243,25 @@
         "$.payload.comment": " comment "
       }
     },
+    "FAP-433": {
+      "reasons": ["telemetry_comment"],
+      "set": {
+        "$.payload.comment": " comment"
+      }
+    },
+    "FAP-434": {
+      "reasons": ["telemetry_short"],
+      "set": {
+        "$.payload.analog": [42.0]
+      }
+    },
+    "FAP-436": {
+      "reasons": ["telemetry_invalid"],
+      "replace": {
+        "type": "malformed"
+      },
+      "drop_unmapped": ["$."]
+    },
     "FAP-444": {
       "reasons": ["parm_case"],
       "set": {
@@ -290,6 +322,27 @@
         "$.payload.comment": " 14.3V 27C HDOP01.0 SATS09"
       }
     },
+    "FAP-454": {
+      "reasons": ["timestamp_day_zero"],
+      "replace": {
+        "type": "malformed"
+      },
+      "drop_unmapped": ["$."]
+    },
+    "FAP-455": {
+      "reasons": ["timestamp_day_zero"],
+      "replace": {
+        "type": "malformed"
+      },
+      "drop_unmapped": ["$."]
+    },
+    "FAP-456": {
+      "reasons": ["timestamp_day_zero"],
+      "replace": {
+        "type": "malformed"
+      },
+      "drop_unmapped": ["$."]
+    },
     "FAP-457": {
       "reasons": ["whitespace"],
       "set": {
@@ -329,6 +382,25 @@
       }
     },
     "FAP-476": {
+      "reasons": ["disputed_wind"],
+      "set": {
+        "$.payload.extensions.weather.wind_speed.unit": "disputed_knots_or_mph"
+      }
+    },
+    "FAP-489": {
+      "reasons": ["weather_unknown_field"],
+      "set": {
+        "$.payload.comment": "Os...L...F....X...V..."
+      }
+    },
+    "FAP-490": {
+      "reasons": ["weather_unknown_field"],
+      "set": {
+        "$.payload.comment": "Os010L500"
+      },
+      "remove": ["$.payload.snow_24h", "$.payload.luminosity"]
+    },
+    "FAP-497": {
       "reasons": ["disputed_wind"],
       "set": {
         "$.payload.extensions.weather.wind_speed.unit": "disputed_knots_or_mph"

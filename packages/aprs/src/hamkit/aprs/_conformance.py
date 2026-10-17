@@ -149,10 +149,7 @@ def _packet(v: Packet, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     payload = v.payload
     if isinstance(payload, Weather):
         yield from _weather_report(payload, "$.payload", positioned=False)
-    if isinstance(payload, Telemetry) and payload.encoding not in (
-        "classic",
-        "compatibility",
-    ):
+    if isinstance(payload, Telemetry) and payload.encoding != "classic":
         yield "$.payload.encoding", "comment and Mic-E telemetry need a position report"
 
 
@@ -537,6 +534,16 @@ def _weather(v: Weather, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     problem = _weather_comment(v, v.comment)
     if problem:
         yield "$.comment", problem
+    elif v.comment:
+        from . import _weather as codec
+
+        try:
+            back, _ = codec.read(codec.write(v)[1:])
+        except APRSError:
+            pass  # Missing slots and unencodable values are reported separately.
+        else:
+            if back.comment != v.comment:
+                yield "$.comment", "comment would be read back as weather fields"
     for name in (
         "wind_direction",
         "wind_speed",
@@ -550,6 +557,8 @@ def _weather(v: Weather, policy: EnvelopePolicy | None) -> Iterator[Finding]:
         "snow_24h",
         "luminosity",
         "rain_counter",
+        "radiation",
+        "battery_voltage",
     ):
         reading: Measurement | None = getattr(v, name)
         if reading is None or reading.value is None:
@@ -558,6 +567,16 @@ def _weather(v: Weather, policy: EnvelopePolicy | None) -> Iterator[Finding]:
         high = {"humidity": 100, "wind_direction": 360}.get(name, float("inf"))
         if not low <= reading.value <= high:
             yield f"$.{name}.value", "reading outside the quantity's range"
+    if v.radiation is not None and v.radiation.value is not None:
+        from . import _weather as codec
+
+        try:
+            codec.radiation_code(v.radiation.value)
+        except FieldError:
+            yield "$.radiation.value", "requires two digits times a power of ten"
+    volts = v.battery_voltage.value if v.battery_voltage is not None else None
+    if volts is not None and round(volts * 10) > 999:
+        yield "$.battery_voltage.value", "exceeds the three-digit tenths field"
     if v.software_code is not None and len(v.software_code) != 1:
         yield "$.software_code", "requires one character"
     if v.device_code is not None and not 2 <= len(v.device_code) <= 4:
@@ -617,5 +636,3 @@ def _telemetry(v: Telemetry, policy: EnvelopePolicy | None) -> Iterator[Finding]
             yield "$.digital", "eight binary channels follow five analog channels"
         if v.comment:
             yield "$.comment", "base91 telemetry uses the report comment"
-    elif not v.analog and not v.digital:
-        yield "$.analog", "at least one channel is required"

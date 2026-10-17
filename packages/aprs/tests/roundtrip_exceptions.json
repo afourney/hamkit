@@ -541,8 +541,8 @@
     "reasons": ["requires an integer in 0..255"]
   },
   "BAD-102": {
-    "kind": "malformed",
-    "reasons": ["telemetry requires five analog channels and digital bits"]
+    "kind": "conformance",
+    "reasons": ["classic telemetry has five analog channels"]
   },
   "BAD-103": {
     "kind": "malformed",
@@ -1093,24 +1093,31 @@
     ]
   },
   "FAP-434": {
-    "kind": "malformed",
-    "reasons": ["telemetry requires five analog channels and digital bits"]
+    "kind": "conformance",
+    "reasons": [
+      "classic telemetry has five analog channels",
+      "classic telemetry has eight binary channels"
+    ]
   },
   "FAP-435": {
-    "kind": "malformed",
-    "reasons": ["telemetry requires five analog channels and digital bits"]
+    "kind": "conformance",
+    "reasons": [
+      "classic telemetry has eight binary channels",
+      "requires an integer in 0..255",
+      "requires an integer in 0..255"
+    ]
   },
   "FAP-436": {
     "kind": "malformed",
-    "reasons": ["telemetry requires five analog channels and digital bits"]
+    "reasons": ["invalid telemetry channel"]
   },
   "FAP-437": {
     "kind": "malformed",
-    "reasons": ["telemetry requires five analog channels and digital bits"]
+    "reasons": ["invalid telemetry channel"]
   },
   "FAP-438": {
     "kind": "malformed",
-    "reasons": ["telemetry requires five analog channels and digital bits"]
+    "reasons": ["invalid telemetry channel"]
   },
   "FAP-439": {
     "kind": "conformance",
@@ -1150,7 +1157,11 @@
   },
   "FAP-462": {
     "kind": "malformed",
-    "reasons": ["longitude cannot be more ambiguous than latitude"]
+    "reasons": [
+      "longitude cannot be more ambiguous than latitude",
+      "position ambiguity is not implemented",
+      "position ambiguity is not implemented"
+    ]
   },
   "FAP-469": {
     "kind": "conformance",

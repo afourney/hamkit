@@ -7,20 +7,20 @@ Decoding and encoding cover the families exercised by all 1,564 occurrences in
 [the edition 1 corpus](APRS_COMPLIANCE_VECTORS.md). Unknown grammars still use
 `Opaque`; raw wrappers preserve authoritative information bytes.
 
-| Family            | Decoding and encoding                                                                                                                           |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Envelope          | TNC2, configurable address patterns and size limits, RF/APRS-IS presets, explicit repeated hops, AEA normalization, bounded third-party nesting |
-| Positions         | All four DTIs, ambiguity, compressed coordinates/csT, Mic-E destination-dependent latitude/message/hemisphere                                   |
-| Extensions        | Motion, altitude, PHG/rate, range, DF signal/bearing, DAO, area/corridor, signpost, storm, weather, base91 and Mic-E telemetry                  |
-| Objects/items     | Names, ownership information, alive/killed markers, compressed/uncompressed positions and extensions                                            |
-| Weather           | MDHM positionless and located reports, unavailable readings, rain/humidity/pressure, luminosity, snow, water height, device suffixes            |
-| Telemetry         | Classic samples, PARM/UNIT/EQNS/BITS, comment base91, old Mic-E hex/binary                                                                      |
-| Messages          | Ordinary messages, ack/rej, reply-ack, automatic answers, bulletins/announcements/groups, NWS envelopes, NTS records                            |
-| Queries/responses | General/directed queries, footprints, heard-station operands, direct lists, hourly counts, trace headers, capabilities                          |
-| Status            | Text, DHM, grid/symbol and beam/ERP                                                                                                             |
-| NMEA              | GGA, GLL, RMC, VTG and WPL, checksums, independent fix usability, destination/source symbol conventions                                         |
-| Historical/raw    | Grid beacons, X1J embedded positions (opt-in), plain beacons, Agrelo, user-defined, invalid/test, reserved and external raw formats             |
-| Vendor weather    | Ultimeter 2000 measurements plus original bytes; other vendor modes retain bytes without invented measurements                                  |
+| Family            | Decoding and encoding                                                                                                                                                      |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Envelope          | TNC2, configurable address patterns and size limits, RF/APRS-IS presets, explicit repeated hops, AEA normalization, bounded third-party nesting                            |
+| Positions         | All four DTIs, ambiguity, compressed coordinates/csT, Mic-E destination-dependent latitude/message/hemisphere                                                              |
+| Extensions        | Motion, altitude, PHG/rate, range, DF signal/bearing, DAO, area/corridor, signpost, storm, weather, base91 and Mic-E telemetry                                             |
+| Objects/items     | Names, ownership information, alive/killed markers, compressed/uncompressed positions and extensions                                                                       |
+| Weather           | MDHM positionless and located reports, unavailable readings, rain/humidity/pressure, luminosity, snow, water height, APRS 1.2 radiation and battery volts, device suffixes |
+| Telemetry         | Classic samples (short reports decode as nonconforming), PARM/UNIT/EQNS/BITS, comment base91, old Mic-E hex/binary                                                         |
+| Messages          | Ordinary messages, ack/rej, reply-ack, automatic answers, bulletins/announcements/groups, NWS envelopes, NTS records                                                       |
+| Queries/responses | General/directed queries, footprints, heard-station operands, direct lists, hourly counts, trace headers, capabilities                                                     |
+| Status            | Text, DHM, grid/symbol and beam/ERP                                                                                                                                        |
+| NMEA              | GGA, GLL, RMC, VTG and WPL, checksums, independent fix usability, destination/source symbol conventions                                                                    |
+| Historical/raw    | Grid beacons, X1J embedded positions (opt-in), plain beacons, Agrelo, user-defined, invalid/test, reserved and external raw formats                                        |
+| Vendor weather    | Ultimeter 2000 measurements plus original bytes; other vendor modes retain bytes without invented measurements                                                             |
 
 `codec_support()` and `codec_support_for()` describe these boundaries at runtime.
 Raw models do not promise interpretation of arbitrary vendor or external grammars.
@@ -41,19 +41,17 @@ generator preserves values while translating names, nesting and equivalent units
 it never consults a parser or expected decoder output.
 
 The public codec is deterministic and preserves the richer wire interpretation.
-The private `_compatibility` adapter supplies the named historical views and
-additional receiver facts without adding profile parameters or JSON fields to
-the public API. It never reads fixtures or expected values. FAP compatibility is
-an implementation of the captured receiver policy, not the core transmit policy.
-The pinned reference implementation was consulted; it is not a runtime dependency.
+There is no receiver-emulation layer: every vector compares public
+`parse_packet` output with its stored expectation. FAP's own extra fields
+(display resolution, raw timestamps, warnings, indoor sensors) describe that
+library's output rather than this schema, so they remain source provenance
+without assertions. The pinned reference implementation was consulted; it is
+not a runtime dependency.
 
-Some facts cannot be stored as additional public fields: disputed DF quality
-interpretations, network retention/routing policy, weather radiation/battery and
-indoor sensor values, and historical receiver resolution/warnings. Tests verify
-these separately from retained codes/bytes. Incomplete historical GLL reports
-and invalid timestamps remain `Malformed` in the public model when required
-facts cannot be constructed; the historical adapter exposes only available facts.
-No missing time, coordinate or calibration coefficient is fabricated.
+Incomplete historical GLL reports and invalid timestamps remain `Malformed` when
+required facts cannot be constructed; `Malformed.recovered` keeps the intact
+fields of positions, objects and status reports. No missing time, coordinate or
+calibration coefficient is fabricated.
 
 The completed schema migration rewrites 35 expectations (33 FAP, two historical
 positions). It stores weather measurements in the public decoder's equivalent
@@ -66,14 +64,10 @@ The runtime weather-unit conversion, wrapper flattening, and NMEA source-schema
 comparison have been removed. Source snapshots and all raw packet bytes remain
 unchanged; inverse-unit and source-value tests check that no information was lost.
 
-All but 18 vectors compare public `parse_packet` output with their stored
-expectations directly; historical and FAP rows parse with
-`legacy_positions=True`. Forty-two FAP expectations record where FAP's
-interpretation differs from the specification-following public decoder
-(`tests/fap_divergences.json`). The remaining 18 still use the compatibility
-view: `000000z` timestamps, short or decimal telemetry, minimal GLL sentences
-and trailing APRS 1.2 weather fields. Supplemental FAP source facts are still
-checked through the adapter's helpers.
+Historical and FAP rows parse with `legacy_positions=True`. Fifty-two FAP
+expectations record where FAP's interpretation differs from the
+specification-following public decoder (`tests/fap_divergences.json`), each
+with its reasons.
 
 The 23 sequence occurrences run through a test application receiver using public
 models. Ownership, deduplication, acknowledgment construction, calibration,
@@ -143,21 +137,20 @@ All original packet bytes, semantic expectations, options and provenance have a
 frozen integrity hash tied to PR #4's head commit.
 
 Every vector also has an encoding test. With an explicit permissive envelope
-policy (`EnvelopePolicy(".*", ".*", ".*")`), 1,303 occurrences encode and stabilize
+policy (`EnvelopePolicy(".*", ".*", ".*")`), 1,305 occurrences encode and stabilize
 through semantic decode/encode round trips with all raw evidence removed. The
-other 261 have explicit refusal records: 181 malformed public packets and 80
+other 259 have explicit refusal records: 176 malformed public packets and 83
 violations of the existing transmit-conformance rules. Those refusal tests assert
 the reason; they are not broad exception catches or skipped tests. Three NMEA
 sentences with bad checksums are first refused, then encode after an explicit
-repair; they are counted among the 1,303.
+repair; they are counted among the 1,305.
 
-Of those 1,303, 15 have addresses rejected by the new default `APRS_IS` policy,
+Of those 1,305, 15 have addresses rejected by the new default `APRS_IS` policy,
 including two with SSID `-0`; the tests independently require those
-default-policy refusals and validate the other 1,288 under the default policy. The permissive policy changes no decoded
+default-policy refusals and validate the other 1,290 under the default policy. The permissive policy changes no decoded
 fields, packet bytes or payload conformance checks. Dedicated policy tests cover
 custom patterns, optional and zero limits, boundary sizes including CRLF,
 repeated markers, and consistent outer-envelope handling of third-party packets.
 
-PHG/PHGR vectors exercise the public API directly, without compatibility
-decoding. The PHGR rate character and required slash, ordinary PHG separators,
+PHG/PHGR vectors exercise the public API directly. The PHGR rate character and required slash, ordinary PHG separators,
 and PHG comment whitespace are handled by the shared public decoder/encoder.

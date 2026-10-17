@@ -699,11 +699,18 @@ def fap_projection(e: JSON, packet: str) -> JSON:
                 0,
             ),
             ("Luminosity", "luminosity", "W/m2", 1, 0),
+            ("Radiation", "radiation", "nSv/h", 1, 0),
+            ("BatteryVoltage", "battery_voltage", "volts", 1, 0),
         ):
             if wx.get(key) is not None:
                 # Convert captured expectations, never values from the decoder.
                 # No rounding: the original physical measurement is preserved.
                 mapped_wx[target] = {"value": wx[key] * scale + offset, "unit": unit}
+        if wx.get("WaterLevel") is not None:
+            # FAP reports metres; the APRS wire field is feet.
+            mapped_wx["water_height"] = {
+                "measurement": {"value": wx["WaterLevel"] / 0.3048, "unit": "feet"}
+            }
         if normal.get("format") == "compressed":
             # FAP flattens the compressed weather wind pair into Course/Speed.
             # Our schema places that same pair inside extensions.weather.

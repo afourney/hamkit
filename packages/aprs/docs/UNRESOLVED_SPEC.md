@@ -93,8 +93,7 @@ allows sequence-only telemetry. The extension describes itself as experimental.
 **Current behavior:** conformance for `base91_comment` follows §3.7: a sequence
 in 0..8280 and at least one analog value are required. Digital data follows all five analog fields.
 Sequence-only data is unsupported by this model contract, not declared universally
-malformed on receipt; the core decoder retains sequence-only blocks as comment text. `compatibility` is an
-explicitly unverified representation, not a named normative encoding.
+malformed on receipt; the core decoder retains sequence-only blocks as comment text.
 
 **What resolves it:** choose a versioned extension profile or obtain an author
 clarification reconciling the documents. Do not silently expand the baseline by
@@ -113,9 +112,16 @@ slot presence. There is no extra requirement for a numeric observation. A
 `Weather` model may be incomplete; only sending an incomplete report is refused.
 
 The later minimum flood example omits gust; proposed water units and examples
-disagree across the documents. `WaterHeight` consequently remains a signed
-measurement with explicit feet/meters and optional external datum metadata; the corpus selects F/f numeric feet/meters for core reports and the FAP adapter selects signed tenths of feet. `disputed_knots_or_mph` explicitly records
-unresolved velocity units and must not be converted without a selected profile.
+disagree across the documents. `WaterHeight` remains a signed measurement with
+explicit feet/meters and optional external datum metadata. The two water-level
+spellings are told apart by their syntax: a decimal value (`F20.1`, `f-1.2`) is
+the 1.1 clarification's feet or meters, and four bytes without a decimal point
+(`F0123`, `F-042`, `F....`) are the 1.2 proposal's tenths of a foot. The 1.2
+proposal's `Xnnn` radiation (two digits times a power of ten, nSv/h) and `Vnnn`
+battery volts (tenths) decode into `radiation` and `battery_voltage`, with `...`
+for unavailable, so they are never read as software/unit codes.
+`disputed_knots_or_mph` explicitly records unresolved velocity units and must
+not be converted without a selected profile.
 
 **What resolves it:** a chosen, cited water/flood profile and clarification of
 units, unavailable markers, field widths and mandatory slots. The blanket baseline

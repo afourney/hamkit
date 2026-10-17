@@ -1945,7 +1945,7 @@ print(packet)
 Output:
 
 ```text
-Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Weather(wind_direction=Measurement(value=220.0, unit='degrees'), wind_speed=Measurement(value=4.0, unit='mph'), gust=Measurement(value=5.0, unit='mph'), temperature=Measurement(value=77.0, unit='fahrenheit'), humidity=Measurement(value=50.0, unit='percent'), pressure=Measurement(value=990.0, unit='hPa'), rain_1h=Measurement(value=0.01, unit='inches'), rain_24h=Measurement(value=0.25, unit='inches'), rain_since_midnight=Measurement(value=0.12, unit='inches'), snow_24h=None, luminosity=None, rain_counter=None, water_height=None, software_code='W', device_code='RSW', timestamp=Timestamp(kind='mdhm_utc', hour=5, minute=56, day=9, second=None, month=10), comment=''), diagnostics=())
+Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Weather(wind_direction=Measurement(value=220.0, unit='degrees'), wind_speed=Measurement(value=4.0, unit='mph'), gust=Measurement(value=5.0, unit='mph'), temperature=Measurement(value=77.0, unit='fahrenheit'), humidity=Measurement(value=50.0, unit='percent'), pressure=Measurement(value=990.0, unit='hPa'), rain_1h=Measurement(value=0.01, unit='inches'), rain_24h=Measurement(value=0.25, unit='inches'), rain_since_midnight=Measurement(value=0.12, unit='inches'), snow_24h=None, luminosity=None, rain_counter=None, water_height=None, radiation=None, battery_voltage=None, software_code='W', device_code='RSW', timestamp=Timestamp(kind='mdhm_utc', hour=5, minute=56, day=9, second=None, month=10), comment=''), diagnostics=())
 ```
 
 Show that same result as JSON:

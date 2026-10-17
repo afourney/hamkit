@@ -1,11 +1,16 @@
 # SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
 # SPDX-License-Identifier: MIT
-"""Weather token grammar; absent and unavailable observations remain distinct."""
+"""Weather token grammar; absent and unavailable observations remain distinct.
+
+Beyond APRS101 and the APRS 1.1 clarification (spec-wx.txt), the APRS 1.2
+weather proposal (aprs.org/aprs12/weather-new.txt) adds Xnnn radiation,
+Vnnn battery volts and a fixed four-byte Fnnnn water level in tenths of a foot.
+"""
 
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 
 from ._data import Measurement, WaterHeight, Weather
 from ._errors import FieldError
@@ -56,11 +61,25 @@ def read(
     while raw:
         tag = chr(raw[0])
         if tag in "Ff":
-            match = re.match(rb"[Ff](-?\d+(?:\.\d+)?)", raw)
+            height = _water_height(raw)
+            if height:
+                values["water_height"], raw = height
+                continue
+        if tag in "XV":
+            match = re.match(rb"[XV](\d{3}|\.{3})", raw)
             if match:
-                values["water_height"] = WaterHeight(
-                    Measurement(float(match[1]), "feet" if tag == "F" else "meters")
-                )
+                field = match[1]
+                if tag == "X":
+                    # Resistor-code style: two digits times ten to the third.
+                    value = (
+                        None
+                        if field == b"..."
+                        else int(field[:2]) * 10 ** int(field[2:])
+                    )
+                    values["radiation"] = Measurement(value, "nSv/h", raw=field)
+                else:
+                    value = None if field == b"..." else int(field) / 10
+                    values["battery_voltage"] = Measurement(value, "volts", raw=field)
                 raw = raw[match.end() :]
                 continue
         if tag not in _FIELDS:
@@ -103,6 +122,35 @@ def read(
         )
         raw = b""
     return Weather(**values, timestamp=timestamp, raw=original), raw
+
+
+def _water_height(raw: bytes) -> tuple[WaterHeight, bytes] | None:
+    """F/f water level: decimal feet/meters (APRS 1.1) or Fnnnn tenths (1.2)."""
+    unit: Literal["feet", "meters"] = "feet" if raw[:1] == b"F" else "meters"
+    decimal = re.match(rb"[Ff](-?\d+\.\d+)", raw)
+    if decimal:
+        return WaterHeight(Measurement(float(decimal[1]), unit)), raw[decimal.end() :]
+    if unit == "feet":
+        tenths = re.match(rb"F(\d{4}|-\d{3}|\.{4})", raw)
+        if tenths:
+            field = tenths[1]
+            value = None if field == b"...." else int(field) / 10
+            measurement = Measurement(value, "feet", raw=field)
+            return WaterHeight(measurement), raw[tenths.end() :]
+    whole = re.match(rb"[Ff](-?\d+)", raw)
+    if whole:
+        return WaterHeight(Measurement(float(whole[1]), unit)), raw[whole.end() :]
+    return None
+
+
+def radiation_code(value: float | None) -> bytes:
+    if value is None:
+        return b"..."
+    for exponent in range(10):
+        mantissa = value / 10**exponent
+        if mantissa <= 99 and mantissa == int(mantissa):
+            return f"{int(mantissa):02d}{exponent}".encode()
+    raise FieldError("radiation is not two digits times a power of ten")
 
 
 def _value(m: Measurement, unit: str) -> float | None:
@@ -187,8 +235,15 @@ def write(w: Weather, *, positioned=False, compressed=False) -> bytes:
             raise FieldError("water-height datum has no wire field")
         m = w.water_height.measurement
         if m.value is None:
-            raise FieldError("water height requires a value")
-        raw += (b"F" if m.unit == "feet" else b"f") + f"{m.value:g}".encode()
+            if m.unit != "feet":
+                raise FieldError("only feet water height can be marked unavailable")
+            raw += b"F...."
+        else:
+            raw += (b"F" if m.unit == "feet" else b"f") + f"{m.value:g}".encode()
+    if w.radiation:
+        raw += b"X" + radiation_code(w.radiation.value)
+    if w.battery_voltage:
+        raw += b"V" + _number(w.battery_voltage.value, 3, 0.1)
     raw += (
         (w.software_code or "").encode()
         + (w.device_code or "").encode()
