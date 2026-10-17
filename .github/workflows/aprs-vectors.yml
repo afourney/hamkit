@@ -14,12 +14,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install 'pytest>=8,<10' build
+      - run: python -m pip install 'pytest>=8,<10' build -e ./packages/aprs
       - name: Test source including every JSONL vector
         run: PYTHONPATH=packages/aprs/src python -m pytest packages/aprs/tests -q
       - name: Build and install wheel
         run: |
           python -m build --wheel packages/aprs
-          python -m pip install --no-deps packages/aprs/dist/*.whl
+          python -m pip install --force-reinstall --no-deps packages/aprs/dist/*.whl
       - name: Test installed wheel including every JSONL vector
         run: python -m pytest packages/aprs/tests -q
