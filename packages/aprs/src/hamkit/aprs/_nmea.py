@@ -9,19 +9,19 @@ fix is inferred from coordinates. Other NMEA sentences need their own grammar.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, TypeAlias
 
-from .data import Coordinates, RawFields
-from .model_validation import Validated
+from ._data import Coordinates
+from ._validation import Validated, evidence
 
 
 @dataclass(frozen=True)
 class NMEAMetadata(Validated):
     talker: str
-    checksum_supplied: str | None = None
-    checksum_valid: bool | None = None
-    fields_raw: RawFields = ()
+    checksum_supplied: str | None = field(default=None, kw_only=True)
+    checksum_valid: bool | None = field(default=None, kw_only=True)
+    fields_raw: tuple[bytes, ...] = evidence(())
 
 
 @dataclass(frozen=True)
@@ -29,12 +29,12 @@ class GGA(Validated):
     time_utc: str
     coordinates: Coordinates | None
     fix_quality: int
-    satellites: int | None = None
-    hdop: float | None = None
-    altitude_msl_m: float | None = None
-    geoid_separation_m: float | None = None
-    dgps_age: str | None = None
-    dgps_station: str | None = None
+    satellites: int | None = field(default=None, kw_only=True)
+    hdop: float | None = field(default=None, kw_only=True)
+    altitude_msl_m: float | None = field(default=None, kw_only=True)
+    geoid_separation_m: float | None = field(default=None, kw_only=True)
+    dgps_age: str | None = field(default=None, kw_only=True)
+    dgps_station: str | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)
@@ -50,13 +50,15 @@ class RMC(Validated):
     date_ddmmyy: str
     fix_status: Literal["A", "V"]
     coordinates: Coordinates | None
-    speed_knots: float | None = None
-    course_deg: float | None = None
-    magnetic_variation: float | None = None
-    magnetic_variation_direction: Literal["E", "W"] | None = None
+    speed_knots: float | None = field(default=None, kw_only=True)
+    course_deg: float | None = field(default=None, kw_only=True)
+    magnetic_variation: float | None = field(default=None, kw_only=True)
+    magnetic_variation_direction: Literal["E", "W"] | None = field(
+        default=None, kw_only=True
+    )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class VTG(Validated):
     course_true_deg: float | None = None
     course_magnetic_deg: float | None = None

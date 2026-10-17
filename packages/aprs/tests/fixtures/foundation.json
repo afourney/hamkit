@@ -38,7 +38,14 @@
         "latitude_deg": 49.058333333333,
         "longitude_deg": -72.029166666667,
         "ambiguity_digits": 0
-      }
+      },
+      "symbol": {
+        "table_id_raw": "/",
+        "table": "primary",
+        "code": "-",
+        "overlay": null
+      },
+      "comment": "Test"
     },
     "packet_length_bytes": 36,
     "adapter_note": "Focused subset of assertions; see source document for complete expectations."

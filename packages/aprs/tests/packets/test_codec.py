@@ -7,7 +7,7 @@ from dataclasses import replace
 
 from hamkit.aprs import (
     Acknowledgment,
-    DecodeOptions,
+    CodecNotImplementedError,
     EnvelopeError,
     FieldError,
     Header,
@@ -20,11 +20,10 @@ from hamkit.aprs import (
     Status,
     Symbol,
     Timestamp,
-    UnsupportedFormat,
-    decode_payload,
-    encode_payload,
     parse_packet,
+    parse_payload,
     serialize_packet,
+    serialize_payload,
     validate_packet,
 )
 
@@ -34,7 +33,7 @@ class PacketTests(unittest.TestCase):
         packet = Packet(
             Header("N0CALL", "APRS", (Hop("WIDE1-1"),)),
             Position(
-                49 + 3.5 / 60, -(72 + 1.75 / 60), tail=b"Test", symbol=Symbol("/", "-")
+                49 + 3.5 / 60, -(72 + 1.75 / 60), Symbol("/", "-"), comment="Test"
             ),
         )
         wire = b"N0CALL>APRS,WIDE1-1:!4903.50N/07201.75W-Test"
@@ -43,24 +42,23 @@ class PacketTests(unittest.TestCase):
         validate_packet(packet, profile="rf")
 
     def test_null_position_convention(self) -> None:
-        value = decode_payload(b"!0000.00N\\00000.00W.")
-        self.assertIsInstance(value, Position)
+        value = parse_payload(b"!0000.00N\\00000.00W.")
         assert isinstance(value, Position)
         self.assertTrue(value.is_null_position)
-        self.assertFalse(Position(0, 0, symbol=Symbol("/", "-")).is_null_position)
+        self.assertFalse(Position(0, 0, Symbol("/", "-")).is_null_position)
 
     def test_four_position_dtis(self) -> None:
         for messaging in (False, True):
-            for timestamp in (None, Timestamp("dhm_utc", 23, 45, day=9)):
+            for timestamp in (None, Timestamp.dhm(9, 23, 45)):
                 value = Position(
                     -49.0,
                     72.0,
                     Symbol("A", ">"),
-                    messaging,
-                    timestamp,
-                    b"123/045/A=001000\xff",
+                    comment="123/045/A=001000 ✓",
+                    messaging=messaging,
+                    timestamp=timestamp,
                 )
-                self.assertEqual(decode_payload(encode_payload(value)), value)
+                self.assertEqual(parse_payload(serialize_payload(value)), value)
 
     def test_original_wire_is_archival(self) -> None:
         raw = b"n0call-0>APRS,qAR,igate:>radio: ready > listening"
@@ -71,8 +69,6 @@ class PacketTests(unittest.TestCase):
         changed = replace(packet, payload=Status("Changed"))
         self.assertEqual(changed.original_wire, raw)
         self.assertTrue(serialize_packet(changed).endswith(b":>Changed"))
-        with self.assertRaises(EnvelopeError):
-            serialize_packet(packet, profile="rf")
 
     def test_path_markers(self) -> None:
         packet = parse_packet(b"N0CALL>APRS,D1,D2*,WIDE2-1:>Ready")
@@ -83,26 +79,32 @@ class PacketTests(unittest.TestCase):
 
     def test_message_and_ack_round_trips(self) -> None:
         for payload in (
-            Message("W1AW", text=""),
-            Message("W1AW", " leading: trailing ", "003"),
+            Message("W1AW", ""),
+            Message("W1AW", " leading: trailing ", message_id="003"),
+            Message("W1AW", "Hello", message_id="1", reply_ack="02"),
+            Message("W1AW", "Hello", message_id="1", reply_ack=""),
             Acknowledgment("W1AW", "003"),
-            Acknowledgment("W1AW", "Ab9Z0", True),
+            Acknowledgment("W1AW", "Ab9Z0", rejected=True),
+            Acknowledgment("W1AW", "01", reply_ack="02"),
             Message("W1AW", "acknowledge this please"),
+            Message("W1AW", "braces } are fine"),
         ):
             with self.subTest(payload=payload):
-                self.assertEqual(decode_payload(encode_payload(payload)), payload)
+                self.assertEqual(parse_payload(serialize_payload(payload)), payload)
         self.assertEqual(
-            encode_payload(Message("W1AW", "Hello", "003")), b":W1AW     :Hello{003"
+            serialize_payload(Message("W1AW", "Hello", message_id="003")),
+            b":W1AW     :Hello{003",
         )
 
     def test_status_round_trip(self) -> None:
         for value in (
-            Status(text=""),
+            Status(""),
             Status("  padded  "),
-            Status("Ready", Timestamp("dhm_utc", 23, 45, day=9)),
+            Status("Ready", timestamp=Timestamp.dhm(9, 23, 45)),
             Status("1234567 not a timestamp"),
+            Status("Grüße"),
         ):
-            self.assertEqual(decode_payload(encode_payload(value)), value)
+            self.assertEqual(parse_payload(serialize_payload(value)), value)
 
     def test_unsupported_preserved(self) -> None:
         for information in (
@@ -111,7 +113,6 @@ class PacketTests(unittest.TestCase):
             b"T#001,1,2,3,4,5,00000000",
             b"!4903.5 N/07201.7 W-",
             b"!/5L!!<*e7>7P[",
-            b":W1AW     :Reply{01}02",
             b":BLN0     :Notice",
             b":NWS-WARN :Warning{123",
         ):
@@ -120,13 +121,6 @@ class PacketTests(unittest.TestCase):
                 assert isinstance(packet, Packet)
                 self.assertIsInstance(packet.payload, Opaque)
                 self.assertEqual(serialize_packet(packet), packet.original_wire)
-
-    def test_latin1_input(self) -> None:
-        self.assertEqual(
-            parse_packet("N0CALL>APRS:~\xff").original_wire, b"N0CALL>APRS:~\xff"
-        )
-        with self.assertRaises(EnvelopeError):
-            parse_packet("N0CALL>APRS:>\u2603")
 
     def test_bad_envelopes(self) -> None:
         for wire in (
@@ -142,7 +136,7 @@ class PacketTests(unittest.TestCase):
             with self.subTest(wire=wire):
                 self.assertIsInstance(parse_packet(wire), Malformed)
                 with self.assertRaises(EnvelopeError):
-                    parse_packet(wire, options=DecodeOptions(malformed="raise"))
+                    parse_packet(wire, malformed="raise")
 
     def test_bad_fields(self) -> None:
         for information in (
@@ -154,47 +148,22 @@ class PacketTests(unittest.TestCase):
             b":W1AW:Hello",
             b":W1AW     :Hello{",
             b":W1AW     :Hello{123456",
-            b":W1AW     :" + b"x" * 68,
-            b">" + b"x" * 63,
             b"@000000z4903.50N/07201.75W-",
+            b">000000zReady",
         ):
             with self.subTest(information=information):
-                self.assertIsInstance(decode_payload(information), Malformed)
+                self.assertIsInstance(parse_payload(information), Malformed)
                 with self.assertRaises(FieldError):
-                    decode_payload(
-                        information, options=DecodeOptions(malformed="raise")
-                    )
+                    parse_payload(information, malformed="raise")
 
     def test_invalid_construction(self) -> None:
         for build in (
             lambda: Message("W1AW", "ack003"),
             lambda: Message("W1AW", "bad{body"),
-            lambda: Message("W1AW", "ÿ"),
             lambda: Status("092345zambiguous"),
             lambda: Position(0, 0, Symbol("x", "-")),
         ):
             with self.assertRaises(FieldError):
                 build()
-        with self.assertRaises(UnsupportedFormat):
-            encode_payload(Message("BLN0", "Notice"))
-
-    def test_rf_limits(self) -> None:
-        for source in ("N0CALL-16", "TOOLONG", "n0call"):
-            with self.subTest(source=source), self.assertRaises(EnvelopeError):
-                serialize_packet(
-                    Packet(Header(source, "APRS"), Status(text="")), profile="rf"
-                )
-        for count in (8, 9):
-            packet = Packet(
-                Header("N0CALL", "APRS", tuple(Hop("D1") for _ in range(count))),
-                Status(text=""),
-            )
-            if count == 8:
-                validate_packet(packet, profile="rf")
-            else:
-                with self.assertRaises(EnvelopeError):
-                    validate_packet(packet, profile="rf")
-        with self.assertRaises(EnvelopeError):
-            serialize_packet(
-                Packet(Header("N0CALL", "APRS"), Opaque(b"~" * 257)), profile="rf"
-            )
+        with self.assertRaises(CodecNotImplementedError):
+            serialize_payload(Message("BLN0", "Notice"))

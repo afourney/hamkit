@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Union, cast, get_args, get_origin
 
 import hamkit.aprs as a
-from hamkit.aprs.json import _BY_MODEL, _HINTS, _SCHEMAS
+from hamkit.aprs._json import _BY_MODEL, _HINTS, _SCHEMAS
 from model_examples import field_examples, payload_examples
 
 ROOT = Path(__file__).parents[1]
@@ -23,7 +23,7 @@ def examples() -> dict[type[a.JSONModel], a.JSONModel]:
     values = {
         type(cast(a.JSONModel, v)): cast(a.JSONModel, v)
         for v in (*field_examples(), *payload_examples())
-        if not isinstance(v, a.CodecCapability)
+        if not isinstance(v, (a.CodecSupport, a.Extent))
     }
     values[a.UserDefined] = a.UserDefined(b"Q", b"1", b"Hello\x00\xff")
     values[a.Weather] = a.Weather(
@@ -32,9 +32,11 @@ def examples() -> dict[type[a.JSONModel], a.JSONModel]:
         gust=a.Measurement(15, "mph"),
         temperature=a.Measurement(68, "fahrenheit"),
         pressure=a.Measurement(1013.2, "hPa"),
-        timestamp=a.Timestamp("mdhm_utc", 12, 30, day=17, month=10),
+        timestamp=a.Timestamp.mdhm(10, 17, 12, 30),
     )
-    values[a.Packet] = a.parse_packet(b"N0CALL>APRS:!4903.50N/07201.75W>")
+    packet = a.parse_packet(b"N0CALL>APRS:!4903.50N/07201.75W>Hello")
+    assert isinstance(packet, a.Packet)
+    values[a.Packet] = packet
     return values
 
 
@@ -45,7 +47,7 @@ def catalog_examples() -> list[a.JSONModel]:
     # demonstrate every union variant in context, too.
     result = [values[s.model] for s in _SCHEMAS]
     containers: tuple[tuple[Any, Callable[[Any], a.JSONModel]], ...] = (
-        (a.DefinitionValue, lambda v: a.Definition("N0CALL", v)),
+        (a.TelemetryDefinitionValue, lambda v: a.TelemetryDefinition("N0CALL", v)),
         (a.NMEASentence, lambda v: a.NMEA(v, a.NMEAMetadata("GP"))),
         (a.NTSRecord, lambda v: a.Radiogram("W1AW", v)),
         (a.ResponseValue, lambda v: a.Response("W1AW", v)),
@@ -102,7 +104,7 @@ def default_text(field: dataclasses.Field[Any]) -> str:
         return f"optional; default [{type(default).__name__}](#{type(default).__name__.lower()}) with its defaults"
     if default is None:
         return "optional; default `null`"
-    if default == b"":
+    if default in (b"", ""):
         return 'optional; default `""`'
     if default == ():
         return "optional; default `[]`"
@@ -111,18 +113,19 @@ def default_text(field: dataclasses.Field[Any]) -> str:
 
 def generate() -> str:
     samples = catalog_examples()
-    doc = """# APRS JSON reference
+    doc = f"""# APRS JSON reference
 
 This is the canonical JSON format for `hamkit-aprs`. Examples are
 pretty-printed, executable data, with nested values expanded. They illustrate
 values, not legal ranges or complete APRS wire support. The field tables are the
 shape contract: every field, requiredness, default, allowed enum, unit and nested
-model is listed. All 83 serializable models and all 29 payload families appear.
+model is listed. All {len(_SCHEMAS)} serializable models and all \
+{len(get_args(a.Payload))} payload families appear.
 
 ## Contents
 
 - [Reading and writing](#reading-and-writing)
-- [Tags and context](#tags-and-context)
+- [Tags](#tags)
 - [Values, defaults and constraints](#values-defaults-and-constraints)
 - [Type map and object catalog](#type-map-and-object-catalog)
 - [Nested union examples](#nested-union-examples)
@@ -133,113 +136,71 @@ model is listed. All 83 serializable models and all 29 payload families appear.
 
 `to_json(model, indent=2)` returns text. `to_json_dict(model)` returns a JSON-safe
 dictionary. `from_json(text)` and `from_json_dict(mapping)` return typed models.
-Use `expected_type=Weather` to check a particular class; typed overloads
-preserve the concrete return annotation. This does not waive payload tags.
-`include_defaults=True` prints all fields, as in this catalog. The normal compact
-output omits default-valued optional fields, but always retains `type` where
-required. Object property order is not meaningful.
+Pass `expected_type=Weather` to check the class; typed overloads preserve the
+concrete return annotation. `include_defaults=True` prints all fields, as in this
+catalog. Compact output omits fields equal to their defaults. Object property
+order is not meaningful. JSON field names match Python attributes.
 
-## Tags and context
+## Tags
 
-- Every standalone object has a lowercase semantic `type`, including `packet`,
-  `measurement`, and `header`. Tags are explicitly registered protocol-independent
-  names; Python class names cannot be loaded dynamically.
-- Every payload requires its own `type`, whether standalone, in `Packet.payload`,
-  or in a fixed payload field such as `LegacyPosition.position`. Shared
-  `Weather` and `Telemetry` values in fixed nested fields are untagged, because
-  those fields identify their class; when used as payloads they require tags.
-- Nested unions of multiple model classes require a tag: telemetry definitions,
-  NMEA sentences, NTS records and query responses. The tags allowed at each union
-  are exactly those of its linked models in the tables below.
-- Fixed nested models are emitted without tags: a measurement's containing field
-  already specifies `Measurement`; a header field specifies `Header`. Optional
-  fixed models remain untagged when present. Arrays follow the same rule for
-  their declared element type. Scalar unions use strict JSON value types.
-- An untagged standalone fixed field may be read only with explicit
-  `expected_type=Measurement` (or another concrete non-payload class). A supplied
-  tag must always agree with that class. There is no structural inference.
-- `Weather` and `Telemetry` are shared semantic models, usable as complete
-  payloads or fixed nested values. Python and JSON both expose their fields
-  directly. Weather carries optional timestamp/comment; telemetry carries a
-  comment alongside its channels, sequence and encoding evidence. Nothing is
-  discarded when either model is nested. A Weather field can have no observations;
-  a full positionless-weather Packet still needs a timestamp. See the [naming guide](NAMING.md) for the meanings
-  of short names and the reasons for qualified names.
-- Third-party payloads contain `packet`, whose fixed Packet object is untagged;
-  the inner `payload` has its own tag. See [ThirdParty](#thirdparty).
-- JSON field names match Python attributes.
+One rule decides where `type` appears:
+
+- The top-level object always has a `type`, such as `packet`, `measurement` or
+  `header`, unless the reader passes `expected_type`.
+- A field that can hold more than one model requires a `type`: `Packet.payload`,
+  telemetry definitions, NMEA sentences, NTS records and query responses. The
+  tags allowed there are exactly those of the linked models below.
+- Every other nested object is untagged on output, because its field allows only
+  one model. A `type` supplied there anyway must name that model.
+
+Tags are explicitly registered protocol names, independent of Python class
+names; classes are never loaded by name.
 
 ## Values, defaults and constraints
 
-- Protocol text and identifiers are printable ASCII Python strings, including
-  status/message text, comments, names and NMEA time/date tokens. Constructors
-  reject control characters, high-bit text and surrogates. Wire decoding never
-  silently replaces characters or guesses an encoding: undecodable supported
-  text produces a Malformed recovery result with original bytes.
-- Genuinely raw `bytes` are Latin-1 JSON strings: each U+0000–U+00FF code point represents one
-  byte. JSON escapes such as `\\u0000` and `\\u00ff` preserve arbitrary binary data;
-  this is not base64 and does not decode bytes as UTF-8. `to_json` emits ASCII-safe
-  escapes. Diagnostic explanations and recovered JSON may contain Unicode scalar
-  values; protocol text fields use printable ASCII.
-- Tuples become arrays. Fixed tuples require the exact length in the table;
-  variadic tuples follow their model constraints (e.g. classic telemetry channel
-  counts). Numbers are finite, booleans are not integers,
-  numeric strings are not numbers, and enums match exactly, including case.
-- Missing optional fields receive the listed Python defaults. Explicit null is
-  accepted only where the type allows null. The model does not remember whether
-  optional `None` came from omission or explicit null. Missing required fields
-  fail, even when their type permits null.
+- Free text (messages, bulletins, status, comments) is any Unicode string. APRS
+  1.2 permits UTF-8 there; `to_json` escapes non-ASCII so output stays ASCII.
+  Protocol tokens (callsigns, addressees, IDs, names, NMEA fields) are printable
+  ASCII. Lone surrogates are never valid.
+- Raw `bytes` are Latin-1 JSON strings: each U+0000–U+00FF code point represents
+  one byte, so `\\u0000` and `\\u00ff` preserve arbitrary binary data. This is
+  not base64 and not UTF-8.
+- Tuples become arrays. Fixed tuples require the exact length in the table.
+  Numbers are finite, booleans are not integers, numeric strings are not numbers,
+  and enums match exactly, including case.
+- Missing optional fields receive the listed defaults. Explicit null is accepted
+  only where the type allows it. Missing required fields fail, even when their
+  type permits null.
 - An absent weather measurement (`null` or omitted) differs from a present
   measurement with `value: null` (unavailable reading), and both differ from zero.
-- Unit strings are the exhaustive `Measurement.unit` enum below. Units are
-  explicit; conversion performs no unit conversion. Use semantically appropriate
-  units for the weather quantity (e.g. degrees, mph, fahrenheit and hPa).
-- `original_wire`, raw fields and diagnostic metadata are preserved, including
-  fields ignored by dataclass equality. They do not override edited structured
-  values. JSON conversion is a semantic round trip, not preservation of JSON
-  whitespace, key order, omitted-null history or numeric spelling.
-- Unknown fields, duplicate JSON keys, unknown/missing/incompatible tags and
-  invalid scalar types raise `JSONModelError` (an `APRSError`/`ValueError`). There
-  is no arbitrary class loading or fallback to a different family.
-- Normal constructors and JSON imports enforce annotated types plus modeled
-  domain invariants: coordinate and timestamp bounds, mandatory timestamp
-  components, symbol/address syntax, message widths/IDs, weather quantity units
-  and ranges, and fixed-format telemetry/NMEA constraints. Invalid normal models
-  raise ModelError; JSON import presents these as JSONModelError. Codec availability
-  is separate: an otherwise valid model can still raise CodecNotImplemented.
-- Classic Telemetry requires a sequence (0..999 or MIC), five integer analog
-  channels in 0..255 and eight binary channels. Base91 requires a sequence in
-  0..8280 and analog channels; Mic-E has no sequence/digital field. Complete weather
-  reports require direction, speed, gust and temperature slots, with MDHM only
-  for positionless reports. Present-but-unavailable measurements satisfy presence.
-- Symbol table/code, Position/Location symbol, Status/Message text and NMEA metadata
-  are explicit inputs. Missing recovered facts cannot become authoring defaults.
-  NTS handling/time and datum-only DAO precision are legitimately optional.
-- See [unresolved specification questions](UNRESOLVED_SPEC.md) for profile limits,
-  unresolved source disagreements and representability decisions.
-- Encoding reconstructs from structured fields and revalidates them. Original
-  wire bytes, raw evidence and redundant raw codes do not override edits or
-  satisfy required fields. Explicit raw models/portions use bytes as content.
-  Unsupported codecs and unspecified external grammars are not claimed valid
-  merely because an input can be preserved. See [wire coverage](API_COVERAGE.md).
-- `parse_packet` returns Packet or one top-level Malformed; `decode_payload`
-  returns a payload or Malformed at that boundary. Malformed has original_wire,
-  diagnostics with field paths, and recovered ordinary JSON data. Its recovered
-  value uses the normal packet/payload schema, with missing/unreadable fields
-  omitted rather than guessed. Correct and complete that data, then use
-  from_json_dict to construct a normal model. Malformed is never a Packet payload
-  and cannot be serialized to TNC2. Its JSON can be exported/imported for inspection.
-  The recovered dictionary does not bypass normal model validation.
+- Units are the exhaustive `Measurement.unit` enum below; nothing is converted.
+- `original_wire`, `diagnostics` and `raw`/`*_raw` evidence fields round-trip,
+  although Python equality ignores them. They never override structured values.
+- Values that follow from other fields (grid bounds and center, PHG range,
+  compression type byte, area offsets, bulletin announcement flag, ambiguity
+  cell) are Python properties, not JSON fields.
+- Loading JSON runs the same constructor checks as Python: values that cannot
+  exist on the wire or contradict another field raise `JSONModelError`. APRS
+  limits a transmitter could still break (lengths, required report slots,
+  symbol choices) are not load errors; `check_packet` reports them and
+  `serialize_packet` refuses to send them. See
+  [unresolved specification questions](UNRESOLVED_SPEC.md) and
+  [wire coverage](API_COVERAGE.md).
+- `parse_packet` returns a Packet, or one top-level Malformed when a field
+  cannot be decoded. Malformed holds original_wire, diagnostics with field
+  paths, and `recovered` data in the ordinary packet schema with unreadable
+  fields omitted. Correct it, then load it with `from_json_dict`.
+- Unknown fields, duplicate keys, unknown or incompatible tags and invalid
+  values raise `JSONModelError` (an `APRSError` and `ValueError`).
 - `max_depth` defaults to 64 and accepts integers 1–128. Cycles and excessive
   nesting fail. This is not an input-size bound. `include_defaults` must be bool;
   `indent` is null or a nonnegative integer.
 
 ## Type map and object catalog
 
-Tags in this table are exhaustive for standalone models. Payload tags are also
-required at any nested payload boundary. Every example includes optional fields
-and defaults so its complete shape is visible; null optional nested objects link
-to their own fully expanded object examples in the field table.
+Tags in this table are exhaustive. Every example includes optional fields and
+defaults so its complete shape is visible; null optional nested objects link to
+their own fully expanded examples in the field table.
 
 | Model | Stable type | Role |
 | --- | --- | --- |
@@ -259,13 +220,11 @@ to their own fully expanded object examples in the field table.
             + "\n```\n\n"
         )
         doc += "| Field | JSON value / allowed values | Presence / default |\n| --- | --- | --- |\n"
-        doc += (
-            f'| `type` | `"{schema.tag}"` | required standalone; nested rules above |\n'
-        )
+        doc += f'| `type` | `"{schema.tag}"` | see [Tags](#tags) |\n'
         entries = [(f, schema.model) for f in dataclasses.fields(schema.model)]
         for f, owner in entries:
             doc += f"| `{f.name}` | {annotation_text(_HINTS[owner][f.name])} | {default_text(f)} |\n"
-    doc += "\n## Nested union examples\n\nEach allowed member is shown in its actual container. Fixed nested fields remain untagged.\n"
+    doc += "\n## Nested union examples\n\nEach allowed member is shown in its actual container, where it carries its tag.\n"
     for value in samples[len(_SCHEMAS) : -1]:
         members = [
             getattr(value, name)
@@ -282,8 +241,8 @@ root with the package installed, then run the repository formatting hooks.
 `test_json_reference.py` checks every JSON example against the models, verifies
 round trips including raw metadata, and checks catalog coverage against the full
 public JSONModel union. This prevents examples from silently diverging from code.
-Runtime capability metadata (`CodecCapability`) is not a JSON data model: its
-Python class references belong to the codec registry, not a packet document.
+Codec support metadata (`CodecSupport`) and `Extent`, which only properties
+return, are not JSON data models.
 """
     return doc
 

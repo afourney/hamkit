@@ -37,7 +37,7 @@ class NMEAInvariantTests(unittest.TestCase):
                 {"talker": "GP", "checksum_valid": validity},
                 "nmea_metadata",
             )
-        evidence = a.NMEAMetadata("GN", "aF", False)
+        evidence = a.NMEAMetadata("GN", checksum_supplied="aF", checksum_valid=False)
         self.assertEqual(a.from_json(a.to_json(evidence)), evidence)
 
     def test_calendar_and_magnetic_variation(self) -> None:
@@ -110,10 +110,14 @@ class NMEAInvariantTests(unittest.TestCase):
                     a.from_json_dict(obj)
         valid = a.GLL(a.Coordinates(1, 2), "120000", "A")
         with self.assertRaises(a.ModelError):
-            a.NMEA(valid, a.NMEAMetadata("GP", "00", False), position_usable=True)
+            a.NMEA(
+                valid,
+                a.NMEAMetadata("GP", checksum_supplied="00", checksum_valid=False),
+                position_usable=True,
+            )
         report = a.NMEA(valid, a.NMEAMetadata("GP"), position_usable=True)
         self.assertEqual(a.from_json(a.to_json(report)), report)
-        with self.assertRaises(a.CodecNotImplemented):
+        with self.assertRaises(a.CodecNotImplementedError):
             a.serialize_packet(a.Packet(a.Header("N0CALL", "APRS"), report))
 
     def test_receiver_specific_rules_are_not_invented(self) -> None:

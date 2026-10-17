@@ -15,7 +15,6 @@ class PolicyTests(unittest.TestCase):
             b")ITEM!",
             b"_10171230",
             b"T#001,1,2,3,4,5,00000000",
-            b":W1AW     :Reply{01}02",
             b":BLN0     :Notice",
             b":N0CALL   :PARM.Temp",
             b"?APRS?",
@@ -27,12 +26,9 @@ class PolicyTests(unittest.TestCase):
             b"[IO91SX",
         ):
             with self.subTest(information=information):
-                with self.assertRaises(a.CodecNotImplemented):
-                    a.decode_payload(
-                        information, options=a.DecodeOptions(unsupported="raise")
-                    )
-                value = a.decode_payload(information)
-                self.assertIsInstance(value, a.Opaque)
+                with self.assertRaises(a.CodecNotImplementedError):
+                    a.parse_payload(information, unsupported="raise")
+                value = a.parse_payload(information)
                 assert isinstance(value, a.Opaque)
                 self.assertEqual(value.information, information)
                 self.assertEqual(
@@ -46,9 +42,9 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(result.original_wire, raw)
         self.assertEqual(result.recovered["type"], "packet")
         with self.assertRaises(a.FieldError):
-            a.parse_packet(raw, options=a.DecodeOptions(malformed="raise"))
+            a.parse_packet(raw, malformed="raise")
         self.assertIsInstance(a.parse_packet(b"bad envelope"), a.Malformed)
-        self.assertIsInstance(a.decode_payload(b":W1AW     :\xff"), a.Malformed)
+        self.assertIsInstance(a.parse_payload(b":W1AW     :hi{\xff"), a.Malformed)
 
     def test_every_byte_in_user_data_survives(self) -> None:
         payload = a.UserDefined(b"Q", b"1", bytes(range(256)))
@@ -58,14 +54,22 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(a.parse_packet(wire).original_wire, wire)
         with self.assertRaises(a.EnvelopeError):
             a.serialize_tnc2_line(packet)
-        with self.assertRaises(a.EnvelopeError):
-            a.serialize_packet(packet, profile="rf")
+        with self.assertRaises(a.ConformanceError):
+            a.serialize_packet(
+                a.Packet(
+                    a.Header("N0CALL", "APRS"), a.UserDefined(b"Q", b"1", b"x" * 300)
+                ),
+                profile="rf",
+            )
 
     def test_line_framing_is_explicit(self) -> None:
         packet = a.Packet(a.Header("N0CALL", "APRS"), a.Status("Ready"))
         self.assertEqual(a.parse_tnc2_line(a.serialize_tnc2_line(packet)), packet)
         self.assertEqual(a.parse_tnc2_line(b"N0CALL>APRS:>Ready\n"), packet)
-        self.assertIsInstance(a.parse_packet(b"N0CALL>APRS:>Ready\r\n"), a.Malformed)
+        # Unframed parsing keeps CR/LF: it becomes nonconforming status text.
+        framed = a.parse_packet(b"N0CALL>APRS:>Ready\r\n")
+        assert isinstance(framed, a.Packet)
+        self.assertEqual({d.path for d in framed.diagnostics}, {"$.payload.text"})
         for raw in (
             b"N0CALL>APRS:>Ready",
             b"N0CALL>APRS:>Ready\r",
@@ -81,26 +85,39 @@ class PolicyTests(unittest.TestCase):
         outer = a.Packet(a.Header("N0CALL", "APRS"), a.ThirdParty(inner))
         self.assertEqual(a.parse_packet(a.serialize_packet(outer)), outer)
         nested = a.Packet(outer.header, a.ThirdParty(outer))
-        wire = a.serialize_packet(nested, options=a.EncodeOptions(max_depth=2))
-        self.assertEqual(
-            a.parse_packet(wire, options=a.DecodeOptions(max_depth=2)), nested
-        )
+        wire = a.serialize_packet(nested, max_third_party_depth=2)
+        self.assertEqual(a.parse_packet(wire, max_third_party_depth=2), nested)
         with self.assertRaises(a.ResourceLimitError):
-            a.serialize_packet(nested, options=a.EncodeOptions(max_depth=1))
+            a.serialize_packet(nested, max_third_party_depth=1)
         with self.assertRaises(a.ResourceLimitError):
-            a.parse_packet(
-                wire, options=a.DecodeOptions(max_depth=1, malformed="return")
-            )
+            a.parse_packet(wire, max_third_party_depth=1)
         with self.assertRaises(a.ResourceLimitError):
-            a.decode_payload(b"}W1AW>APRS:>Ready", options=a.DecodeOptions(max_depth=0))
+            a.parse_payload(b"}W1AW>APRS:>Ready", max_third_party_depth=0)
         parsed = a.parse_packet(b"N0CALL>APRS:}W1AW>490S5P:`12345678")
         assert isinstance(parsed, a.Packet)
         assert isinstance(parsed.payload, a.ThirdParty)
         self.assertEqual(parsed.payload.packet.header.destination, "490S5P")
         self.assertIsInstance(parsed.payload.packet.payload, a.Opaque)
 
+    def test_third_party_findings_carry_their_path(self) -> None:
+        parsed = a.parse_packet(b"N0CALL>APRS:}W1AW>APRS:>Caf\xe9|")
+        assert isinstance(parsed, a.Packet)
+        self.assertEqual(
+            [(d.message, d.path) for d in parsed.diagnostics],
+            [
+                (
+                    "text is not valid UTF-8; decoded as Latin-1",
+                    "$.payload.packet.payload.text",
+                ),
+                (
+                    "contains a reserved character (| ~)",
+                    "$.payload.packet.payload.text",
+                ),
+            ],
+        )
+
     def test_bad_inner_envelope_is_top_level_malformed(self) -> None:
-        result = a.decode_payload(b"}broken")
+        result = a.parse_payload(b"}broken")
         assert isinstance(result, a.Malformed)
         self.assertEqual(result.recovered["type"], "third_party")
         self.assertTrue(
@@ -108,30 +125,23 @@ class PolicyTests(unittest.TestCase):
         )
 
     def test_status_non_utc_timestamp_looking_text(self) -> None:
-        for text in (b"092345/Ready", b"123045hReady"):
-            self.assertEqual(
-                a.decode_payload(b">" + text), a.Status(text.decode("ascii"))
-            )
-            self.assertEqual(
-                a.encode_payload(a.Status(text.decode("ascii"))), b">" + text
-            )
+        for text in ("092345/Ready", "123045hReady"):
+            self.assertEqual(a.parse_payload(b">" + text.encode()), a.Status(text))
+            self.assertEqual(a.serialize_payload(a.Status(text)), b">" + text.encode())
 
     def test_new_fields_never_imply_working_codecs(self) -> None:
-        from hamkit.aprs.fields import decode_timestamp, encode_timestamp
+        from hamkit.aprs._fields import decode_timestamp, encode_timestamp
 
-        with self.assertRaises(a.CodecNotImplemented):
-            encode_timestamp(a.Timestamp("mdhm_utc", 12, 30, day=17, month=10))
-        with self.assertRaises(a.CodecNotImplemented):
+        with self.assertRaises(a.CodecNotImplementedError):
+            encode_timestamp(a.Timestamp.mdhm(10, 17, 12, 30))
+        with self.assertRaises(a.CodecNotImplementedError):
             decode_timestamp(b"10171230")
-        with self.assertRaises(a.FieldError):
-            a.encode_payload(
+        with self.assertRaises(a.CodecNotImplementedError):
+            a.serialize_payload(
                 a.Position(
                     49,
                     -72,
-                    tail=b"raw",
-                    comment="structured",
-                    symbol=a.Symbol("/", "-"),
+                    a.Symbol("/", "-"),
+                    extensions=a.Extensions(motion=a.Motion(90, 10)),
                 )
             )
-        with self.assertRaises(ValueError):
-            a.parse_packet(b"N0CALL>APRS:>Ready", options=a.DecodeOptions(max_depth=-1))

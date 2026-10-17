@@ -4,23 +4,28 @@
 
 """Explicit line framing, separate from binary-safe packet codecs."""
 
-from .codec import parse_packet, serialize_packet
-from .errors import EnvelopeError
-from .models import DecodeOptions, EncodeOptions, Malformed, Packet, ValidationProfile
-
-_DEFAULT_DECODE = DecodeOptions()
-_DEFAULT_ENCODE = EncodeOptions()
+from ._codec import parse_packet, serialize_packet
+from ._errors import EnvelopeError
+from ._models import (
+    EnvelopeProfile,
+    Malformed,
+    MalformedPolicy,
+    Packet,
+    UnsupportedPolicy,
+)
 
 
 def parse_tnc2_line(
     line: bytes,
     *,
-    profile: ValidationProfile = "monitor",
-    options: DecodeOptions = _DEFAULT_DECODE,
+    profile: EnvelopeProfile = "monitor",
+    unsupported: UnsupportedPolicy = "opaque",
+    malformed: MalformedPolicy = "return",
+    max_third_party_depth: int = 4,
 ) -> Packet | Malformed:
-    """Require one LF or CRLF terminator and reject embedded line delimiters.
+    """Parse one LF- or CRLF-terminated line, as read from APRS-IS or a TNC.
 
-    original_wire on the result excludes the transport terminator.
+    Embedded line delimiters are rejected. original_wire excludes the terminator.
     """
     if not isinstance(line, bytes):
         raise TypeError("line must be bytes")
@@ -34,17 +39,25 @@ def parse_tnc2_line(
         raise EnvelopeError(
             "embedded line delimiter; use unframed parse_packet for binary data"
         )
-    return parse_packet(raw, profile=profile, options=options)
+    return parse_packet(
+        raw,
+        profile=profile,
+        unsupported=unsupported,
+        malformed=malformed,
+        max_third_party_depth=max_third_party_depth,
+    )
 
 
 def serialize_tnc2_line(
     packet: Packet,
     *,
-    profile: ValidationProfile = "monitor",
-    options: EncodeOptions = _DEFAULT_ENCODE,
+    profile: EnvelopeProfile = "monitor",
+    max_third_party_depth: int = 4,
 ) -> bytes:
     """Encode one CRLF-terminated line, rejecting non-line-safe payloads."""
-    raw = serialize_packet(packet, profile=profile, options=options)
+    raw = serialize_packet(
+        packet, profile=profile, max_third_party_depth=max_third_party_depth
+    )
     if b"\r" in raw or b"\n" in raw:
         raise EnvelopeError("payload cannot be represented in line-oriented TNC2")
     return raw + b"\r\n"

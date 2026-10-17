@@ -1,7 +1,10 @@
 # Unresolved specification questions
 
 This module validates the modeled baseline without claiming complete APRS or
-NMEA conformance. The questions below are deliberately not resolved by guessing
+NMEA conformance. Validation has two tiers: constructors reject values that cannot
+exist on the wire or contradict another field, and conformance rules report APRS
+limits that a transmitter could still break. Received packets keep conformance
+findings as diagnostics; `serialize_packet` refuses to send them. The questions below are deliberately not resolved by guessing
 values, inventing sensor observations, or treating interoperability examples as
 normative specifications. Wire codecs remain unavailable for these families
 unless [API_COVERAGE.md](API_COVERAGE.md) states otherwise.
@@ -9,6 +12,29 @@ unless [API_COVERAGE.md](API_COVERAGE.md) states otherwise.
 APRS101 page numbers below are printed page numbers. PDF viewer pages are ten
 higher. The [APRS 1.1 addendum](https://www.aprs.org/aprs11.html) evolves over time;
 later proposals linked from it are not automatically settled baseline rules.
+
+## Text encoding: ASCII and UTF-8
+
+**Authority:** [APRS101](https://www.aprs.org/doc/APRS101.PDF) and the 1.1
+addendum specify printable 7-bit ASCII for all text. The 1.1 page states that
+"all new updates and additions to APRS since 2004 are found on the APRS 1.2
+proposed draft addendum", whose
+[UTF-8 International Alphabets note](https://www.aprs.org/aprs12/utf-8.txt)
+(WB4APR, 17 December 2009) allows UTF-8 in message, bulletin and announcement
+text, in status text after the optional timestamp, in position/object free text
+after the fixed extension fields, and in Mic-E status text. It still recommends
+ASCII for global communication. APRS-IS services such as aprs.fi decode UTF-8 in
+these fields.
+
+**Current behavior:** free-text fields decode as UTF-8; invalid UTF-8 falls back
+to Latin-1, one character per byte, with a nonconforming diagnostic, and the exact
+bytes remain in `original_wire`. Free text is sent as UTF-8 and length limits
+count encoded bytes. Control characters are nonconforming. Protocol tokens
+(callsigns, addressees, message IDs, object and item names, query names, NTS
+fields, telemetry labels, NMEA fields) remain printable ASCII.
+
+**What resolves it:** a ratified APRS revision that settles character sets, or an
+explicit decision to reject non-ASCII text when transmitting on RF.
 
 ## NMEA versions, missing fix fields and receiver profiles
 
@@ -60,8 +86,8 @@ policy. Supply a century context only if an application needs an absolute date.
 requires at least one channel; the same author's [README](https://github.com/hessu/aprs-specs#readme)
 allows sequence-only telemetry. The extension describes itself as experimental.
 
-**Current behavior:** `base91_comment` follows §3.7: a sequence in 0..8280 and at
-least one analog value are required. Digital data follows all five analog fields.
+**Current behavior:** conformance for `base91_comment` follows §3.7: a sequence
+in 0..8280 and at least one analog value are required. Digital data follows all five analog fields.
 Sequence-only data is unsupported by this model contract, not declared universally
 malformed on receipt; there is no wire decoder for it. `compatibility` is an
 explicitly unverified representation, not a named normative encoding.
@@ -76,11 +102,11 @@ filling missing channels with zero.
 [1.1 weather clarification](https://www.aprs.org/aprs11/spec-wx.txt), and
 [1.2 weather proposals](https://www.aprs.org/aprs12/weather-new.txt).
 
-**Current behavior:** complete baseline reports require direction, speed, gust
-and temperature slots. Positionless reports require MDHM; located reports use
-the enclosing position time. Explicit unavailable readings satisfy slot presence.
-There is no extra requirement for a numeric observation. An empty `Weather()` is
-only a component and cannot by itself become a complete report.
+**Current behavior:** conformance requires direction, speed, gust and
+temperature slots in a complete report. Positionless reports require MDHM; located
+reports use the enclosing position time. Explicit unavailable readings satisfy
+slot presence. There is no extra requirement for a numeric observation. A
+`Weather` model may be incomplete; only sending an incomplete report is refused.
 
 The later minimum flood example omits gust; proposed water units and examples
 disagree across the documents. `WaterHeight` consequently remains a signed
@@ -99,8 +125,8 @@ reports with no numeric observations, but that is separate from protocol validit
 allows the coefficient list to stop at any field; its relationship to complete
 triples, interior empty fields and default coefficients is not fully explicit.
 
-**Current behavior:** `Calibration` requires all three coefficients. `Equations`
-can omit trailing channels or preserve a `None` channel, but cannot claim an
+**Current behavior:** `Calibration` requires all three coefficients.
+`TelemetryEquations` can omit trailing channels or preserve a `None` channel, but cannot claim an
 incomplete trailing triple is an evaluable polynomial. PARM/UNIT channel lengths
 and delimiters are checked; `None` and empty labels are retained without invented
 labels. No parser or encoder silently inserts calibration coefficients. The
@@ -118,8 +144,9 @@ and delimiter accounting before implementing a wire codec.
 [DF notes](https://www.aprs.org/APRS-docs/DF.TXT), and
 [PHG display guidance](https://www.aprs.org/symbols/PHGmobile.txt).
 
-**Current behavior:** code ranges, manual/hits agreement, known range mappings,
-positive accuracy bounds and PHG-derived radii are checked. A single Q-to-accuracy
+**Current behavior:** code ranges and positive accuracy bounds are checked. The
+manual flag, bearing range and PHG radii are computed properties, so they cannot
+disagree with the codes. A single Q-to-accuracy
 or usability mapping is not imposed: the original notes omit Q=6 and differ from
 APRS101 at low Q values. `Bearing.usable` and accuracy remain reported
 interpretations, not certified derivations. PHG rate-per-hour has no verified
@@ -160,9 +187,11 @@ the content of explicit raw models. Editing annotations does not edit those byte
 Items still require location. Detailed object grammar takes precedence over the
 contradictory overview's optional-timestamp wording. Semantic names exclude outer
 padding but do not impose every waypoint-friendly punctuation recommendation.
-Reply-ack's combined ID must fit five characters and agree with a supplied parent
-ID; exact two-character halves are not forced. Legacy object/bulletin flags remain
-representable without claiming their obsolete forms are ordinary modern reports.
+Reply-ack is one `reply_ack` suffix on the message or acknowledgment ID, so the
+two cannot disagree; conformance checks that the combined field fits five
+characters, and exact two-character halves are not forced. Obsolete object and
+bulletin forms are not modeled as flags; they remain Opaque until a historical
+profile defines them.
 
 **What resolves it:** a documented compatibility profile for truncated kills,
 obsolete reports, stricter name conventions or shorter reply-ack halves. These

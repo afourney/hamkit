@@ -7,9 +7,11 @@
 import math
 import re
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Literal, TypeAlias
 
-from ..errors import FieldError, UnsupportedFormat
-from ..models import CoordinateAxis
+from .._errors import CodecNotImplementedError, FieldError
+
+CoordinateAxis: TypeAlias = Literal["latitude", "longitude"]
 
 
 def _parameters(axis: CoordinateAxis) -> tuple[int, int, bytes]:
@@ -25,7 +27,7 @@ def decode_coordinate(raw: bytes, axis: CoordinateAxis) -> float:
     if len(raw) != width + 6:
         raise FieldError("incorrect coordinate width")
     if b" " in raw:
-        raise UnsupportedFormat("position ambiguity is not implemented")
+        raise CodecNotImplementedError("position ambiguity is not implemented")
     if not re.fullmatch(
         rb"[0-9]{" + str(width + 2).encode() + rb"}\.[0-9]{2}[" + hemispheres + rb"]",
         raw,

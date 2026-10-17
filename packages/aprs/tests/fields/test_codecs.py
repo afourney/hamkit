@@ -5,8 +5,8 @@
 import math
 import unittest
 
-from hamkit.aprs import FieldError, Timestamp, UnsupportedFormat
-from hamkit.aprs.fields import (
+from hamkit.aprs import CodecNotImplementedError, FieldError, Timestamp
+from hamkit.aprs._fields import (
     decode_coordinate,
     decode_timestamp,
     encode_coordinate,
@@ -41,7 +41,7 @@ class CoordinateTests(unittest.TestCase):
         for value in (math.nan, math.inf, -91, 91):
             with self.subTest(value=value), self.assertRaises(FieldError):
                 encode_coordinate(value, "latitude")
-        with self.assertRaises(UnsupportedFormat):
+        with self.assertRaises(CodecNotImplementedError):
             decode_coordinate(b"4903.5 N", "latitude")
 
 

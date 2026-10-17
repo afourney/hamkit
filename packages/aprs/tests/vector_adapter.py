@@ -56,7 +56,7 @@ def semantic_fields(packet: Packet) -> Vector:
             kind="message",
             message={
                 "addressee": payload.addressee,
-                "addressee_raw": payload.addressee_raw,
+                "addressee_raw": payload.addressee.ljust(9),
                 "text": payload.text,
                 "message_id": payload.message_id,
             },
@@ -69,8 +69,15 @@ def semantic_fields(packet: Packet) -> Vector:
             position={
                 "latitude_deg": payload.latitude_deg,
                 "longitude_deg": payload.longitude_deg,
-                "ambiguity_digits": 0,
+                "ambiguity_digits": payload.ambiguity,
             },
+            symbol={
+                "table_id_raw": payload.symbol.table_id,
+                "table": payload.symbol.table,
+                "code": payload.symbol.code,
+                "overlay": payload.symbol.overlay,
+            },
+            comment=payload.comment,
         )
     else:
         raise NotImplementedError(f"no semantic adapter for {type(payload).__name__}")

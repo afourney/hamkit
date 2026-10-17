@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
 # SPDX-License-Identifier: MIT
 
-"""Strict construction and recoverable wire input are separate trust boundaries."""
+"""Received input: lenient where usable, Malformed only where undecodable."""
 import copy
 import dataclasses
 import json
@@ -9,16 +9,81 @@ import unittest
 from typing import Any, cast
 
 from hamkit import aprs as a
-from hamkit.aprs.fields import encode_timestamp
+from hamkit.aprs._fields import encode_timestamp
+
+SYMBOL = a.Symbol("/", "-")
 
 
-class RecoveryTests(unittest.TestCase):
+def codes(packet: a.Packet) -> set[tuple[str, str]]:
+    return {(d.code, d.path) for d in packet.diagnostics}
+
+
+class LenientDecodingTests(unittest.TestCase):
+    def test_utf8_text_follows_aprs_1_2(self) -> None:
+        raw = "N0CALL>APRS::W1AW     :héllo 👋{01".encode()
+        packet = a.parse_packet(raw)
+        assert isinstance(packet, a.Packet)
+        self.assertEqual(packet.payload, a.Message("W1AW", "héllo 👋", message_id="01"))
+        self.assertEqual(packet.diagnostics, ())
+        self.assertEqual(a.serialize_packet(packet), raw)
+        status = a.parse_packet("N0CALL>APRS:>Grüße".encode())
+        assert isinstance(status, a.Packet)
+        self.assertEqual(status.payload, a.Status("Grüße"))
+
+    def test_invalid_utf8_falls_back_to_latin1(self) -> None:
+        packet = a.parse_packet(b"N0CALL>APRS:!4903.50N/07201.75W-Caf\xe9")
+        assert isinstance(packet, a.Packet)
+        assert isinstance(packet.payload, a.Position)
+        self.assertEqual(packet.payload.comment, "Café")
+        self.assertEqual(codes(packet), {("nonconforming", "$.payload.comment")})
+        self.assertEqual(
+            packet.original_wire, b"N0CALL>APRS:!4903.50N/07201.75W-Caf\xe9"
+        )
+        # Sending transcodes the text to UTF-8; original_wire is never replayed.
+        self.assertTrue(a.serialize_packet(packet).endswith("Café".encode()))
+
+    def test_out_of_spec_but_usable_packets_still_decode(self) -> None:
+        for raw, path in (
+            (b"N0CALL>APRS:>" + b"x" * 80, "$.payload.text"),
+            (b"N0CALL>APRS::W1AW     :" + b"x" * 100, "$.payload.text"),
+            (b"N0CALL>APRS:>bad|text", "$.payload.text"),
+            (b"N0CALL>APRS:>bell\x07", "$.payload.text"),
+            (b"N0CALL>APRS:!4903.50N/07201.75W>" + b"c" * 50, "$.payload.comment"),
+        ):
+            with self.subTest(raw=raw):
+                packet = a.parse_packet(raw)
+                assert isinstance(packet, a.Packet)
+                self.assertIn(("nonconforming", path), codes(packet))
+                with self.assertRaises(a.ConformanceError):
+                    a.serialize_packet(packet)
+
+    def test_rf_profile_reports_instead_of_rejecting(self) -> None:
+        raw = b"n0call>APRS,A,B,C,D,E,F,G,H,I:>" + b"x" * 10
+        packet = a.parse_packet(raw, profile="rf")
+        assert isinstance(packet, a.Packet)
+        self.assertEqual(
+            codes(packet),
+            {("nonconforming", "$.header.source"), ("nonconforming", "$.header.path")},
+        )
+        monitor = a.parse_packet(raw)
+        assert isinstance(monitor, a.Packet)
+        self.assertEqual(monitor.diagnostics, ())
+
+    def test_comment_keeps_undecoded_extensions(self) -> None:
+        packet = a.parse_packet(b"N0CALL>APRS:!4903.50N/07201.75W>088/036/A=001234 hi")
+        assert isinstance(packet, a.Packet)
+        assert isinstance(packet.payload, a.Position)
+        self.assertEqual(packet.payload.comment, "088/036/A=001234 hi")
+        self.assertFalse(packet.payload.extensions)
+
+
+class MalformedTests(unittest.TestCase):
     def test_multiple_bad_components_keep_reliable_data(self) -> None:
         raw = b">APRS,BAD**:!4903.50N/19000.00W>tail\xff"
         result = a.parse_packet(raw)
         assert isinstance(result, a.Malformed)
         self.assertEqual(result.original_wire, raw)
-        self.assertFalse(hasattr(result, "payload"))
+        self.assertIsNone(result.header)
         paths = {d.path for d in result.diagnostics}
         self.assertIn("$.header.source", paths)
         self.assertIn("$.header.path[0].address", paths)
@@ -27,7 +92,7 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(recovered["header"]["destination"], "APRS")
         self.assertAlmostEqual(recovered["payload"]["latitude_deg"], 49 + 3.5 / 60)
         self.assertNotIn("longitude_deg", recovered["payload"])
-        self.assertEqual(recovered["payload"]["tail"], "tail\xff")
+        self.assertEqual(recovered["payload"]["comment"], "tail\xff")
         self.assertEqual(json.loads(a.to_json(result))["recovered"], recovered)
         self.assertEqual(a.from_json(a.to_json(result)), result)
         with self.assertRaises(a.JSONModelError):
@@ -39,9 +104,13 @@ class RecoveryTests(unittest.TestCase):
         packet = a.from_json_dict(fixed, expected_type=a.Packet)
         self.assertEqual(
             a.serialize_packet(packet),
-            b"N0CALL>APRS,WIDE1-1*:!4903.50N/07200.00W>tail\xff",
+            "N0CALL>APRS,WIDE1-1*:!4903.50N/07200.00W>tailÿ".encode(),
         )
-        self.assertNotIn("longitude_deg", recovered["payload"])
+
+    def test_header_is_typed_when_intact(self) -> None:
+        result = a.parse_packet(b"N0CALL>APRS,WIDE1-1:!4903.50N/19000.00W-")
+        assert isinstance(result, a.Malformed)
+        self.assertEqual(result.header, a.Header("N0CALL", "APRS", (a.Hop("WIDE1-1"),)))
 
     def test_partial_timestamp_and_missing_coordinate_are_not_invented(self) -> None:
         result = a.parse_packet(b"N0CALL>APRS:@001230z4903.50N")
@@ -58,7 +127,7 @@ class RecoveryTests(unittest.TestCase):
             a.from_json_dict(result.recovered)
 
     def test_standalone_boundary_and_nested_packet_boundary(self) -> None:
-        payload = a.decode_payload(b"!4903.50N/19000.00W-")
+        payload = a.parse_payload(b"!4903.50N/19000.00W-")
         assert isinstance(payload, a.Malformed)
         self.assertEqual(payload.recovered["type"], "position")
         self.assertTrue(any(d.path == "$.longitude_deg" for d in payload.diagnostics))
@@ -73,26 +142,18 @@ class RecoveryTests(unittest.TestCase):
                 for d in outer.diagnostics
             )
         )
-        self.assertNotIn('"type": "malformed"', json.dumps(recovered))
 
-    def test_text_is_ascii_and_binary_is_lossless(self) -> None:
-        parsed = a.parse_packet(b"N0CALL>APRS:>Ready")
-        assert isinstance(parsed, a.Packet)
-        assert isinstance(parsed.payload, a.Status)
-        self.assertEqual(parsed.payload.text, "Ready")
-        for bad in (b"\xff", b"\xc3\xa9", b"bad\x00text", b"bad\r\ntext"):
-            raw = b"N0CALL>APRS:>" + bad
-            result = a.parse_packet(raw)
-            assert isinstance(result, a.Malformed)
-            self.assertEqual(result.original_wire, raw)
-            self.assertNotIn("text", cast(dict[str, Any], result.recovered["payload"]))
-            self.assertTrue(any(d.path == "$.payload.text" for d in result.diagnostics))
-            self.assertEqual(a.from_json(a.to_json(result)), result)
-        for bad_text in ("é", "\udcff", "bad\ntext"):
-            with self.assertRaises(a.ModelError):
-                a.Status(bad_text)
-            with self.assertRaises(a.JSONModelError):
-                a.from_json(json.dumps({"type": "status", "text": bad_text}))
+    def test_invalid_message_id_is_kept_for_repair(self) -> None:
+        result = a.parse_packet(b"W1AW>APRS::N0CALL   :hello{\xff")
+        assert isinstance(result, a.Malformed)
+        self.assertEqual({d.path for d in result.diagnostics}, {"$.payload.message_id"})
+        fixed = copy.deepcopy(cast(dict[str, Any], result.recovered))
+        self.assertEqual(fixed["payload"]["message_id"], "\xff")
+        fixed["payload"]["message_id"] = "01"
+        packet = a.from_json_dict(fixed, expected_type=a.Packet)
+        self.assertEqual(packet.payload, a.Message("N0CALL", "hello", message_id="01"))
+
+    def test_binary_is_lossless(self) -> None:
         binary = a.Packet(
             a.Header("N0CALL", "APRS"), a.UserDefined(b"Q", b"1", bytes(range(256)))
         )
@@ -109,8 +170,8 @@ class RecoveryTests(unittest.TestCase):
             assert isinstance(result, a.Packet)
             assert isinstance(result.payload, a.Opaque)
             self.assertEqual(a.serialize_packet(result), raw)
-            with self.assertRaises(a.CodecNotImplemented):
-                a.parse_packet(raw, options=a.DecodeOptions(unsupported="raise"))
+            with self.assertRaises(a.CodecNotImplementedError):
+                a.parse_packet(raw, unsupported="raise")
         result = a.parse_packet(b">490S5P:`12345678")
         assert isinstance(result, a.Malformed)
         self.assertEqual(
@@ -123,11 +184,11 @@ class RecoveryTests(unittest.TestCase):
         assert isinstance(result, a.Malformed)
         for encode in (
             a.serialize_packet,
-            a.encode_packet_fields,
-            a.encode_payload,
+            a.serialize_payload,
             a.serialize_tnc2_line,
+            a.check_packet,
         ):
-            with self.assertRaises(a.FieldError):
+            with self.assertRaises(TypeError):
                 encode(cast(Any, result))
         with self.assertRaises(a.ModelError):
             a.Packet(a.Header("N0CALL", "APRS"), cast(Any, result))
@@ -142,46 +203,40 @@ class RecoveryTests(unittest.TestCase):
 
 
 class StrictConstructionTests(unittest.TestCase):
-    def test_required_fields_and_domain_constraints(self) -> None:
+    def test_unrepresentable_values_raise(self) -> None:
         for build in (
-            lambda: a.Position(91, 0, symbol=a.Symbol("/", "-")),
-            lambda: a.Position(0, -181, symbol=a.Symbol("/", "-")),
-            lambda: a.Position(float("nan"), 0, symbol=a.Symbol("/", "-")),
-            lambda: a.Position(True, 0, symbol=a.Symbol("/", "-")),
-            lambda: a.Position(cast(Any, None), 0, symbol=a.Symbol("/", "-")),
+            lambda: a.Position(91, 0, SYMBOL),
+            lambda: a.Position(0, -181, SYMBOL),
+            lambda: a.Position(float("nan"), 0, SYMBOL),
+            lambda: a.Position(True, 0, SYMBOL),
+            lambda: a.Position(cast(Any, None), 0, SYMBOL),
+            lambda: a.Position(0, 0, SYMBOL, ambiguity=5),
             lambda: a.Header("", "APRS"),
             lambda: a.Hop("WIDE1-1*"),
             lambda: a.Message("", "Hello"),
-            lambda: a.Message("W1AW", "x" * 68),
+            lambda: a.Message("W1AW", "a{b"),
+            lambda: a.Message("W1AW", "ack003"),
+            lambda: a.Message("W1AW", "hi", reply_ack="01"),
             lambda: a.Acknowledgment("W1AW", ""),
-            lambda: a.Status("x" * 63),
+            lambda: a.Status("092345zambiguous"),
+            lambda: a.Status("x", timestamp=a.Timestamp.hms(1, 2, 3)),
             lambda: a.Timestamp("dhm_utc", 12, 30),
             lambda: a.Timestamp("hms_utc", 12, 30),
-            lambda: a.Timestamp("mdhm_utc", 12, 30, day=31, month=4),
-            lambda: a.Object(
-                "",
-                a.Location(49, -72, symbol=a.Symbol("/", "-")),
-                a.Timestamp("dhm_utc", 12, 30, day=1),
-            ),
-            lambda: a.Item("a", a.Location(49, -72, symbol=a.Symbol("/", "-"))),
+            lambda: a.Timestamp.mdhm(4, 31, 12, 30),
+            lambda: a.Object("", 49, -72, SYMBOL, timestamp=a.Timestamp.dhm(1, 12, 30)),
+            lambda: a.Item("a!b", 49, -72, SYMBOL),
             lambda: a.Symbol("/", ""),
             lambda: a.Extent((50, 49), (-73, -72)),
             lambda: a.Weather(temperature=a.Measurement(10, "mph")),
-            lambda: a.Weather(humidity=a.Measurement(101, "percent")),
-            lambda: a.Packet(a.Header("N0CALL", "APRS"), a.Weather()),
-            lambda: a.Telemetry(),
-            lambda: a.Telemetry((1, 2, 3), (True,), sequence=1),
+            lambda: a.Telemetry((1,) * 6),
             lambda: a.GLL(None, "123000", "A"),
-            lambda: a.Address(("é", "street", "city", "zip")),
+            lambda: a.NTSAddress(("é", "street", "city", "zip")),
             lambda: a.Grid("not a grid"),
             lambda: a.UserDefined(b"", b"1", b"data"),
             lambda: a.Reserved(256, b"data"),
             lambda: a.Opaque(b""),
-            lambda: a.Packet(
-                a.Header("N0CALL", "APRS"),
-                cast(Any, None),
-                original_wire=b"valid-looking evidence",
-            ),
+            lambda: a.Status("\udcff"),
+            lambda: a.Packet(a.Header("N0CALL", "APRS"), cast(Any, None)),
         ):
             with self.subTest(build=build), self.assertRaises(a.ModelError):
                 build()
@@ -190,46 +245,33 @@ class StrictConstructionTests(unittest.TestCase):
         for value in (
             {"type": "position", "latitude_deg": 49},
             {"type": "position", "latitude_deg": 99, "longitude_deg": 0},
-            {
-                "type": "packet",
-                "header": {"source": "N0CALL", "destination": "APRS"},
-                "payload": {"type": "position"},
-                "original_wire": "N0CALL>APRS:!4903.50N/07201.75W-",
-            },
         ):
             with self.assertRaises(a.JSONModelError):
                 a.from_json_dict(value)
 
-    def test_evidence_never_overrides_edits_or_missing_fields(self) -> None:
+    def test_free_text_is_unicode_but_tokens_are_ascii(self) -> None:
+        self.assertEqual(a.Status("Café ☕").text, "Café ☕")
+        self.assertEqual(a.Message("W1AW", "日本語").text, "日本語")
+        with self.assertRaises(a.ModelError):
+            a.Message("W1ÄW", "Hello")
+        with self.assertRaises(a.ModelError):
+            a.Object("Café", 49, -72, SYMBOL, timestamp=a.Timestamp.dhm(1, 0, 0))
+
+    def test_evidence_never_overrides_edits(self) -> None:
         timestamp = a.Timestamp("dhm_utc", 12, 30, day=17, raw=b"010000z")
         self.assertEqual(encode_timestamp(timestamp), b"171230z")
         packet = a.Packet(
             a.Header("N0CALL", "APRS"),
-            a.Status("Edited", timestamp),
+            a.Status("Edited", timestamp=timestamp),
             original_wire=b"wrong",
         )
         self.assertEqual(a.serialize_packet(packet), b"N0CALL>APRS:>171230zEdited")
-        with self.assertRaises(a.ModelError):
-            a.Timestamp("dhm_utc", 12, 30, raw=b"171230z")
-        with self.assertRaises(a.ModelError):
-            a.Position(
-                49, -72, tail=b"old", comment="edited", symbol=a.Symbol("/", "-")
-            )
-        with self.assertRaises(a.ModelError):
-            a.Object(
-                "",
-                a.Location(49, -72, symbol=a.Symbol("/", "-")),
-                timestamp,
-                name_raw=b"VALIDNAME",
-            )
         raw = a.Packet(
             a.Header("N0CALL", "APRS"), a.Opaque(b"~new"), original_wire=b"old"
         )
         self.assertEqual(a.serialize_packet(raw), b"N0CALL>APRS:~new")
-        position = a.Position(49, -72, tail=b"raw\x00\xff", symbol=a.Symbol("/", "-"))
-        self.assertTrue(a.encode_payload(position).endswith(b"raw\x00\xff"))
         # Defend the serialization boundary even against frozen-dataclass bypasses.
-        object.__setattr__(packet.payload, "text", "é")
+        object.__setattr__(packet.payload, "text", "\udcff")
         with self.assertRaises(a.ModelError):
             a.serialize_packet(packet)
         with self.assertRaises(a.JSONModelError):
@@ -237,11 +279,9 @@ class StrictConstructionTests(unittest.TestCase):
 
     def test_genuine_absence_and_unavailable_readings(self) -> None:
         absent = a.Weather()
-        unavailable = a.Weather(wind_speed=a.Measurement(None, "mph", b"..."))
-        zero = a.Weather(wind_speed=a.Measurement(0, "mph"))
+        unavailable = a.Weather(wind_speed=a.Measurement(None, "mph", raw=b"..."))
         self.assertNotEqual(absent, unavailable)
-        self.assertNotEqual(unavailable, zero)
-        self.assertEqual(a.Message("W1AW", text="").message_id, None)
-        self.assertEqual(a.Position(49, -72, symbol=a.Symbol("/", "-")).timestamp, None)
+        self.assertEqual(a.Message("W1AW", "").message_id, None)
+        self.assertEqual(a.Position(49, -72, SYMBOL).timestamp, None)
         self.assertEqual(a.GLL(None, "123000", "V").coordinates, None)
         self.assertEqual(dataclasses.replace(unavailable, wind_speed=None), absent)

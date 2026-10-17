@@ -27,11 +27,11 @@ from typing import (
     overload,
 )
 
-from . import data as d
-from . import models as m
-from . import nmea as n
-from .errors import APRSError
-from .model_validation import ModelError, json_data, validate_model
+from . import _data as d
+from . import _models as m
+from . import _nmea as n
+from ._errors import APRSError, ModelError
+from ._validation import json_data, validate_tree
 
 JSONValue: TypeAlias = (
     None | bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"]
@@ -41,8 +41,6 @@ JSONModel: TypeAlias = (
     d.Measurement
     | d.Timestamp
     | d.Coordinates
-    | d.Extent
-    | d.Ambiguity
     | d.Symbol
     | d.Grid
     | d.Motion
@@ -60,20 +58,18 @@ JSONModel: TypeAlias = (
     | d.Storm
     | d.Telemetry
     | d.Extensions
-    | d.Location
     | d.Beam
-    | d.ReplyAck
-    | d.Parameters
-    | d.Units
+    | d.TelemetryParameters
+    | d.TelemetryUnits
     | d.Calibration
-    | d.Equations
-    | d.Bits
+    | d.TelemetryEquations
+    | d.TelemetryBits
     | d.NTSHeader
-    | d.Address
-    | d.Phone
-    | d.Text
-    | d.Signature
-    | d.Routing
+    | d.NTSAddress
+    | d.NTSPhone
+    | d.NTSText
+    | d.NTSSignature
+    | d.NTSRouting
     | d.Footprint
     | d.Capability
     | n.NMEAMetadata
@@ -82,16 +78,13 @@ JSONModel: TypeAlias = (
     | n.RMC
     | n.VTG
     | n.WPL
-    | m.DecodeOptions
-    | m.EncodeOptions
     | m.Hop
     | m.Header
-    | m.HeaderSemantics
     | m.Position
     | m.MicE
     | m.Object
     | m.Item
-    | m.Definition
+    | m.TelemetryDefinition
     | m.Status
     | m.Message
     | m.Acknowledgment
@@ -120,23 +113,19 @@ JSONModel: TypeAlias = (
     | m.Opaque
     | m.Packet
     | m.Malformed
-    | m.EncodedPacketFields
 )
 
 _T = TypeVar("_T", bound=JSONModel)
 
 
 class JSONModelError(APRSError):
-    """Malformed JSON, an unknown/conflicting shape, or invalid field types."""
+    """Malformed JSON, an unknown/conflicting shape, or invalid field values."""
 
 
 @dataclass(frozen=True)
 class _Schema:
     model: type[JSONModel]
     tag: str
-
-    def key(self, name: str) -> str:
-        return name
 
     @property
     def allowed(self) -> set[str]:
@@ -156,8 +145,6 @@ _SCHEMAS = (
     _Schema(d.Measurement, "measurement"),
     _Schema(d.Timestamp, "timestamp"),
     _Schema(d.Coordinates, "coordinates"),
-    _Schema(d.Extent, "extent"),
-    _Schema(d.Ambiguity, "ambiguity"),
     _Schema(d.Symbol, "symbol"),
     _Schema(d.Grid, "grid"),
     _Schema(d.Motion, "motion"),
@@ -175,20 +162,18 @@ _SCHEMAS = (
     _Schema(d.Storm, "storm"),
     _Schema(d.Telemetry, "telemetry"),
     _Schema(d.Extensions, "extensions"),
-    _Schema(d.Location, "location"),
     _Schema(d.Beam, "beam"),
-    _Schema(d.ReplyAck, "reply_ack"),
-    _Schema(d.Parameters, "parameters"),
-    _Schema(d.Units, "units"),
+    _Schema(d.TelemetryParameters, "telemetry_parameters"),
+    _Schema(d.TelemetryUnits, "telemetry_units"),
     _Schema(d.Calibration, "calibration"),
-    _Schema(d.Equations, "equations"),
-    _Schema(d.Bits, "bits"),
+    _Schema(d.TelemetryEquations, "telemetry_equations"),
+    _Schema(d.TelemetryBits, "telemetry_bits"),
     _Schema(d.NTSHeader, "nts_header"),
-    _Schema(d.Address, "address"),
-    _Schema(d.Phone, "phone"),
-    _Schema(d.Text, "text"),
-    _Schema(d.Signature, "signature"),
-    _Schema(d.Routing, "routing"),
+    _Schema(d.NTSAddress, "nts_address"),
+    _Schema(d.NTSPhone, "nts_phone"),
+    _Schema(d.NTSText, "nts_text"),
+    _Schema(d.NTSSignature, "nts_signature"),
+    _Schema(d.NTSRouting, "nts_routing"),
     _Schema(d.Footprint, "footprint"),
     _Schema(d.Capability, "capability"),
     _Schema(n.NMEAMetadata, "nmea_metadata"),
@@ -197,16 +182,13 @@ _SCHEMAS = (
     _Schema(n.RMC, "rmc"),
     _Schema(n.VTG, "vtg"),
     _Schema(n.WPL, "wpl"),
-    _Schema(m.DecodeOptions, "decode_options"),
-    _Schema(m.EncodeOptions, "encode_options"),
     _Schema(m.Hop, "hop"),
     _Schema(m.Header, "header"),
-    _Schema(m.HeaderSemantics, "header_semantics"),
     _Schema(m.Position, "position"),
     _Schema(m.MicE, "mic_e"),
     _Schema(m.Object, "object"),
     _Schema(m.Item, "item"),
-    _Schema(m.Definition, "definition"),
+    _Schema(m.TelemetryDefinition, "telemetry_definition"),
     _Schema(m.Status, "status"),
     _Schema(m.Message, "message"),
     _Schema(m.Acknowledgment, "acknowledgment"),
@@ -235,17 +217,11 @@ _SCHEMAS = (
     _Schema(m.Opaque, "opaque"),
     _Schema(m.Packet, "packet"),
     _Schema(m.Malformed, "malformed"),
-    _Schema(m.EncodedPacketFields, "encoded_packet_fields"),
 )
 _BY_MODEL = {schema.model: schema for schema in _SCHEMAS}
 _BY_TAG = {schema.tag: schema.model for schema in _SCHEMAS}
-_PAYLOAD_MODELS = set(get_args(m.Payload))
 
 _HINTS = {model: get_type_hints(model) for model in _BY_MODEL}
-
-
-def _hints(model: type[JSONModel]) -> dict[str, Any]:
-    return _HINTS[model]
 
 
 def _limit(depth: int, maximum: int, path: str) -> None:
@@ -278,20 +254,17 @@ def _tagged_model(
     return model
 
 
+def _models_in(annotation: Any) -> tuple[type[JSONModel], ...]:
+    if annotation in _BY_MODEL:
+        return (annotation,)
+    return tuple(t for t in get_args(annotation) if t in _BY_MODEL)
+
+
 def _contextualize(value: JSONValue, annotation: Any) -> JSONValue:
-    """Omit tags only where the declared field identifies exactly one model."""
+    """Omit the tag wherever the declared field allows exactly one model."""
+    if isinstance(value, dict) and len(_models_in(annotation)) == 1:
+        return {k: v for k, v in value.items() if k != "type"}
     origin, args = get_origin(annotation), get_args(annotation)
-    models = tuple(t for t in args if t in _BY_MODEL)
-    if isinstance(value, dict):
-        fixed = (
-            annotation
-            if annotation in _BY_MODEL
-            else (models[0] if len(models) == 1 else None)
-        )
-        if fixed is not None and fixed not in (
-            _PAYLOAD_MODELS - {d.Weather, d.Telemetry}
-        ):
-            return {k: v for k, v in value.items() if k != "type"}
     if origin is tuple and isinstance(value, list):
         variadic = len(args) == 2 and args[1] is Ellipsis
         return [
@@ -316,7 +289,7 @@ def _decode(value: object, annotation: Any, path: str, depth: int, maximum: int)
             raise JSONModelError(str(exc)) from exc
         return json.loads(json.dumps(recovered, allow_nan=False))
     if origin in (Union, types.UnionType):
-        models = tuple(t for t in args if t in _BY_MODEL)
+        models = _models_in(annotation)
         if isinstance(value, Mapping) and models:
             raw = _object(value, path)
             model = _tagged_model(raw, models, path) if len(models) > 1 else models[0]
@@ -390,7 +363,7 @@ def _decode_model(
     maximum: int,
 ) -> JSONModel:
     _limit(depth, maximum, path)
-    if "type" in value or model in (_PAYLOAD_MODELS - {d.Weather, d.Telemetry}):
+    if "type" in value:
         _tagged_model(value, (model,), path)
     value = {k: v for k, v in value.items() if k != "type"}
     schema = _BY_MODEL[model]
@@ -399,17 +372,13 @@ def _decode_model(
         raise JSONModelError(
             f"{path}: unexpected fields {sorted(extra)}; missing fields {sorted(missing)}"
         )
-    hints = _hints(model)
+    hints = _HINTS[model]
     kwargs = {
         f.name: _decode(
-            value[schema.key(f.name)],
-            hints[f.name],
-            path + "." + schema.key(f.name),
-            depth + 1,
-            maximum,
+            value[f.name], hints[f.name], f"{path}.{f.name}", depth + 1, maximum
         )
         for f in fields(model)
-        if schema.key(f.name) in value
+        if f.name in value
     }
     try:
         return model(**kwargs)
@@ -417,96 +386,51 @@ def _decode_model(
         raise JSONModelError(f"{path}{str(exc)[1:]}") from exc
 
 
-def _python_matches(value: object, annotation: Any) -> bool:
-    """Check Python-side types before bytes/tuples lose their identity in JSON."""
-    origin, args = get_origin(annotation), get_args(annotation)
-    if origin in (Union, types.UnionType):
-        return any(_python_matches(value, variant) for variant in args)
-    if origin is Literal:
-        return any(type(value) is type(v) and value == v for v in args)
-    if origin is dict:
-        return type(value) is dict
-    if origin is tuple:
-        if type(value) is not tuple:
-            return False
-        variadic = len(args) == 2 and args[1] is Ellipsis
-        return (variadic or len(value) == len(args)) and all(
-            _python_matches(item, args[0] if variadic else args[i])
-            for i, item in enumerate(value)
-        )
-    if annotation is float:
-        return type(value) in (float, int)
-    return type(value) is annotation
-
-
 def _encode(
-    value: object,
-    include_defaults: bool,
-    path: str,
-    depth: int,
-    maximum: int,
-    active: set[int],
+    value: object, include_defaults: bool, path: str, depth: int, maximum: int
 ) -> JSONValue:
     _limit(depth, maximum, path)
     if value is None or type(value) in (str, bool, int):
         return cast(JSONValue, value)
     if type(value) is float:
-        if not math.isfinite(value):
-            raise JSONModelError(f"{path}: non-finite number")
         return value
     if type(value) is bytes:
         return value.decode("latin-1")
     if type(value) is dict:
         return {
-            key: _encode(
-                child, include_defaults, path + "." + key, depth + 1, maximum, active
-            )
+            key: _encode(child, include_defaults, f"{path}.{key}", depth + 1, maximum)
             for key, child in value.items()
         }
     if type(value) in (tuple, list):
         return [
-            _encode(item, include_defaults, f"{path}[{i}]", depth + 1, maximum, active)
+            _encode(item, include_defaults, f"{path}[{i}]", depth + 1, maximum)
             for i, item in enumerate(cast(tuple[object, ...] | list[object], value))
         ]
-    if type(value) not in _BY_MODEL:
+    schema = _BY_MODEL.get(type(value))  # type: ignore[arg-type]
+    if schema is None:
         raise JSONModelError(f"{path}: unsupported value {type(value).__name__}")
-    if id(value) in active:
-        raise JSONModelError(f"{path}: cyclic model graph")
-    active.add(id(value))
-    try:
-        model = cast(JSONModel, value)
-        schema = _BY_MODEL[type(model)]
-        result: JSONObject = {"type": schema.tag}
-        # Validate ALL fields, even ones omitted from compact output. Never let
-        # Python's True == 1 or a default comparison hide an invalid field type.
-        hints = _hints(type(model))
-        for f in fields(model):
-            key, item = schema.key(f.name), getattr(model, f.name)
-            if not _python_matches(item, hints[f.name]):
-                raise JSONModelError(
-                    f"{path}.{key}: invalid Python field type for {hints[f.name]!r}"
-                )
+    result: JSONObject = {"type": schema.tag}
+    hints = _HINTS[schema.model]
+    for f in fields(schema.model):
+        item = getattr(value, f.name)
+        default = f.default
+        if f.default_factory is not MISSING:
+            default = f.default_factory()
+        if include_defaults or default is MISSING or item != default:
             encoded = _encode(
-                item, include_defaults, path + "." + key, depth + 1, maximum, active
+                item, include_defaults, f"{path}.{f.name}", depth + 1, maximum
             )
-            _decode(encoded, hints[f.name], path + "." + key, depth + 1, maximum)
-            default = f.default
-            if f.default_factory is not MISSING:
-                default = f.default_factory()
-            if include_defaults or default is MISSING or item != default:
-                result[key] = _contextualize(encoded, hints[f.name])
-        return result
-    finally:
-        active.remove(id(value))
+            result[f.name] = _contextualize(encoded, hints[f.name])
+    return result
 
 
 def to_json_dict(
     value: JSONModel, *, include_defaults: bool = False, max_depth: int = 64
 ) -> JSONObject:
-    """Convert a supported model to a JSON object with a stable semantic type tag.
+    """Convert a model to a JSON object with a stable semantic type tag.
 
-    Byte fields use Latin-1 strings. Compact output keeps required fields needed
-    for construction. Validation checks model field types, not APRS wire grammar.
+    Byte fields use Latin-1 strings. Compact output omits fields equal to their
+    defaults. The whole model graph is validated first.
     """
     _check_limit(max_depth)
     if type(include_defaults) is not bool:
@@ -514,10 +438,10 @@ def to_json_dict(
     if type(value) not in _BY_MODEL:
         raise JSONModelError("expected a supported APRS packet, payload or field model")
     try:
-        validate_model(value)
+        validate_tree(value)
     except ModelError as exc:
         raise JSONModelError(str(exc)) from exc
-    result = _encode(value, include_defaults, "$", 0, max_depth, set())
+    result = _encode(value, include_defaults, "$", 0, max_depth)
     assert isinstance(result, dict)
     return result
 
@@ -542,18 +466,16 @@ def from_json_dict(
     expected_type: type[Any] | None = None,
     max_depth: int = 64,
 ) -> JSONModel:
-    """Read a tagged model, or an untagged fixed field with expected_type.
+    """Read a tagged model, or an untagged one when expected_type names it.
 
-    Unknown/conflicting keys, missing/incompatible tags and invalid scalar types raise
-    JSONModelError. expected_type supplies context for sparse standalone fields.
+    Unknown/conflicting keys, missing/incompatible tags and invalid values raise
+    JSONModelError. A supplied tag must always agree with expected_type.
     """
     _check_limit(max_depth)
     raw = _object(value, "$")
     if expected_type is not None and expected_type not in _BY_MODEL:
         raise JSONModelError("expected_type must be a supported concrete APRS model")
     model = expected_type or _tagged_model(raw, tuple(_BY_MODEL), "$")
-    if model in _PAYLOAD_MODELS:
-        _tagged_model(raw, (model,), "$")
     return _decode_model(raw, model, "$", 0, max_depth)
 
 
@@ -564,7 +486,7 @@ def to_json(
     include_defaults: bool = False,
     max_depth: int = 64,
 ) -> str:
-    """Serialize a model to JSON text. Non-ASCII bytes are escaped, never UTF-8 encoded."""
+    """Serialize a model to JSON text. Non-ASCII is escaped, so output is ASCII."""
     if indent is not None and (type(indent) is not int or indent < 0):
         raise ValueError("indent must be a nonnegative integer or None")
     value_dict = to_json_dict(

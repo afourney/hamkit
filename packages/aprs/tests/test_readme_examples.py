@@ -88,9 +88,9 @@ class ReadmeTests(unittest.TestCase):
     def test_every_example_runs_with_only_declared_context_and_exact_output(
         self,
     ) -> None:
-        self.assertEqual(
-            len(self.examples), 68
-        )  # 29 construction pairs, 4 parsing inputs, 4 JSON displays, 1 unsupported encoding, 1 repair.
+        # 29 construction pairs, 5 parsing inputs with 5 JSON displays, then one
+        # each of unsupported encoding, repair and refusal to send.
+        self.assertEqual(len(self.examples), 71)
         namespace: dict[str, Any] | None = None
         for index, example in enumerate(self.examples):
             with self.subTest(example=index + 1):
@@ -182,12 +182,12 @@ class ReadmeTests(unittest.TestCase):
             families.add(type(json_packet.payload))
             # Model-only examples really are unencodable. Working ones must emit
             # the displayed TNC2 line, not a hypothetical future encoding.
-            if a.capability_for(json_packet.payload).encode == "unimplemented":
-                with self.assertRaises(a.CodecNotImplemented):
+            if a.codec_support_for(json_packet.payload).encode == "unimplemented":
+                with self.assertRaises(a.CodecNotImplementedError):
                     a.serialize_packet(json_packet)
             else:
                 self.assertEqual(
-                    a.serialize_packet(json_packet).decode("ascii") + "\n",
+                    a.serialize_packet(json_packet).decode("utf-8") + "\n",
                     self.examples[index][3],
                 )
         self.assertEqual(families, set(get_args(a.Payload)))
@@ -205,4 +205,4 @@ class ReadmeTests(unittest.TestCase):
             self.assertNotIn("aprs.to_json", source)
             self.assertEqual(self.examples[index + 1][0], "continuation")
             count += 1
-        self.assertEqual(count, 4)
+        self.assertEqual(count, 5)

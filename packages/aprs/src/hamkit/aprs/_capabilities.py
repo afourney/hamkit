@@ -6,90 +6,93 @@
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
-from . import models as m
+from . import _models as m
 
 SupportLevel: TypeAlias = Literal["implemented", "partial", "unimplemented", "raw"]
 
 
 @dataclass(frozen=True)
-class CodecCapability:
+class CodecSupport:
+    """Which directions of the wire codec exist for one payload model."""
+
     model: type[m.Payload]
     decode: SupportLevel
     encode: SupportLevel
     notes: str
 
 
-_CAPABILITIES: tuple[CodecCapability, ...] = (
-    CodecCapability(
+_SUPPORT: tuple[CodecSupport, ...] = (
+    CodecSupport(
         m.Position,
         "partial",
         "partial",
-        "Uncompressed/unambiguous only; structured extensions are not encoded. Tail is uninterpreted.",
+        "Uncompressed, unambiguous positions. Undecoded extensions stay in comment.",
     ),
-    CodecCapability(
+    CodecSupport(
         m.Status,
         "partial",
         "partial",
-        "Text/DHM UTC only; structured grid/symbol/beam are not encoded.",
+        "Text and DHM UTC timestamp; structured grid/symbol/beam are not encoded.",
     ),
-    CodecCapability(
+    CodecSupport(
         m.Message,
         "partial",
         "partial",
-        "Basic printable text/ID only; no reply-ack or specialized message semantics.",
+        "Text, message ID and reply-ack; bulletins and other specialized messages "
+        "are separate families.",
     ),
-    CodecCapability(
-        m.Acknowledgment, "partial", "partial", "Basic ack/rej only; no reply-ack."
+    CodecSupport(
+        m.Acknowledgment, "implemented", "implemented", "ack/rej including reply-ack."
     ),
-    CodecCapability(
+    CodecSupport(
         m.MicE,
         "unimplemented",
         "unimplemented",
-        "Requires header; future joint encoding derives or checks destination.",
+        "Requires the packet header: the destination carries latitude and message bits.",
     ),
-    CodecCapability(
+    CodecSupport(
         m.ThirdParty,
         "implemented",
         "implemented",
-        "Bounded nesting; inner codec capabilities still apply.",
+        "Bounded nesting; inner codec support still applies.",
     ),
-    CodecCapability(
+    CodecSupport(
         m.UserDefined,
         "implemented",
         "implemented",
         "User ID/type and arbitrary binary data; no interpretation of user data.",
     ),
-    CodecCapability(
+    CodecSupport(
         m.Invalid,
         "implemented",
         "implemented",
         "Explicit invalid/test DTI, never a trusted position.",
     ),
-    CodecCapability(
+    CodecSupport(
         m.Reserved,
         "unimplemented",
         "raw",
-        "Explicit DTI/data construction; decoding unknown DTIs returns Opaque by default.",
+        "Explicit DTI/data construction; decoding unknown DTIs returns Opaque.",
     ),
-    CodecCapability(
+    CodecSupport(
         m.Opaque,
         "raw",
         "raw",
-        "Unsupported raw content only; malformed input has a separate recovery result.",
+        "Unsupported content only; malformed input has a separate recovery result.",
     ),
     *(
-        CodecCapability(
+        CodecSupport(
             model,
             "unimplemented",
             "unimplemented",
-            "Public representation only; wire codec raises CodecNotImplemented.",
+            "Model and JSON only; the wire codec raises CodecNotImplementedError.",
         )
         for model in (
             m.Object,
             m.Item,
             m.Weather,
             m.Telemetry,
-            m.Definition,
+            m.TelemetryDefinition,
             m.AutoAnswer,
             m.Bulletin,
             m.NWSBulletin,
@@ -109,14 +112,15 @@ _CAPABILITIES: tuple[CodecCapability, ...] = (
 )
 
 
-def get_capabilities() -> tuple[CodecCapability, ...]:
-    """Immutable per-model capabilities; 'partial' is not a per-value guarantee."""
-    return _CAPABILITIES
+def codec_support() -> tuple[CodecSupport, ...]:
+    """Per-model support; 'partial' is not a promise for every value."""
+    return _SUPPORT
 
 
-def capability_for(value: m.Payload | type[m.Payload]) -> CodecCapability:
+def codec_support_for(value: m.Payload | type[m.Payload]) -> CodecSupport:
     model = value if isinstance(value, type) else type(value)
-    for capability in _CAPABILITIES:
-        if capability.model is model:
-            return capability
+    for cls in model.__mro__:
+        for support in _SUPPORT:
+            if support.model is cls:
+                return support
     raise TypeError("not a public APRS payload model")

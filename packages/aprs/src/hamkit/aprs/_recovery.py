@@ -6,18 +6,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from .errors import APRSError
-from .fields import decode_coordinate
-from .models import Diagnostic
+from ._errors import APRSError
+from ._fields import decode_coordinate
+from ._models import Diagnostic
+from ._text import free_text, token
 
 
-def text(raw: bytes) -> str:
-    if any(c < 32 or c > 126 for c in raw):
-        raise ValueError("protocol text requires printable ASCII")
-    return raw.decode("ascii")
-
-
-def timestamp(raw: bytes) -> dict[str, object]:
+def _timestamp(raw: bytes) -> dict[str, object]:
     # Retain independently readable components; absence is never replaced by zero.
     data: dict[str, object] = {}
     if len(raw) == 7 and raw[-1:] in (b"z", b"/", b"h"):
@@ -39,18 +34,20 @@ def payload_data(raw: bytes) -> tuple[dict[str, object], list[Diagnostic]]:
     """Recover implemented-family components independently after a decode failure."""
     data: dict[str, object] = {}
     diagnostics: list[Diagnostic] = []
+    ignored: list[Diagnostic] = []  # Text findings are not decode failures.
 
     def keep(key: str, operation: Callable[[], Any]) -> None:
         try:
             data[key] = operation()
         except (APRSError, ValueError) as exc:
-            diagnostics.append(Diagnostic("malformed", str(exc), "$." + key))
+            message = getattr(exc, "message", str(exc))
+            diagnostics.append(Diagnostic("malformed", message, "$." + key))
 
     dti, body = raw[:1], raw[1:]
     if dti in (b"!", b"=", b"/", b"@"):
         data = {"type": "position", "messaging": dti in (b"=", b"@")}
         if dti in (b"/", b"@"):
-            data["timestamp"] = timestamp(body[:7])
+            data["timestamp"] = _timestamp(body[:7])
             body = body[7:]
         for field, needed in (
             ("latitude_deg", 8),
@@ -66,42 +63,37 @@ def payload_data(raw: bytes) -> tuple[dict[str, object], list[Diagnostic]]:
         if len(body) >= 18:
             keep("longitude_deg", lambda: decode_coordinate(body[9:18], "longitude"))
         symbol: dict[str, object] = {}
-        if len(body) >= 9:
-            try:
-                symbol["table_id"] = text(body[8:9])
-            except ValueError:
-                pass
+        if len(body) >= 9 and 33 <= body[8] <= 126:
+            symbol["table_id"] = chr(body[8])
         if len(body) >= 19:
-            try:
-                symbol["code"] = text(body[18:19])
-            except ValueError:
-                pass
-            data["tail"] = body[19:].decode("latin-1")
+            if 33 <= body[18] <= 126:
+                symbol["code"] = chr(body[18])
+            data["comment"] = free_text(body[19:], "$.comment", ignored)
         if symbol:
             data["symbol"] = symbol
     elif dti == b">":
         data["type"] = "status"
         if len(body) >= 7 and body[:6].isdigit() and body[6:7] == b"z":
-            data["timestamp"] = timestamp(body[:7])
+            data["timestamp"] = _timestamp(body[:7])
             body = body[7:]
-        keep("text", lambda: text(body))
+        data["text"] = free_text(body, "$.text", ignored)
     elif dti == b":":
         data["type"] = "message"
         if len(body) >= 10 and body[9:10] == b":":
-            keep("addressee", lambda: text(body[:9]).rstrip(" "))
-            message, sep, identifier = body[10:].partition(b"{")
-            keep("text", lambda: text(message))
-            if sep:
-                # A present but invalid optional ID must not become an absent ID.
-                # Keep its byte spelling in repair data so ordinary strict import
-                # still rejects it until the caller edits/removes it explicitly.
-                data["message_id"] = identifier.decode("latin-1")
+            address, message = body[:9], body[10:]
         else:
             # A short addressee with a clear separator still gives reliable text.
-            address, sep, message = body.partition(b":")
-            if sep:
-                keep("addressee", lambda: text(address).rstrip(" "))
-                keep("text", lambda: text(message))
+            address, _, message = body.partition(b":")
+        keep("addressee", lambda: token(address, "$.addressee").rstrip(" "))
+        text, separator, identifier = message.partition(b"{")
+        data["text"] = free_text(text, "$.text", ignored)
+        if separator:
+            # A present but invalid ID must not become an absent ID. Keep its
+            # spelling so strict import still rejects it until it is repaired.
+            number, brace, ack = identifier.partition(b"}")
+            data["message_id"] = number.decode("latin-1")
+            if brace:
+                data["reply_ack"] = ack.decode("latin-1")
     elif dti == b"{":
         data["type"] = "user_defined"
         if body:
