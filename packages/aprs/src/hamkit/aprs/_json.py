@@ -284,7 +284,7 @@ def _decode(value: object, annotation: Any, path: str, depth: int, maximum: int)
     if origin is dict:
         recovered = dict(_object(value, path))
         try:
-            json_data(recovered, path)
+            json_data(recovered, path, depth, maximum)
         except ModelError as exc:
             raise JSONModelError(str(exc)) from exc
         return json.loads(json.dumps(recovered, allow_nan=False))
@@ -337,19 +337,11 @@ def _decode(value: object, annotation: Any, path: str, depth: int, maximum: int)
                 f"{path}: byte string contains a code point above U+00FF"
             ) from exc
     if annotation is float:
-        if type(value) not in (float, int):
+        if type(value) is int:
+            return value  # Keep integers exact, as Python construction does.
+        if type(value) is not float or not math.isfinite(cast(float, value)):
             raise JSONModelError(f"{path}: expected a finite number")
-        try:
-            result = float(cast(float | int, value))
-        except (OverflowError, ValueError) as exc:
-            raise JSONModelError(
-                f"{path}: number is outside floating-point range"
-            ) from exc
-        if not math.isfinite(result):
-            raise JSONModelError(
-                f"{path}: non-finite numbers are not JSON model values"
-            )
-        return result
+        return value
     if annotation in (str, int, bool) and type(value) is annotation:
         return value
     raise JSONModelError(f"{path}: expected {annotation!r}")
@@ -438,7 +430,7 @@ def to_json_dict(
     if type(value) not in _BY_MODEL:
         raise JSONModelError("expected a supported APRS packet, payload or field model")
     try:
-        validate_tree(value)
+        validate_tree(value, limit=max_depth)
     except ModelError as exc:
         raise JSONModelError(str(exc)) from exc
     result = _encode(value, include_defaults, "$", 0, max_depth)

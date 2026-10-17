@@ -1,7 +1,7 @@
 # hamkit.aprs
 
 Parse APRS packets, build them in Python, check them before sending, and move
-them to and from JSON. Pure Python · MIT license · Python 3.10+ · no runtime
+them to and from JSON. Pure Python · MIT license · Python 3.11+ · no runtime
 dependencies.
 
 This is an **alpha API**. Basic status, position, message and acknowledgment
@@ -148,21 +148,21 @@ Serialization returns bytes. Optional fields are keyword-only.
 ### Position
 
 **Wire encoding available for this example.** An uncompressed latitude/longitude
-position with a car symbol and a comment.
+position with a car symbol, course and speed, and a comment.
 
 Read one position packet:
 
 ```python
 from hamkit import aprs
 
-packet = aprs.parse_packet(b"N0CALL>APRS:!4903.50N/07201.75W>Hello")
+packet = aprs.parse_packet(b"N0CALL>APRS:!4903.50N/07201.75W>088/036 Hello")
 print(packet)
 ```
 
 Output:
 
 ```text
-Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Position(latitude_deg=49.05833333333333, longitude_deg=-72.02916666666667, symbol=Symbol(table_id='/', code='>'), comment='Hello', messaging=False, timestamp=None, ambiguity=0, compression=None, extensions=Extensions(motion=None, altitude=None, phg=None, range=None, signal=None, bearing=None, dao=None, area=None, signpost=None, weather=None, storm=None, telemetry=None)), diagnostics=())
+Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Position(latitude_deg=49.05833333333333, longitude_deg=-72.02916666666667, symbol=Symbol(table_id='/', code='>'), comment=' Hello', messaging=False, timestamp=None, ambiguity=0, compression=None, extensions=Extensions(motion=Motion(course_deg=88, speed_knots=36, zero_pair='unspecified'), altitude=None, phg=None, range=None, signal=None, bearing=None, dao=None, area=None, signpost=None, weather=None, storm=None, telemetry=None)), diagnostics=())
 ```
 
 Show that same result as JSON:
@@ -188,15 +188,27 @@ Output:
       "table_id": "/",
       "code": ">"
     },
-    "comment": "Hello"
+    "comment": " Hello",
+    "extensions": {
+      "motion": {
+        "course_deg": 88,
+        "speed_knots": 36,
+        "course_code": 88,
+        "speed_code": 36,
+        "raw": "088/036"
+      }
+    }
   },
-  "original_wire": "N0CALL>APRS:!4903.50N/07201.75W>Hello"
+  "original_wire": "N0CALL>APRS:!4903.50N/07201.75W>088/036 Hello"
 }
 ```
 
-`comment` holds the free text after the position. Data extensions that this
-version does not decode yet, such as course/speed or altitude, stay in
-`comment` exactly as received.
+Course/speed (`088/036`) is decoded into `extensions.motion`, and `comment`
+holds the text after it, including its leading space. PHG, RNG, DFS, DF
+bearing and `/A=` altitude are decoded the same way. Extension-shaped text with
+invalid values stays in `comment` with a diagnostic, and extensions this
+version cannot decode yet (such as `!DAO!` or weather) make the payload
+`Opaque` rather than being mistaken for comment text.
 
 Build with Python:
 
@@ -206,7 +218,11 @@ from hamkit import aprs
 packet = aprs.Packet(
     aprs.Header("N0CALL", "APRS"),
     aprs.Position(
-        49.05833333333333, -72.02916666666667, aprs.Symbol("/", ">"), comment="Hello"
+        49.05833333333333,
+        -72.02916666666667,
+        aprs.Symbol("/", ">"),
+        comment=" Hello",
+        extensions=aprs.Extensions(motion=aprs.Motion(88, 36)),
     ),
 )
 print(aprs.serialize_packet(packet).decode("utf-8"))
@@ -215,7 +231,7 @@ print(aprs.serialize_packet(packet).decode("utf-8"))
 Output:
 
 ```text
-N0CALL>APRS:!4903.50N/07201.75W>Hello
+N0CALL>APRS:!4903.50N/07201.75W>088/036 Hello
 ```
 
 Build the same packet from JSON:
@@ -239,7 +255,13 @@ packet = aprs.from_json(
       "table_id": "/",
       "code": ">"
     },
-    "comment": "Hello"
+    "comment": " Hello",
+    "extensions": {
+      "motion": {
+        "course_deg": 88,
+        "speed_knots": 36
+      }
+    }
   }
 }
 """
@@ -250,7 +272,7 @@ print(aprs.serialize_packet(packet).decode("utf-8"))
 Output:
 
 ```text
-N0CALL>APRS:!4903.50N/07201.75W>Hello
+N0CALL>APRS:!4903.50N/07201.75W>088/036 Hello
 ```
 
 ### Message
@@ -1886,8 +1908,9 @@ Output:
 }
 ```
 
-Text fields accept UTF-8, as the APRS 1.2 addendum allows for messages,
-bulletins, status and comments. Bytes that are not valid UTF-8 are read as
+Text fields accept UTF-8, following the APRS 1.2 proposed-draft guidance for
+messages, bulletins, status and comments (adopted for compatibility; the
+ratified spec is ASCII). Bytes that are not valid UTF-8 are read as
 Latin-1 with a diagnostic, never dropped or replaced. Pass `profile="rf"` to
 also report AX.25 address and size limits.
 

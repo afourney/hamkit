@@ -73,7 +73,7 @@ class ReadmeTests(unittest.TestCase):
         # Share context only for the explicitly adjacent JSON display.
         if namespace is None:
             namespace = {"__name__": "readme_example"}
-        ast.parse(code, feature_version=(3, 10))
+        ast.parse(code, feature_version=(3, 11))
         captured = io.StringIO()
         with contextlib.redirect_stdout(captured), patch(
             "builtins.print", wraps=print

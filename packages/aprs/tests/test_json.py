@@ -9,9 +9,10 @@ import math
 import unittest
 from typing import Any, cast, get_args
 
+from model_examples import SYMBOL, field_examples, payload_examples
+
 import hamkit.aprs as a
 from hamkit.aprs._json import _BY_MODEL, _SCHEMAS
-from model_examples import SYMBOL, field_examples, payload_examples
 
 HEADER = a.Header("N0CALL", "APRS")
 
@@ -190,6 +191,33 @@ class JSONRoundTripTests(unittest.TestCase):
         self.assertEqual(
             model, a.Object("A", 49, -72, SYMBOL, timestamp=a.Timestamp.dhm(1, 0, 0))
         )
+
+    def test_integers_survive_json_exactly(self) -> None:
+        value = a.Calibration(9007199254740993, 0, 0)
+        restored = a.from_json(a.to_json(value))
+        self.assertEqual(restored, value)
+        self.assertIs(type(cast(a.Calibration, restored).a), int)
+        self.assertIs(type(a.from_json('{"type":"range","miles":1.5}').miles), float)  # type: ignore[union-attr]
+
+    def test_depth_limits_apply_before_recursion(self) -> None:
+        packet = a.Packet(HEADER, a.Status("x"))
+        for _ in range(1000):
+            packet = a.Packet(HEADER, a.ThirdParty(packet))
+        with self.assertRaisesRegex(a.JSONModelError, "nesting limit"):
+            a.to_json(packet, max_depth=4)
+        malformed = a.Malformed(
+            b"bad",
+            (a.Diagnostic("malformed", "bad"),),
+            {"a": {"b": {"c": {"d": {"e": 1}}}}},
+        )
+        document = a.to_json_dict(malformed)
+        for convert in (
+            lambda: a.from_json_dict(document, max_depth=3),
+            lambda: a.to_json_dict(malformed, max_depth=3),
+        ):
+            with self.assertRaisesRegex(a.JSONModelError, r"\$\.recovered\.a\.b\.c"):
+                convert()
+        self.assertEqual(a.from_json_dict(document, max_depth=6), malformed)
 
     def test_key_order_does_not_choose_type(self) -> None:
         value = a.to_json_dict(a.Message("W1AW", "Hello"))

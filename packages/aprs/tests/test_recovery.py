@@ -69,12 +69,41 @@ class LenientDecodingTests(unittest.TestCase):
         assert isinstance(monitor, a.Packet)
         self.assertEqual(monitor.diagnostics, ())
 
-    def test_comment_keeps_undecoded_extensions(self) -> None:
-        packet = a.parse_packet(b"N0CALL>APRS:!4903.50N/07201.75W>088/036/A=001234 hi")
+    def test_extensions_leave_the_comment(self) -> None:
+        raw = b"N0CALL>APRS:!4903.50N/07201.75W>088/036/A=001234 hi"
+        packet = a.parse_packet(raw)
         assert isinstance(packet, a.Packet)
         assert isinstance(packet.payload, a.Position)
-        self.assertEqual(packet.payload.comment, "088/036/A=001234 hi")
-        self.assertFalse(packet.payload.extensions)
+        self.assertEqual(packet.payload.comment, " hi")
+        self.assertEqual(packet.payload.extensions.motion, a.Motion(88, 36))
+        altitude = packet.payload.extensions.altitude
+        assert altitude is not None
+        self.assertEqual(altitude.measurement, a.Measurement(1234, "feet"))
+        self.assertEqual(a.serialize_packet(packet), raw)
+
+    def test_invalid_extension_text_stays_comment_with_a_finding(self) -> None:
+        raw = b"N0CALL>APRS:!4903.50N/07201.75W>999/999Hello"
+        packet = a.parse_packet(raw, unsupported="raise")
+        assert isinstance(packet, a.Packet)
+        assert isinstance(packet.payload, a.Position)
+        self.assertEqual(packet.payload.comment, "999/999Hello")
+        self.assertEqual(codes(packet), {("nonconforming", "$.payload.comment")})
+        with self.assertRaises(a.ConformanceError):
+            a.serialize_packet(packet)
+
+    def test_recognized_but_undecoded_extensions_are_unsupported(self) -> None:
+        for information in (
+            b"!4903.50N/07201.75W>hi !W12!",
+            b"!4903.50N/07201.75W>|!!!!|",
+            b"!4903.50N/07201.75W_090/005g010t068",
+            b"!4903.50N\\07201.75WlT01/C02",
+        ):
+            with self.subTest(information=information):
+                packet = a.parse_packet(b"N0CALL>APRS:" + information)
+                assert isinstance(packet, a.Packet)
+                self.assertIsInstance(packet.payload, a.Opaque)
+                with self.assertRaises(a.CodecNotImplementedError):
+                    a.parse_packet(b"N0CALL>APRS:" + information, unsupported="raise")
 
 
 class MalformedTests(unittest.TestCase):
@@ -216,6 +245,8 @@ class StrictConstructionTests(unittest.TestCase):
             lambda: a.Message("", "Hello"),
             lambda: a.Message("W1AW", "a{b"),
             lambda: a.Message("W1AW", "ack003"),
+            lambda: a.Message("W1AW", "ack01}02"),
+            lambda: a.Message("W1AW", "rej1}"),
             lambda: a.Message("W1AW", "hi", reply_ack="01"),
             lambda: a.Acknowledgment("W1AW", ""),
             lambda: a.Status("092345zambiguous"),

@@ -7,13 +7,17 @@ from dataclasses import replace
 
 from hamkit.aprs import (
     Acknowledgment,
+    Altitude,
     CodecNotImplementedError,
     EnvelopeError,
+    Extensions,
     FieldError,
     Header,
     Hop,
     Malformed,
+    Measurement,
     Message,
+    Motion,
     Opaque,
     Packet,
     Position,
@@ -54,11 +58,39 @@ class PacketTests(unittest.TestCase):
                     -49.0,
                     72.0,
                     Symbol("A", ">"),
-                    comment="123/045/A=001000 ✓",
+                    comment=" ✓",
                     messaging=messaging,
                     timestamp=timestamp,
+                    extensions=Extensions(
+                        motion=Motion(123, 45),
+                        altitude=Altitude(Measurement(1000, "feet"), "feet_extension"),
+                    ),
                 )
                 self.assertEqual(parse_payload(serialize_payload(value)), value)
+
+    def test_data_extensions_round_trip(self) -> None:
+        for tail in (
+            b">088/036 moving",
+            b">360/000",
+            b">.../...",
+            b">000/000",
+            b"#PHG5132Radio",
+            b"#PHG5:32",
+            b"#RNG0050Range",
+            b"\\DFS2360",
+            b"\\088/036/270/729",
+            b"\\000/000/270/000",
+            b"-/A=001234 tail",
+            b"-/A=-00012",
+            b">088/036/A=000100 both",
+        ):
+            with self.subTest(tail=tail):
+                wire = b"N0CALL>APRS:!4903.50N/07201.75W" + tail
+                packet = parse_packet(wire, unsupported="raise")
+                assert isinstance(packet, Packet)
+                self.assertEqual(packet.diagnostics, ())
+                self.assertTrue(packet.payload.extensions)  # type: ignore[union-attr]
+                self.assertEqual(serialize_packet(packet), wire)
 
     def test_original_wire_is_archival(self) -> None:
         raw = b"n0call-0>APRS,qAR,igate:>radio: ready > listening"
@@ -88,6 +120,7 @@ class PacketTests(unittest.TestCase):
             Acknowledgment("W1AW", "01", reply_ack="02"),
             Message("W1AW", "acknowledge this please"),
             Message("W1AW", "braces } are fine"),
+            Message("W1AW", "ack01}02", message_id="3"),
         ):
             with self.subTest(payload=payload):
                 self.assertEqual(parse_payload(serialize_payload(payload)), payload)

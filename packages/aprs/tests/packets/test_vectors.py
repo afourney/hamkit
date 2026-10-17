@@ -6,8 +6,9 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from hamkit.aprs import Packet, parse_packet, serialize_packet
 from vector_adapter import load_vectors, semantic_fields
+
+from hamkit.aprs import Packet, parse_packet, serialize_packet
 
 
 class VectorTests(unittest.TestCase):

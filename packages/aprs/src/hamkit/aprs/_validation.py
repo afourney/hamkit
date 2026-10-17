@@ -20,8 +20,9 @@ from typing import Any, Literal, Union, get_args, get_origin, get_type_hints
 from ._errors import ModelError
 
 # Field metadata naming a str field's character policy. Unmarked str fields are
-# protocol tokens (printable ASCII). Free text may hold any Unicode; APRS 1.2
-# permits UTF-8 there, and control characters are a conformance matter.
+# protocol tokens (printable ASCII). Free text may hold any Unicode, sent as
+# UTF-8 per the adopted APRS 1.2 draft guidance; control characters are a
+# conformance matter.
 FREE_TEXT = {"text": "free"}
 ANY_TEXT = {"text": "any"}
 
@@ -31,9 +32,26 @@ def evidence(default: Any = None) -> Any:
     return field(default=default, compare=False, repr=False, kw_only=True)
 
 
+_LIBRARY: set[type] = set()
+
+
 class Validated:
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if cls.__module__.startswith("hamkit.aprs."):
+            _LIBRARY.add(cls)
+
     def __post_init__(self) -> None:
         validate_node(self)
+
+
+class _Deep:
+    """Traversal state for validate_tree: cycle detection and a depth budget."""
+
+    def __init__(self, limit: int):
+        self.limit = limit
+        self.depth = 0
+        self.active: set[int] = set()
 
 
 _Rule = Callable[[Any], None]
@@ -83,8 +101,8 @@ def _fields(model: type) -> tuple[Field[Any], ...]:
     return result
 
 
-def json_data(value: object, path: str = "$", depth: int = 0) -> None:
-    if depth > 64:
+def json_data(value: object, path: str = "$", depth: int = 0, limit: int = 64) -> None:
+    if depth > limit:
         raise ModelError(path, "JSON nesting limit exceeded")
     if value is None or type(value) in (bool, int):
         return
@@ -94,12 +112,13 @@ def json_data(value: object, path: str = "$", depth: int = 0) -> None:
         return
     if type(value) is list:
         for i, child in enumerate(value):
-            json_data(child, f"{path}[{i}]", depth + 1)
+            json_data(child, f"{path}[{i}]", depth + 1, limit)
         return
     if type(value) is dict and all(type(k) is str for k in value):
         for key, child in value.items():
-            json_data(key, path, depth + 1)
-            json_data(child, f"{path}.{key}", depth + 1)
+            if _has_surrogate(key):
+                raise ModelError(path, "JSON keys cannot contain surrogates")
+            json_data(child, f"{path}.{key}", depth + 1, limit)
         return
     raise ModelError(path, "expected finite, surrogate-free JSON data")
 
@@ -116,10 +135,20 @@ def _check_text(value: str, policy: str, path: str) -> None:
 
 
 def _check(
-    value: Any, annotation: Any, path: str, policy: str, deep: set[int] | None
+    value: Any, annotation: Any, path: str, policy: str, deep: _Deep | None
 ) -> None:
     origin, args = get_origin(annotation), get_args(annotation)
     if origin in (Union, types.UnionType):
+        # A model instance is checked against its own variant, so specific
+        # errors (nesting limits, subclasses) are not hidden by the union.
+        for variant in args:
+            if (
+                isinstance(variant, type)
+                and issubclass(variant, Validated)
+                and isinstance(value, variant)
+            ):
+                _check(value, variant, path, policy, deep)
+                return
         for variant in args:
             try:
                 _check(value, variant, path, policy, deep)
@@ -149,7 +178,7 @@ def _check(
     elif isinstance(annotation, type) and issubclass(annotation, Validated):
         if isinstance(value, annotation):
             if deep is not None:
-                validate_tree(value, path, deep)
+                validate_tree(value, path, _deep=deep)
             return
     elif type(value) is annotation:
         if type(value) is str:
@@ -158,7 +187,7 @@ def _check(
     raise ModelError(path, f"invalid value for {annotation!r}")
 
 
-def validate_node(value: Any, path: str = "$", deep: set[int] | None = None) -> None:
+def validate_node(value: Any, path: str = "$", deep: _Deep | None = None) -> None:
     if not isinstance(value, Validated) or not is_dataclass(value):
         raise ModelError(path, "expected a validated APRS model")
     model = type(value)
@@ -180,16 +209,28 @@ def validate_node(value: Any, path: str = "$", deep: set[int] | None = None) -> 
             raise ModelError(path + exc.path[1:], exc.message) from exc
 
 
-def validate_tree(value: Any, path: str = "$", active: set[int] | None = None) -> None:
-    """Re-validate a whole model graph, e.g. after a frozen-dataclass bypass."""
-    active = set() if active is None else active
-    if id(value) in active:
+def validate_tree(
+    value: Any, path: str = "$", *, limit: int = 128, _deep: _Deep | None = None
+) -> None:
+    """Re-validate a whole model graph, e.g. after a frozen-dataclass bypass.
+
+    Subclasses of the public models are rejected here, so wire serialization
+    and JSON export accept exactly the same values.
+    """
+    deep = _Deep(limit) if _deep is None else _deep
+    if deep.depth >= deep.limit:
+        raise ModelError(path, "model nesting limit exceeded")
+    if isinstance(value, Validated) and type(value) not in _LIBRARY:
+        raise ModelError(path, "subclasses of APRS models are not supported")
+    if id(value) in deep.active:
         raise ModelError(path, "cyclic model graph")
-    active.add(id(value))
+    deep.active.add(id(value))
+    deep.depth += 1
     try:
-        validate_node(value, path, active)
+        validate_node(value, path, deep)
     finally:
-        active.remove(id(value))
+        deep.depth -= 1
+        deep.active.remove(id(value))
 
 
 def walk(value: object, path: str = "$") -> Iterator[tuple[object, str]]:

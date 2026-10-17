@@ -5,8 +5,9 @@
 Received packets that break these rules still decode; each finding becomes a
 nonconforming Diagnostic on the Packet. Serialization refuses to emit them, so
 every packet is checked before it can be sent. Lengths are counted in encoded
-UTF-8 bytes. UTF-8 free text follows the APRS 1.2 addendum
-(aprs.org/aprs12/utf-8.txt): messages, bulletins, status and comment text.
+UTF-8 bytes. UTF-8 free text (messages, bulletins, status and comments) follows
+the APRS 1.2 proposed-draft guidance (aprs.org/aprs12/utf-8.txt), adopted for
+compatibility rather than as a ratified requirement.
 """
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ import re
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any
 
+from . import _extensions
 from ._data import (
     Footprint,
     Measurement,
@@ -30,6 +32,7 @@ from ._data import (
     TelemetryUnits,
     Weather,
 )
+from ._errors import CodecNotImplementedError
 from ._models import (
     Acknowledgment,
     AutoAnswer,
@@ -170,9 +173,9 @@ def _status(v: Status, profile: EnvelopeProfile) -> Iterator[Finding]:
 @_conformance(Message)
 def _message(v: Message, profile: EnvelopeProfile) -> Iterator[Finding]:
     yield from _text("text", v.text, 67)
-    if v.reply_ack is not None and v.message_id is not None:
-        if len(v.message_id) + 1 + len(v.reply_ack) > 5:
-            yield "$.reply_ack", "reply-ack ID and ack exceed five characters"
+    reply = v.reply_ack
+    if reply is not None and v.message_id and len(v.message_id) + 1 + len(reply) > 5:
+        yield "$.reply_ack", "reply-ack ID and ack exceed five characters"
 
 
 @_conformance(Acknowledgment)
@@ -333,8 +336,29 @@ def _item(v: Item, profile: EnvelopeProfile) -> Iterator[Finding]:
 
 @_conformance(Position)
 def _position(v: Position, profile: EnvelopeProfile) -> Iterator[Finding]:
-    if v.compression is None and _size(v.comment) > 43:
-        yield "$.comment", "position comments have at most 43 bytes"
+    """The encoded tail must read back as the same extensions and comment."""
+    if v.compression is not None or v.ambiguity:
+        return  # No encoder yet; serialization raises CodecNotImplementedError.
+    try:
+        prefix = _extensions.write(v.extensions, v.symbol)
+    except CodecNotImplementedError:
+        return
+    except _extensions.Unrepresentable as exc:
+        yield exc.path, exc.message
+        return
+    comment = v.comment.encode("utf-8")
+    if len(prefix) + len(comment) > 43:
+        yield "$.comment", "extensions and comment exceed 43 bytes"
+    try:
+        expected, _ = _extensions.read(prefix, v.symbol)
+        actual, rest = _extensions.read(prefix + comment, v.symbol)
+    except CodecNotImplementedError:
+        yield "$.comment", "contains extension syntax this version cannot decode"
+        return
+    if (actual, rest) != (expected, comment):
+        yield "$.comment", "would be read back as a data extension"
+    else:
+        yield from _extensions.lookalikes(actual, rest)
 
 
 @_conformance(Position, Object, Item, MicE)

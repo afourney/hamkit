@@ -8,8 +8,9 @@ import re
 import unittest
 from typing import get_args
 
-import hamkit.aprs as a
 from generate_json_reference import ROOT, catalog_examples, generate
+
+import hamkit.aprs as a
 
 
 class JSONReferenceTests(unittest.TestCase):

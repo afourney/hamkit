@@ -26,7 +26,9 @@ _SUPPORT: tuple[CodecSupport, ...] = (
         m.Position,
         "partial",
         "partial",
-        "Uncompressed, unambiguous positions. Undecoded extensions stay in comment.",
+        "Uncompressed, unambiguous positions with course/speed, PHG, RNG, DFS, "
+        "DF bearing and /A= altitude. DAO, weather, storm, area, signpost and "
+        "base91 telemetry extensions are unsupported (Opaque).",
     ),
     CodecSupport(
         m.Status,

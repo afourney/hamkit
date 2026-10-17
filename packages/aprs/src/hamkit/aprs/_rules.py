@@ -52,12 +52,13 @@ from ._models import (
     Acknowledgment,
     Agrelo,
     AutoAnswer,
+    Beacon,
     Bulletin,
     DirectStations,
     ExternalExtension,
+    Header,
     HeardStation,
     Hop,
-    Header,
     Item,
     LegacyPosition,
     Malformed,
@@ -72,17 +73,17 @@ from ._models import (
     RawWeather,
     Reserved,
     Response,
-    Beacon,
+    Status,
     TelemetryDefinition,
     UserDefined,
-    Status,
 )
 from ._nmea import GGA, GLL, RMC, VTG, WPL, NMEAMetadata
 from ._validation import fail, invariant
 
 _ID = re.compile(r"[A-Za-z0-9]{1,5}")
 _REPLY_ACK = re.compile(r"[A-Za-z0-9]{0,5}")
-_ACK_TEXT = re.compile(r"(ack|rej)[A-Za-z0-9]{1,5}")
+# Must match the decoder's acknowledgment grammar exactly, reply-ack included.
+_ACK_TEXT = re.compile(r"(ack|rej)[A-Za-z0-9]{1,5}(?:\}[A-Za-z0-9]{0,5})?")
 
 
 def _bounds(v: Any, name: str, low: float, high: float) -> None:

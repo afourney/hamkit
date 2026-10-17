@@ -7,8 +7,9 @@ import importlib
 import unittest
 from typing import Any, cast, get_args, get_type_hints
 
-import hamkit.aprs as a
 from model_examples import SYMBOL, field_examples, payload_examples
+
+import hamkit.aprs as a
 
 HEADER = a.Header("N0CALL", "APRS")
 
@@ -103,6 +104,12 @@ class ModelContractTests(unittest.TestCase):
         self.assertAlmostEqual(extent.latitude[1], 49 + 4 / 60)
         self.assertAlmostEqual(extent.longitude[0], -(72 + 2 / 60))
         self.assertIsNone(a.Position(49, -72, SYMBOL).ambiguity_extent)
+        south_west = a.Position(-0.0, -0.0, SYMBOL, ambiguity=4).ambiguity_extent
+        self.assertEqual(south_west, a.Extent((-1.0, -0.0), (-1.0, -0.0)))
+        self.assertEqual(
+            a.Position(0.0, 0.0, SYMBOL, ambiguity=4).ambiguity_extent,
+            a.Extent((0.0, 1.0), (0.0, 1.0)),
+        )
         self.assertEqual(position.coordinates, a.Coordinates(49.05, -72.02))
         self.assertEqual(a.Symbol("c", "-").overlay, "2")
         self.assertEqual(a.Symbol("\\", "-").table, "alternate")
@@ -112,6 +119,15 @@ class ModelContractTests(unittest.TestCase):
         self.assertNotIn("raw", repr(a.Measurement(0, "mph", raw=b"000")))
         packet = a.Packet(HEADER, a.Status("Ready"), original_wire=b"old")
         self.assertEqual(packet, a.Packet(HEADER, a.Status("Ready")))
+
+    def test_subclasses_are_rejected_consistently(self) -> None:
+        subclass = type("MyStatus", (a.Status,), {})
+        packet = a.Packet(HEADER, subclass("x"))
+        for convert in (a.serialize_packet, a.check_packet, a.to_json):
+            with self.subTest(convert=convert), self.assertRaisesRegex(
+                a.APRSError, "subclasses of APRS models are not supported"
+            ):
+                convert(packet)
 
     def test_header_text(self) -> None:
         header = a.Header.parse("N0CALL>APRS,WIDE1-1*,WIDE2-1")

@@ -68,6 +68,11 @@ class SendingTests(unittest.TestCase):
                 a.Packet(a.Header("N0CALL", "APRS", hops * 2), a.Status("")),
                 profile="rf",
             )
+        large = a.Packet(HEADER, a.UserDefined(b"A", b"B", b"x" * 260))
+        self.assertEqual(
+            [d.path for d in a.check_packet(large, profile="rf")], ["$.payload"]
+        )
+        self.assertEqual(a.check_packet(large), ())
         with self.assertRaises(a.ConformanceError):
             a.serialize_packet(a.Packet(HEADER, a.Opaque(b"~" * 257)), profile="rf")
 
@@ -187,9 +192,58 @@ class PlaceTests(unittest.TestCase):
         self.assertEqual(
             findings(a.Position(1, 2, SYMBOL, comment="x" * 44)), {"$.payload.comment"}
         )
-        # Base91 telemetry and other extensions legitimately use | in comments.
-        self.assertEqual(findings(a.Position(1, 2, SYMBOL, comment="|!!!!|")), set())
+        # The budget covers extensions and comment together: 7 + 36 bytes.
+        motion = a.Extensions(motion=a.Motion(90, 10))
+        self.assertEqual(
+            findings(a.Position(1, 2, SYMBOL, comment="x" * 36, extensions=motion)),
+            set(),
+        )
+        self.assertEqual(
+            findings(a.Position(1, 2, SYMBOL, comment="x" * 37, extensions=motion)),
+            {"$.payload.comment"},
+        )
         self.assertEqual(findings(a.Item("ab", 1, 2, SYMBOL)), {"$.payload.name"})
+
+    def test_comment_must_read_back_unchanged(self) -> None:
+        for comment in ("088/036 hi", "PHG5132", "x/A=001234", "999/999Hello"):
+            with self.subTest(comment=comment):
+                position = a.Position(1, 2, SYMBOL, comment=comment)
+                self.assertEqual(findings(position), {"$.payload.comment"})
+                with self.assertRaises(a.ConformanceError):
+                    a.serialize_payload(position)
+        self.assertEqual(
+            findings(a.Position(1, 2, SYMBOL, comment="hi !W12!")),
+            {"$.payload.comment"},
+        )
+
+    def test_extension_values_must_be_representable(self) -> None:
+        for extensions, path in (
+            (a.Extensions(phg=a.PHG(30, 80, 3)), "phg.power_w"),
+            (a.Extensions(phg=a.PHG(25, 75, 3)), "phg.height_haat_ft"),
+            (
+                a.Extensions(phg=a.PHG(25, 80, 3, directivity_deg=10)),
+                "phg.directivity_deg",
+            ),
+            (a.Extensions(motion=a.Motion(90, 1000)), "motion.speed_knots"),
+            (a.Extensions(motion=a.Motion(90)), "motion.speed_knots"),
+            (
+                a.Extensions(
+                    altitude=a.Altitude(a.Measurement(100, "meters"), "feet_extension")
+                ),
+                "altitude.measurement.unit",
+            ),
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(
+                    findings(a.Position(1, 2, SYMBOL, extensions=extensions)),
+                    {f"$.payload.extensions.{path}"},
+                )
+        # Measurements are quantized like coordinates; codes must be exact.
+        rounded = a.Position(
+            1, 2, SYMBOL, extensions=a.Extensions(motion=a.Motion(88.4, 36.2))
+        )
+        self.assertEqual(findings(rounded), set())
+        self.assertTrue(a.serialize_payload(rounded).endswith(b"-088/036"))
 
     def test_extension_symbols_and_slots(self) -> None:
         storm = a.Storm(

@@ -12,9 +12,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Union, cast, get_args, get_origin
 
+from model_examples import field_examples, payload_examples
+
 import hamkit.aprs as a
 from hamkit.aprs._json import _BY_MODEL, _HINTS, _SCHEMAS
-from model_examples import field_examples, payload_examples
 
 ROOT = Path(__file__).parents[1]
 
@@ -158,15 +159,16 @@ names; classes are never loaded by name.
 
 ## Values, defaults and constraints
 
-- Free text (messages, bulletins, status, comments) is any Unicode string. APRS
-  1.2 permits UTF-8 there; `to_json` escapes non-ASCII so output stays ASCII.
+- Free text (messages, bulletins, status, comments) is any Unicode string, sent
+  as UTF-8 per the adopted APRS 1.2 draft guidance; `to_json` escapes non-ASCII
+  so output stays ASCII.
   Protocol tokens (callsigns, addressees, IDs, names, NMEA fields) are printable
   ASCII. Lone surrogates are never valid.
 - Raw `bytes` are Latin-1 JSON strings: each U+0000–U+00FF code point represents
   one byte, so `\\u0000` and `\\u00ff` preserve arbitrary binary data. This is
   not base64 and not UTF-8.
 - Tuples become arrays. Fixed tuples require the exact length in the table.
-  Numbers are finite, booleans are not integers, numeric strings are not numbers,
+  Integers stay integers, even in number fields. Numbers are finite, booleans are not integers, numeric strings are not numbers,
   and enums match exactly, including case.
 - Missing optional fields receive the listed defaults. Explicit null is accepted
   only where the type allows it. Missing required fields fail, even when their

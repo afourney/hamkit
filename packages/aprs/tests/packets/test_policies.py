@@ -89,6 +89,12 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(a.parse_packet(wire, max_third_party_depth=2), nested)
         with self.assertRaises(a.ResourceLimitError):
             a.serialize_packet(nested, max_third_party_depth=1)
+        deep = outer
+        for _ in range(1000):
+            deep = a.Packet(outer.header, a.ThirdParty(deep))
+        for send in (a.serialize_packet, a.check_packet, a.validate_packet):
+            with self.subTest(send=send), self.assertRaises(a.ResourceLimitError):
+                send(deep)
         with self.assertRaises(a.ResourceLimitError):
             a.parse_packet(wire, max_third_party_depth=1)
         with self.assertRaises(a.ResourceLimitError):
@@ -142,6 +148,6 @@ class PolicyTests(unittest.TestCase):
                     49,
                     -72,
                     a.Symbol("/", "-"),
-                    extensions=a.Extensions(motion=a.Motion(90, 10)),
+                    extensions=a.Extensions(dao=a.DAO("W")),
                 )
             )

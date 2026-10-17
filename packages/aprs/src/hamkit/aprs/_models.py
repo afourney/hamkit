@@ -92,7 +92,7 @@ def _ambiguous_axis(value: float, digits: int, limit: int) -> tuple[float, float
     size = _AMBIGUITY_MINUTES[digits]
     low = min(math.floor(abs(value) * 60 / size + 1e-9) * size, limit * 60 - size)
     high = low + size
-    if value < 0:
+    if math.copysign(1, value) < 0:
         return (-high / 60, -low / 60)
     return (low / 60, high / 60)
 
@@ -123,8 +123,10 @@ class _Located:
 class Position(_Located, Validated):
     """A station position report.
 
-    comment holds the free text after the recognized fields. Extensions this
-    version cannot decode yet remain in comment, exactly as received.
+    comment holds the free text after the decoded data extensions. Text shaped
+    like an extension but with invalid values stays in comment, with a finding.
+    Extensions this version recognizes but cannot decode make the payload
+    Opaque, so they are never mistaken for comment text.
     """
 
     latitude_deg: float

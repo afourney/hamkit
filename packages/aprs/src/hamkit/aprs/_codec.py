@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass
 from typing import get_args
 
+from . import _extensions
 from ._capabilities import codec_support_for
 from ._conformance import check
 from ._data import Symbol, Timestamp
@@ -194,13 +195,15 @@ def _decode_position(
         symbol = Symbol(chr(body[8]), chr(body[18]))
     except ModelError as exc:
         raise ModelError("$.symbol" + exc.path[1:], exc.message) from exc
+    extensions, rest = _extensions.read(body[19:], symbol)
     return Position(
         latitude,
         longitude,
         symbol,
-        comment=free_text(body[19:], "$.comment", diagnostics),
+        comment=free_text(rest, "$.comment", diagnostics),
         messaging=dti in (b"=", b"@"),
         timestamp=timestamp,
+        extensions=extensions,
     )
 
 
@@ -430,10 +433,8 @@ def _encode_payload(
     if isinstance(payload, Opaque):
         return payload.information
     if isinstance(payload, Position):
-        if payload.compression is not None or payload.ambiguity or payload.extensions:
-            raise CodecNotImplementedError(
-                "structured position compression/ambiguity/extensions"
-            )
+        if payload.compression is not None or payload.ambiguity:
+            raise CodecNotImplementedError("compressed or ambiguous position encoding")
         raw = (
             (b"@" if payload.messaging else b"/")
             if payload.timestamp
@@ -448,6 +449,7 @@ def _encode_payload(
             + symbol.table_id.encode("ascii")
             + encode_coordinate(payload.longitude_deg, "longitude")
             + symbol.code.encode("ascii")
+            + _extensions.write(payload.extensions, symbol)
             + payload.comment.encode("utf-8")
         )
     if isinstance(payload, Status):
@@ -481,7 +483,39 @@ def _serialize(packet: Packet, max_depth: int, depth: int) -> bytes:
     return str(packet.header).encode("ascii") + b":" + information
 
 
-def _ready_to_send(value: Packet | Payload, profile: EnvelopeProfile) -> None:
+def _bound_depth(value: Packet | Payload, max_depth: int) -> None:
+    """Count third-party wrappers iteratively, before any recursive traversal."""
+    payload = value.payload if isinstance(value, Packet) else value
+    depth = 0
+    while isinstance(payload, ThirdParty) and isinstance(payload.packet, Packet):
+        depth += 1
+        if depth > max_depth:
+            raise ResourceLimitError("third-party nesting limit reached")
+        payload = payload.packet.payload
+
+
+def _findings(
+    value: Packet | Payload, profile: EnvelopeProfile, max_depth: int
+) -> tuple[Diagnostic, ...]:
+    """Conformance findings, plus the RF information size of an encodable packet."""
+    findings = check(value, profile)
+    if isinstance(value, Packet) and profile == "rf":
+        try:
+            information = _encode_payload(value.payload, value.header, max_depth, 0)
+        except (CodecNotImplementedError, ContextRequiredError, FieldError):
+            return findings  # Reported elsewhere; there are no bytes to measure.
+        if len(information) > 256:
+            size = Diagnostic(
+                "nonconforming", "RF information exceeds 256 bytes", "$.payload"
+            )
+            findings = (*findings, size)
+    return findings
+
+
+def _ready_to_send(
+    value: Packet | Payload, profile: EnvelopeProfile, max_depth: int
+) -> None:
+    _bound_depth(value, max_depth)
     validate_tree(value)
     payload = value.payload if isinstance(value, Packet) else value
     if isinstance(payload, MicE) and not isinstance(value, Packet):
@@ -489,7 +523,7 @@ def _ready_to_send(value: Packet | Payload, profile: EnvelopeProfile) -> None:
             "Mic-E encoding needs the header; use serialize_packet"
         )
     _require_codecs(payload)
-    findings = check(value, profile)
+    findings = _findings(value, profile, max_depth)
     if findings:
         raise ConformanceError(findings)
 
@@ -502,26 +536,17 @@ def serialize_packet(
 ) -> bytes:
     """Encode a packet for sending. Never replays original_wire.
 
-    Every packet is validated first: ModelError for invalid fields,
-    CodecNotImplementedError for families without an encoder, and
-    ConformanceError (with all findings) for anything outside APRS rules.
-    profile="rf" also applies AX.25 address and information-size limits.
+    Every packet is validated first: ResourceLimitError for excessive
+    third-party nesting, ModelError for invalid fields, CodecNotImplementedError
+    for families without an encoder, and ConformanceError (with every finding)
+    for anything outside APRS rules. profile="rf" also applies AX.25 address
+    and information-size limits.
     """
     if not isinstance(packet, Packet):
         raise TypeError("serialize_packet requires a Packet; repair a Malformed first")
     options = _options(profile, "raise", "raise", max_third_party_depth)
-    _ready_to_send(packet, options.profile)
-    wire = _serialize(packet, options.max_depth, 0)
-    information = wire.partition(b":")[2]
-    if options.profile == "rf" and len(information) > 256:
-        raise ConformanceError(
-            (
-                Diagnostic(
-                    "nonconforming", "RF information exceeds 256 bytes", "$.payload"
-                ),
-            )
-        )
-    return wire
+    _ready_to_send(packet, options.profile, options.max_depth)
+    return _serialize(packet, options.max_depth, 0)
 
 
 def serialize_payload(payload: Payload, *, max_third_party_depth: int = 4) -> bytes:
@@ -529,22 +554,26 @@ def serialize_payload(payload: Payload, *, max_third_party_depth: int = 4) -> by
     if isinstance(payload, (Packet, Malformed)):
         raise TypeError("serialize_payload requires a payload model")
     options = _options("monitor", "raise", "raise", max_third_party_depth)
-    _ready_to_send(payload, options.profile)
+    _ready_to_send(payload, options.profile, options.max_depth)
     return _encode_payload(payload, None, options.max_depth, 0)
 
 
 def check_packet(
-    packet: Packet, *, profile: EnvelopeProfile = "monitor"
+    packet: Packet,
+    *,
+    profile: EnvelopeProfile = "monitor",
+    max_third_party_depth: int = 4,
 ) -> tuple[Diagnostic, ...]:
-    """Every conformance finding for a packet, without raising.
+    """Every conformance finding serialize_packet would raise, without raising.
 
     An empty result does not promise an encoder exists; validate_packet does.
     """
     if not isinstance(packet, Packet):
         raise TypeError("check_packet requires a Packet")
-    _options(profile, "raise", "raise", 4)
+    options = _options(profile, "raise", "raise", max_third_party_depth)
+    _bound_depth(packet, options.max_depth)
     validate_tree(packet)
-    return check(packet, profile)
+    return _findings(packet, options.profile, options.max_depth)
 
 
 def validate_packet(

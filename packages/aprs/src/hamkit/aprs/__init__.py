@@ -7,6 +7,17 @@
 Everything public is exported here; submodules are private implementation.
 """
 
+# Importing _rules registers the constructor invariants with the models.
+from . import _rules as _rules
+from ._capabilities import CodecSupport, SupportLevel, codec_support, codec_support_for
+from ._codec import (
+    check_packet,
+    parse_packet,
+    parse_payload,
+    serialize_packet,
+    serialize_payload,
+    validate_packet,
+)
 from ._data import (
     DAO,
     PHG,
@@ -62,6 +73,16 @@ from ._errors import (
     ModelError,
     ResourceLimitError,
 )
+from ._json import (
+    JSONModel,
+    JSONModelError,
+    JSONObject,
+    JSONValue,
+    from_json,
+    from_json_dict,
+    to_json,
+    to_json_dict,
+)
 from ._models import (
     NMEA,
     Acknowledgment,
@@ -107,29 +128,6 @@ from ._models import (
     UserDefined,
 )
 from ._nmea import GGA, GLL, RMC, VTG, WPL, NMEAMetadata, NMEASentence
-
-# Constructor invariants register themselves against the models above.
-from . import _rules  # noqa: E402,F401  isort: skip
-
-from ._capabilities import CodecSupport, SupportLevel, codec_support, codec_support_for
-from ._codec import (
-    check_packet,
-    parse_packet,
-    parse_payload,
-    serialize_packet,
-    serialize_payload,
-    validate_packet,
-)
-from ._json import (
-    JSONModel,
-    JSONModelError,
-    JSONObject,
-    JSONValue,
-    from_json,
-    from_json_dict,
-    to_json,
-    to_json_dict,
-)
 from ._transport import parse_tnc2_line, serialize_tnc2_line
 
 __all__ = [

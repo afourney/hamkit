@@ -5,7 +5,9 @@ used where the meaning is clear inside an APRS library; a qualifier is added
 where a short name would collide with another concept or a common Python name.
 The [JSON reference](JSON_FORMAT.md) lists every model, its tag and fields.
 Attribute names such as `wind_speed` describe the value they hold. Everything
-public is exported from `hamkit.aprs`; its submodules are private.
+public is exported from `hamkit.aprs`; its submodules are private. The models
+are not designed for subclassing: serialization, `check_packet` and JSON export
+all reject subclass instances.
 
 ## Weather and telemetry
 
