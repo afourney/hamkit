@@ -112,15 +112,16 @@ slot presence. There is no extra requirement for a numeric observation. A
 
 The later minimum flood example omits gust; proposed water units and examples
 disagree across the documents. `WaterHeight` remains a signed measurement with
-explicit feet/meters and optional external datum metadata. With `weather_extensions`, the two water-level
+explicit feet/meters and optional external datum metadata. With opt-in `water_height_tenths`, the two water-level
 spellings are told apart by their syntax: a decimal value (`F20.1`, `f-1.2`) is
 the 1.1 clarification's feet or meters, and four bytes without a decimal point
 (`F0123`, `F-042`, `F....`) are the 1.2 proposal's tenths of a foot. The 1.2
 proposal's `Xnnn` radiation (two digits times a power of ten, nSv/h) and `Vnnn`
 battery volts (tenths) decode into `radiation` and `battery_voltage`, with `...`
-for unavailable. Without this extension, the older whole-number F/f reading
-is retained (so `F1234` means 1234 feet rather than 123.4 feet); X/V are not
-new sensor fields. The extension selects a meaning, not a detected version.
+for unavailable under the independent `weather_extensions` switch. Without
+`water_height_tenths`, the older whole-number F/f reading is retained (so
+`F1234` means 1234 feet rather than 123.4 feet). Both factories leave that
+reinterpretation disabled while enabling additive X/V fields. The extension selects a meaning, not a detected version.
 `disputed_knots_or_mph` explicitly records unresolved velocity units and must
 not be converted without a selected profile.
 

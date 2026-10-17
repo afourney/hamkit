@@ -418,7 +418,7 @@ def _weather_comment(weather: Any, comment: str) -> str | None:
     return None
 
 
-def _weather_exempt_bytes(extensions: Any) -> int:
+def _weather_exempt_bytes(extensions: Any, policy: EnvelopePolicy) -> int:
     """Encoded weather bytes outside the 43-byte position-comment budget.
 
     Uncompressed wind (ddd/sss) occupies the 7-byte data-extension slot, which
@@ -432,7 +432,9 @@ def _weather_exempt_bytes(extensions: Any) -> int:
     from . import _weather
 
     compressed_wind = w.wind_direction is None and w.wind_speed is None
-    encoded = _weather.write(w, positioned=True, compressed=compressed_wind)
+    encoded = _weather.write(
+        w, positioned=True, compressed=compressed_wind, policy=policy
+    )
     return len(encoded) - (0 if compressed_wind else 7)
 
 
@@ -463,7 +465,12 @@ def _position(v: Position, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if problem:
         yield "$.comment", problem
         return
-    if len(prefix) - _weather_exempt_bytes(extensions) + len(comment) > 43:
+    if (
+        len(prefix)
+        - _weather_exempt_bytes(extensions, policy or APRS_IS())
+        + len(comment)
+        > 43
+    ):
         yield "$.comment", "extensions and comment exceed 43 bytes"
     try:
         expected, _ = _extensions.read(prefix, v.symbol, policy or APRS_IS())
@@ -601,8 +608,12 @@ def _weather(v: Weather, policy: EnvelopePolicy | None) -> Iterator[Finding]:
         for name in ("radiation", "battery_voltage"):
             if getattr(v, name) is not None:
                 yield f"$.{name}", "requires weather_extensions"
-        if v.water_height and v.water_height.measurement.value is None:
-            yield "$.water_height", "unavailable height requires weather_extensions"
+    if (
+        "water_height_tenths" not in policy.extensions
+        and v.water_height
+        and v.water_height.measurement.value is None
+    ):
+        yield "$.water_height", "unavailable height requires water_height_tenths"
     problem = _weather_comment(v, v.comment)
     if problem:
         yield "$.comment", problem

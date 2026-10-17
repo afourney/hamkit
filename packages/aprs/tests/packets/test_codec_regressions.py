@@ -460,16 +460,17 @@ WX = b"N0CALL>APRS:_12032359c000s000g000t033"
 )
 def test_aprs_1_2_weather_fields(tail, field, value, unit):
     # aprs.org/aprs12/weather-new.txt; X and V are no longer read as codes.
-    decoded = packet(WX + tail)
+    policy = a.APRS_IS(extensions={*a.APRS_IS().extensions, "water_height_tenths"})
+    decoded = packet(WX + tail, policy=policy)
     reading = getattr(decoded.payload, field)
     if field == "water_height":
         reading = reading.measurement
     assert (reading.value, reading.unit) == (value, unit)
     assert decoded.payload.software_code is None
     assert decoded.diagnostics == ()
-    assert packet(a.serialize_packet(without_evidence(decoded))) == without_evidence(
-        decoded
-    )
+    assert packet(
+        a.serialize_packet(without_evidence(decoded), policy=policy), policy=policy
+    ) == without_evidence(decoded)
 
 
 def test_weather_codes_still_follow_new_fields():

@@ -847,10 +847,13 @@ def policy_extensions(row: JSON) -> tuple[aprs.Extension, ...]:
     if b"PHG" in raw:
         selected.append("phg_rate")
     if any(
-        key in expected
-        for key in ('"radiation"', '"battery_voltage"', '"water_height"')
-    ) or re.search(rb"[XV][0-9.]{3}|F[0-9.]{4}", raw):
+        key in expected for key in ('"radiation"', '"battery_voltage"')
+    ) or re.search(rb"[XV][0-9.]{3}", raw):
         selected.append("weather_extensions")
+    # Preserve the corpus's explicitly selected fixed-width water convention.
+    # Decimal F/f readings do not need this reinterpretation; F.... does.
+    if re.search(rb"F(?:[0-9]{4}|-[0-9]{3}|\.{4})(?![0-9.])", raw):
+        selected.append("water_height_tenths")
     if '"device_code"' in expected and "mic_e_hex" not in expected:
         selected.append("mice_device_ids")
     return tuple(selected)
@@ -892,6 +895,8 @@ def records() -> list[JSON]:
             strict = case["profile"] == "strict-envelope" or (
                 case.get("options") or {}
             ).get("ax25")
+            # Keep runner configuration in its established JSON property order.
+            row["policy"] = {}  # Filled after the source expectations below.
             row["legacy_positions"] = case["profile"] in {
                 "historical-1.0",
                 "compatibility-fap",

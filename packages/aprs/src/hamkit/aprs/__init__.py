@@ -129,11 +129,13 @@ from ._models import (
 from ._nmea import GGA, GLL, RMC, VTG, WPL, NMEAMetadata, NMEASentence
 from ._policy import (
     APRS_IS,
+    EXTENSION_KINDS,
     RF,
     SUPPORTED_EXTENSIONS,
     ByteFallback,
     EnvelopePolicy,
     Extension,
+    ExtensionKind,
     PolicyOverrides,
 )
 from ._transport import parse_tnc2_line, serialize_tnc2_line
@@ -141,6 +143,7 @@ from ._transport import parse_tnc2_line, serialize_tnc2_line
 __all__ = [
     "APRS_IS",
     "DAO",
+    "EXTENSION_KINDS",
     "GGA",
     "GLL",
     "NMEA",
@@ -179,6 +182,7 @@ __all__ = [
     "EnvelopeError",
     "EnvelopePolicy",
     "Extension",
+    "ExtensionKind",
     "Extensions",
     "Extent",
     "ExternalExtension",

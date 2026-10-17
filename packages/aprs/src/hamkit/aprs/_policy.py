@@ -3,8 +3,9 @@
 """Resolved envelope constraints and selected APRS payload interpretation."""
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
+from types import MappingProxyType
 from typing import Literal, TypeAlias, TypedDict, Unpack
 
 Extension: TypeAlias = Literal[
@@ -15,16 +16,24 @@ Extension: TypeAlias = Literal[
     "expanded_telemetry",
     "phg_rate",
     "weather_extensions",
+    "water_height_tenths",
 ]
-SUPPORTED_EXTENSIONS: tuple[Extension, ...] = (
-    "utf8_text",
-    "dao",
-    "base91_telemetry",
-    "mice_device_ids",
-    "expanded_telemetry",
-    "phg_rate",
-    "weather_extensions",
+ExtensionKind: TypeAlias = Literal["additive", "comment", "reinterpretive"]
+# Explicit classification is required for each implemented identifier. Defaults
+# select only approved categories, never "everything except known exceptions".
+EXTENSION_KINDS: Mapping[Extension, ExtensionKind] = MappingProxyType(
+    {
+        "utf8_text": "additive",
+        "dao": "comment",
+        "base91_telemetry": "comment",
+        "mice_device_ids": "reinterpretive",
+        "expanded_telemetry": "additive",
+        "phg_rate": "comment",
+        "weather_extensions": "additive",
+        "water_height_tenths": "reinterpretive",
+    }
 )
+SUPPORTED_EXTENSIONS: tuple[Extension, ...] = tuple(EXTENSION_KINDS)
 ByteFallback: TypeAlias = Literal["latin-1", "reject"]
 
 
@@ -120,7 +129,7 @@ _APRS_IS = EnvelopePolicy(
 
 
 DEFAULT_EXTENSIONS: tuple[Extension, ...] = tuple(
-    x for x in SUPPORTED_EXTENSIONS if x != "mice_device_ids"
+    x for x, kind in EXTENSION_KINDS.items() if kind in ("additive", "comment")
 )
 
 

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Policy changes interpretation, diagnostics and fresh composition together."""
 from dataclasses import replace
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 
@@ -20,7 +20,10 @@ def packet(raw: bytes, policy: a.EnvelopePolicy) -> a.Packet:
 @pytest.mark.parametrize("factory", [a.RF, a.APRS_IS])
 def test_factory_defaults_and_explicit_empty(factory):
     default = factory()
-    assert set(default.extensions) == set(a.SUPPORTED_EXTENSIONS) - {"mice_device_ids"}
+    assert set(default.extensions) == set(a.SUPPORTED_EXTENSIONS) - {
+        "mice_device_ids",
+        "water_height_tenths",
+    }
     assert factory(extensions=set()).extensions == ()
     explicit = factory(extensions={"mice_device_ids"}, max_information_bytes=0)
     assert explicit.extensions == ("mice_device_ids",)
@@ -177,16 +180,87 @@ def test_mice_reused_selector_is_explicit_even_for_complete_hex():
     assert isinstance(a.parse_packet(truncated, policy=modern_policy), a.Packet)
 
 
-def test_weather_reinterpretation_and_old_whole_feet():
+@pytest.mark.parametrize("factory", [a.RF, a.APRS_IS])
+@pytest.mark.parametrize(
+    "extensions,expected",
+    [(None, 1234), (set(), 1234), ({"water_height_tenths"}, 123.4)],
+)
+def test_water_height_interpretation(factory, extensions, expected):
+    policy = factory() if extensions is None else factory(extensions=extensions)
     wire = b"N0CALL>APRS:_01020304c180s005g010t070F1234"
-    old = packet(wire, BASELINE)
-    new = packet(wire, a.APRS_IS())
-    assert old.payload.water_height.measurement.value == 1234
-    assert new.payload.water_height.measurement.value == 123.4
+    decoded = packet(wire, policy)
+    assert decoded.payload.water_height.measurement == a.Measurement(expected, "feet")
+    assert not decoded.diagnostics
+    assert not a.check_packet(decoded, policy=policy)
+    a.validate_packet(decoded, policy=policy)
+    restored = a.from_json(a.to_json(policy), expected_type=a.EnvelopePolicy)
+    assert restored == policy
+    assert packet(wire, restored) == decoded
+    # Encoding reconstructs a semantic height, never replays ambiguous bytes.
+    canonical = a.serialize_packet(decoded, policy=policy)
+    assert canonical.endswith(f"F{expected:.1f}".encode())
+    assert canonical != wire
+    for reader in (a.APRS_IS(), a.APRS_IS(extensions={"water_height_tenths"})):
+        assert packet(canonical, reader).payload == decoded.payload
+
+
+def test_water_height_and_additive_weather_are_independent():
+    wire = b"N0CALL>APRS:_01020304c180s005g010t070F1234X123V128"
+    default = packet(wire, a.APRS_IS())
+    assert default.payload.water_height.measurement.value == 1234
+    assert default.payload.radiation.value == 12000
+    assert default.payload.battery_voltage.value == 12.8
+    modern = a.APRS_IS(extensions={*a.APRS_IS().extensions, "water_height_tenths"})
+    assert packet(wire, modern).payload.water_height.measurement.value == 123.4
+    unavailable = packet(wire.replace(b"F1234", b"F...."), modern)
+    assert unavailable.payload.water_height.measurement.value is None
+    assert a.serialize_packet(unavailable, policy=modern).endswith(b"F....X123V128")
+    findings = a.check_packet(unavailable)
+    assert [(d.path, d.message) for d in findings] == [
+        ("$.payload.water_height", "unavailable height requires water_height_tenths")
+    ]
+    with pytest.raises(a.ConformanceError):
+        a.serialize_packet(unavailable)
+    # Unrecognized unavailable notation stays inspectable as legacy comment.
+    legacy = packet(wire.replace(b"F1234", b"F...."), BASELINE)
+    assert legacy.payload.water_height is None
+    assert legacy.payload.comment == "F....X123V128"
+
+
+CATALOG = [
+    ("utf8_text", "additive", True),
+    ("dao", "comment", True),
+    ("base91_telemetry", "comment", True),
+    ("mice_device_ids", "reinterpretive", False),
+    ("expanded_telemetry", "additive", True),
+    ("phg_rate", "comment", True),
+    ("weather_extensions", "additive", True),
+    ("water_height_tenths", "reinterpretive", False),
+]
+
+
+def test_catalog_classification_is_exhaustive_and_immutable():
     assert (
-        packet(a.serialize_packet(old, policy=BASELINE), BASELINE).payload
-        == old.payload
+        set(a.EXTENSION_KINDS)
+        == set(a.SUPPORTED_EXTENSIONS)
+        == set(get_args(a.Extension))
     )
+    assert set(a.EXTENSION_KINDS) == {identifier for identifier, _, _ in CATALOG}
+    with pytest.raises(TypeError):
+        a.EXTENSION_KINDS["mice_device_ids"] = "additive"  # type: ignore[index]
+
+
+@pytest.mark.parametrize("identifier,kind,enabled", CATALOG)
+def test_catalog_default_rule(identifier, kind, enabled):
+    assert a.EXTENSION_KINDS[identifier] == kind
+    for factory in (a.RF, a.APRS_IS):
+        assert (identifier in factory().extensions) is enabled
+        assert identifier in factory(extensions={identifier}).extensions
+        assert not factory(extensions=set()).extensions
+        assert all(
+            a.EXTENSION_KINDS[x] in {"additive", "comment"}
+            for x in factory().extensions
+        )
 
 
 def test_nested_header_exempt_but_payload_policy_propagates():
@@ -200,3 +274,14 @@ def test_nested_header_exempt_but_payload_policy_propagates():
     # Never let captured bytes or saved diagnostics bypass fresh policy checks.
     with pytest.raises(a.ConformanceError):
         a.serialize_packet(replace(new, diagnostics=()), policy=a.RF(extensions=set()))
+
+
+@pytest.mark.parametrize("tail,value", [(b"F1234", 123.4), (b"F....", None)])
+def test_located_water_height_uses_policy_through_comment_budget(tail, value):
+    policy = a.RF(extensions={"water_height_tenths"})
+    wire = b"N0CALL>APRS:!4903.50N/07201.75W_180/005g010t070" + tail
+    received = packet(wire, policy)
+    assert received.payload.extensions.weather.water_height.measurement.value == value
+    assert not received.diagnostics
+    canonical = a.serialize_packet(received, policy=policy)
+    assert packet(canonical, policy).payload == received.payload

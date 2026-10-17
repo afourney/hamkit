@@ -139,7 +139,7 @@ def _water_height(
     decimal = re.match(rb"[Ff](-?\d+\.\d+)", raw)
     if decimal:
         return WaterHeight(Measurement(float(decimal[1]), unit)), raw[decimal.end() :]
-    if unit == "feet" and "weather_extensions" in policy.extensions:
+    if unit == "feet" and "water_height_tenths" in policy.extensions:
         tenths = re.match(rb"F(\d{4}|-\d{3}|\.{4})", raw)
         if tenths:
             field = tenths[1]
@@ -252,8 +252,10 @@ def write(
         if m.value is None:
             if m.unit != "feet":
                 raise FieldError("only feet water height can be marked unavailable")
-            if "weather_extensions" not in policy.extensions:
-                raise FieldError("unavailable water height requires weather_extensions")
+            if "water_height_tenths" not in policy.extensions:
+                raise FieldError(
+                    "unavailable water height requires water_height_tenths"
+                )
             raw += b"F...."
         else:
             # A decimal point distinguishes feet from APRS 1.2's Fnnnn tenths.

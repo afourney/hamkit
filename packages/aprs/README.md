@@ -1921,7 +1921,8 @@ Output:
 Policies select envelope limits and payload interpretation. `RF()` and
 `APRS_IS()` return the same immutable `EnvelopePolicy` type. Both enable the
 supported comment, UTF-8, expanded telemetry and weather extensions by default;
-modern Mic-E device identifiers require explicit opt-in. Use
+modern Mic-E device identifiers and fixed-width water-height reinterpretation
+require explicit opt-in. Use
 `aprs.RF(extensions=set())` or `aprs.APRS_IS(extensions=set())` for the implemented
 APRS 1.1 baseline. Unknown extension identifiers are rejected.
 

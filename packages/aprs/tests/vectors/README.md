@@ -56,6 +56,12 @@ wire syntax without calling a decoder. Legacy Mic-E hex expectations exclude
 `mice_device_ids`; modern device-code expectations select it. Expanded telemetry
 is not silently enabled for source cases that require the original 0–255 limit.
 
+Fixed-width `Fnnnn`/`F-nnn` and unavailable `F....` source spellings opt into
+`water_height_tenths` explicitly. Decimal F/f readings remain semantic feet/meters
+without that switch. Radiation and voltage independently select
+`weather_extensions`. Factory default changes therefore do not rescale stored
+source expectations.
+
 The migration changes policy configuration only: packet bytes, expected public
 fields, rejection categories, source assertions and provenance remain intact.
 The original source integrity guard remains independent of regeneration.
