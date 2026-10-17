@@ -775,6 +775,14 @@ def _ready_to_send(
         raise ContextRequiredError(
             "Mic-E encoding needs the header; use serialize_packet"
         )
+    if (
+        isinstance(payload, m.NMEA)
+        and payload.symbol is not None
+        and not isinstance(value, Packet)
+    ):
+        raise ContextRequiredError(
+            "NMEA symbol encoding needs the header; use serialize_packet"
+        )
     _require_codecs(payload)
     findings = _findings(value, policy, max_depth)
     if findings:
@@ -803,7 +811,10 @@ def serialize_packet(
 
 
 def serialize_payload(payload: Payload, *, max_third_party_depth: int = 4) -> bytes:
-    """Encode an information field alone, with the same validation as packets."""
+    """Encode an information field alone, with the same payload validation as packets.
+
+    Mic-E and NMEA with an explicit symbol need header context; use serialize_packet.
+    """
     if isinstance(payload, (Packet, Malformed)):
         raise TypeError("serialize_payload requires a payload model")
     options = _options(APRS_IS, "raise", "raise", max_third_party_depth)

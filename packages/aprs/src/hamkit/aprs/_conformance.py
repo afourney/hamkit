@@ -87,7 +87,12 @@ def _plan(model: type) -> tuple[tuple[str, ...], tuple[_Rule, ...]]:
 
 def check(value: Any, policy: EnvelopePolicy | None = None) -> tuple[Diagnostic, ...]:
     """Every conformance finding in a model graph, with JSON-style paths."""
-    result = []
+    result: list[Diagnostic] = []
+    if isinstance(value, Weather):
+        result.extend(
+            Diagnostic("nonconforming", message, path)
+            for path, message in _weather_report(value, "$", positioned=False)
+        )
     for node, path in walk(value):
         # Envelope policies apply to the outer header, not encapsulated text.
         node_policy = policy if path in ("$", "$.header") else None
@@ -151,6 +156,18 @@ def _packet(v: Packet, policy: EnvelopePolicy | None) -> Iterator[Finding]:
         yield from _weather_report(payload, "$.payload", positioned=False)
     if isinstance(payload, Telemetry) and payload.encoding != "classic":
         yield "$.payload.encoding", "comment and Mic-E telemetry need a position report"
+    if isinstance(payload, MicE):
+        from . import _mic_e
+
+        try:
+            _mic_e.position_bytes(payload, v.header)
+        except FieldError as exc:
+            yield "$.header.destination", str(exc)
+    if isinstance(payload, NMEA) and payload.symbol is not None:
+        from ._nmea_codec import header_symbol
+
+        if payload.symbol != header_symbol(v.header):
+            yield "$.payload.symbol", "NMEA symbol does not match the packet header"
 
 
 # Status and messages -------------------------------------------------------
@@ -485,6 +502,8 @@ def _mic_e_status(v: MicE) -> Iterator[Finding]:
     except APRSError:
         yield "$.device_code", "not a declared Mic-E type code"
         return
+    if v.extensions.telemetry and any(_telemetry(v.extensions.telemetry, None)):
+        return  # Channel findings are reported when walking the telemetry model.
     try:
         device, _, comment = _mic_e.read_status(_mic_e.write_status(v), v.symbol)
     except APRSError as error:
@@ -496,6 +515,8 @@ def _mic_e_status(v: MicE) -> Iterator[Finding]:
 
 def _compressed(v: Any) -> Iterator[Finding]:
     e, csT = v.extensions, v.compression
+    if v.symbol.table_id in "0123456789":
+        yield "$.symbol.table_id", "compressed numeric overlays require a-j, not 0-9"
     if any(getattr(e, n) is not None for n in ("phg", "signal", "area", "bearing")):
         yield "$.extensions", "not available in the compressed position layout"
     altitude = e.altitude is not None and e.altitude.encoding == "compressed"

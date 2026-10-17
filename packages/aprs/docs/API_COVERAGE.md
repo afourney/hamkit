@@ -86,9 +86,12 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   coordinate, preventing a second application of the offset.
 - Compressed motion, range and altitude use their specified logarithmic codes.
   Field overflow is rejected. No saturation or text truncation is performed.
+  Numeric overlays use table IDs `a`–`j`; sending compressed positions with
+  `0`–`9` table IDs is refused as nonconforming.
 - Mic-E requires a destination consistent with latitude, ambiguity, message and
-  longitude flags. A mismatch raises `FieldError`; packet headers are not silently
-  changed. Payload-only Mic-E still requires header context. Longitude degrees
+  longitude flags. `check_packet` reports mismatches at `$.header.destination`,
+  and sending raises `ConformanceError`; packet headers are not silently changed.
+  Payload-only Mic-E still requires header context. Longitude degrees
   use APRS101's table, so 100–109° are sent as `l`–`u`, never as control bytes.
 - Mic-E status text follows the APRS 1.2 type codes
   (aprs.org/aprs12/mic-e-types.txt). `device_code` holds the type byte that
@@ -107,11 +110,16 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   it is reported when parsed and refused when sending, so corrupt data is never
   re-signed implicitly. Repair it explicitly by clearing `checksum_valid` (a fresh
   checksum is computed) or by omitting the checksum.
+  An explicit NMEA symbol must match the packet header; `check_packet` reports
+  conflicts at `$.payload.symbol`. Payload-only encoding with an explicit symbol
+  raises `ContextRequiredError`; use `serialize_packet` to supply the header.
 - Weather encoders convert supported units to wire units, then round to field
   precision. Uncompressed located wind retains the corpus's explicit
   `disputed_knots_or_mph` unit on decode; composition of an explicitly metric or
   mph reading follows the FAP mph interpretation. No interpretation is assigned
   to a received disputed reading by the core decoder.
+  Standalone `serialize_payload` applies the same positionless report requirements
+  as packet serialization, including mandatory slots and the prohibition on snow.
 - Structured weather data is exempt from the 43-byte position-comment budget.
   Uncompressed wind (`ddd/sss`) still counts as the 7-byte data extension, leaving
   36 comment bytes; with wind in compressed csT all weather data is exempt.

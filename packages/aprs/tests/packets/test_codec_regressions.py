@@ -339,7 +339,7 @@ def test_mic_e_type_codes_are_checked_before_sending():
     def mic_e(**fields):
         motion = a.Extensions(motion=a.Motion(90, 10))
         fields.setdefault("extensions", motion)
-        payload = a.MicE(33.4277, -112.12, a.Symbol("/", ">"), message="off_duty")
+        payload = packet(MIC_E).payload
         return a.Packet(
             a.Header("N0CALL", "S32UVT"), dataclasses.replace(payload, **fields)
         )
@@ -546,3 +546,114 @@ def test_invalid_object_timestamp_keeps_recovered_fields():
         "Test",
     )
     assert recovered["latitude_deg"] == pytest.approx(49.058333333)
+
+
+@pytest.mark.parametrize("digit", "0123456789")
+def test_compressed_numeric_overlay_is_refused_before_sending(digit):
+    p = a.Packet(
+        a.Header("N0CALL", "APRS"),
+        a.Position(
+            49, -72, a.Symbol(digit, ">"), compression=a.Compression(ignored=True)
+        ),
+    )
+    assert [d.path for d in a.check_packet(p)] == ["$.payload.symbol.table_id"]
+    for send, value in (
+        (a.serialize_packet, p),
+        (a.validate_packet, p),
+        (a.serialize_payload, p.payload),
+    ):
+        with pytest.raises(a.ConformanceError, match="compressed numeric overlays"):
+            send(value)
+    # Explicit compressed overlays retain their wire spelling and round-trip.
+    compressed = dataclasses.replace(
+        p.payload, symbol=a.Symbol(chr(ord("a") + int(digit)), ">")
+    )
+    assert a.parse_payload(a.serialize_payload(compressed)) == compressed
+    uncompressed = dataclasses.replace(p.payload, compression=None)
+    assert a.parse_payload(a.serialize_payload(uncompressed)) == uncompressed
+
+
+@pytest.mark.parametrize("encoding", ["mic_e_hex", "mic_e_binary"])
+@pytest.mark.parametrize(
+    "channels",
+    [(999, 2, 3, 4, 5), (-1, 2, 3, 4, 5), (1.5, 2, 3, 4, 5), (1, None, 3, 4, 5)],
+)
+def test_invalid_mic_e_channels_produce_findings(encoding, channels):
+    original = packet(MIC_E)
+    payload = dataclasses.replace(
+        original.payload,
+        extensions=dataclasses.replace(
+            original.payload.extensions,
+            telemetry=a.Telemetry(channels, encoding=encoding),
+        ),
+    )
+    p = dataclasses.replace(original, payload=payload)
+    index = 1 if channels[1] is None else 0
+    findings = a.check_packet(p)
+    assert [d.path for d in findings] == [
+        f"$.payload.extensions.telemetry.analog[{index}]"
+    ]
+    for send in (a.serialize_packet, a.validate_packet, a.serialize_tnc2_line):
+        with pytest.raises(a.ConformanceError) as caught:
+            send(p)
+        assert caught.value.diagnostics == findings
+    assert a.from_json(a.to_json(p)) == p
+
+
+@pytest.mark.parametrize(
+    "tail,paths",
+    [
+        (b"c090s010", ["gust", "temperature"]),
+        (b"c090s010g020t077s001", ["snow_24h"]),
+    ],
+)
+def test_standalone_weather_has_packet_report_checks(tail, paths):
+    p = packet(b"N0CALL>APRS:_10171200" + tail)
+    assert [d.path for d in a.check_packet(p)] == [
+        "$.payload." + name for name in paths
+    ]
+    with pytest.raises(a.ConformanceError) as caught:
+        a.serialize_payload(p.payload)
+    assert [d.path for d in caught.value.diagnostics] == ["$." + name for name in paths]
+    with pytest.raises(a.ConformanceError):
+        a.serialize_packet(p)
+    complete = a.parse_payload(b"_10171200c...s...g...t...")
+    assert a.parse_payload(a.serialize_payload(complete)) == complete
+
+
+@pytest.mark.parametrize("destination", ["APRS", "T32UVT", "S32U5T", "S32UV4"])
+@pytest.mark.parametrize("nested", [False, True])
+def test_mic_e_header_conflicts_are_checked_without_envelope_limits(
+    destination, nested
+):
+    p = dataclasses.replace(packet(MIC_E), header=a.Header("N0CALL", destination))
+    if nested:
+        p = a.Packet(a.Header("N0GATE", "APRS"), a.ThirdParty(p))
+    prefix = "$.payload.packet" if nested else "$"
+    for policy in (a.APRS_IS, a.EnvelopePolicy(".*", ".*", ".*")):
+        findings = a.check_packet(p, policy=policy)
+        assert [d.path for d in findings] == [prefix + ".header.destination"]
+        for send in (a.serialize_packet, a.validate_packet):
+            with pytest.raises(a.ConformanceError) as caught:
+                send(p, policy=policy)
+            assert caught.value.diagnostics == findings
+
+
+def test_nmea_symbol_requires_matching_header_context():
+    p = packet(b"N0CALL-11>APRS:$GPGLL,4916.45,N,12311.12,W,225444,A")
+    assert p.payload.symbol == a.Symbol("/", "O")
+    assert a.check_packet(p) == ()
+    assert packet(a.serialize_packet(p)).payload == p.payload
+    with pytest.raises(a.ContextRequiredError, match="NMEA symbol"):
+        a.serialize_payload(p.payload)
+    changed = dataclasses.replace(p, header=a.Header("N0CALL-9", "APRS"))
+    for policy in (a.APRS_IS, a.EnvelopePolicy(".*", ".*", ".*")):
+        findings = a.check_packet(changed, policy=policy)
+        assert [d.path for d in findings] == ["$.payload.symbol"]
+        with pytest.raises(a.ConformanceError) as caught:
+            a.serialize_packet(changed, policy=policy)
+        assert caught.value.diagnostics == findings
+    # Decoding with the new header is still permissive and derives its symbol.
+    assert packet(
+        a.serialize_packet(p).replace(b"N0CALL-11", b"N0CALL-9")
+    ).payload.symbol == a.Symbol("/", ">")

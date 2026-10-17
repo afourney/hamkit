@@ -390,7 +390,7 @@ class PlaceTests(unittest.TestCase):
     def test_mic_e_motion_and_telemetry(self) -> None:
         self.assertEqual(
             findings(a.MicE(1, 2, SYMBOL, message="en_route")),
-            {"$.payload.extensions.motion"},
+            {"$.header.destination", "$.payload.extensions.motion"},
         )
         telemetry = a.Telemetry((1, 2), sequence=1, encoding="base91_comment")
         self.assertEqual(
@@ -403,7 +403,7 @@ class PlaceTests(unittest.TestCase):
                     extensions=a.Extensions(motion=a.Motion(), telemetry=telemetry),
                 )
             ),
-            set(),
+            {"$.header.destination"},
         )
 
 

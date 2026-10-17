@@ -150,7 +150,8 @@ def _longitude_degrees_byte(degrees: int, offset: bool) -> int:
     raise FieldError("Mic-E destination longitude offset does not match longitude")
 
 
-def write(p: MicE, header: Header) -> bytes:
+def position_bytes(p: MicE, header: Header) -> bytes:
+    """Check the joint header/position fields and encode the longitude bytes."""
     p = replace(
         p,
         latitude_deg=dao_offset(p.latitude_deg, p.extensions.dao, "latitude", -1),
@@ -170,6 +171,11 @@ def write(p: MicE, header: Header) -> bytes:
     degrees, minutes = divmod(units, 6000)
     minutes, hundredths = divmod(minutes, 100)
     degree_byte = _longitude_degrees_byte(degrees, offset)
+    return bytes([degree_byte, minutes + (88 if minutes < 10 else 28), hundredths + 28])
+
+
+def write(p: MicE, header: Header) -> bytes:
+    position = position_bytes(p, header)
     m = p.extensions.motion
     if m is None or m.course_deg is None or m.speed_knots is None:
         raise FieldError("Mic-E requires course and speed")
@@ -177,11 +183,9 @@ def write(p: MicE, header: Header) -> bytes:
     if not 0 <= speed <= 799 or not 0 <= course <= 360:
         raise FieldError("Mic-E motion outside wire range")
     body = (
-        bytes(
+        position
+        + bytes(
             [
-                degree_byte,
-                minutes + (88 if minutes < 10 else 28),
-                hundredths + 28,
                 speed // 10 + 28,
                 speed % 10 * 10 + course // 100 + 28,
                 course % 100 + 28,
@@ -275,6 +279,14 @@ def write_status(p: MicE) -> bytes:
             values = (values[0], None, values[1], None, None)
         if len(values) != 5 or t.digital:
             raise FieldError("invalid Mic-E telemetry channels")
+        two_channel = (
+            t.encoding == "mic_e_hex"
+            and values[1] is None
+            and values[3:] == (None, None)
+        )
+        present = (values[0], values[2]) if two_channel else values
+        if any(v is None or v != int(v) or not 0 <= v <= 255 for v in present):
+            raise FieldError("Mic-E telemetry channels require integers in 0..255")
         if t.encoding == "mic_e_binary":
             first = b"\x1d" + bytes(int(cast(float, v)) for v in values)
         elif values[1] is None and values[3:] == (None, None):
