@@ -21,6 +21,43 @@ telemetry channel padding, structured query responses and typed NMEA sentences.
 `packet` is a Latin-1 byte carrier:
 use `packet.encode("latin-1")`, including for control/high-bit bytes.
 
+## Runner configuration
+
+Every row has a complete `policy` object with all six `EnvelopePolicy` fields,
+including explicit `null` for unlimited constraints. For example, an RF row has:
+
+```json
+{
+  "policy": {
+    "source_pattern": "[A-Z0-9]{1,6}(?:-(?:[0-9]|1[0-5]))?",
+    "destination_pattern": "[A-Z0-9]{1,6}(?:-(?:[0-9]|1[0-5]))?",
+    "path_address_pattern": "[A-Z0-9]{1,6}(?:-(?:[0-9]|1[0-5]))?",
+    "max_path_entries": 8,
+    "max_information_bytes": 256,
+    "max_tnc2_line_bytes": null
+  },
+  "legacy_positions": false
+}
+```
+
+The generator serializes policies with `dataclasses.asdict`. Runners reconstruct
+them directly with `aprs.EnvelopePolicy(**row["policy"])` and pass the separate
+boolean `row["legacy_positions"]` to the parser. This uses the policy's existing
+configuration format, not the packet-model JSON schema or a named-policy lookup.
+Zero limits remain zero, and `null` remains unlimited.
+
+The stored policies preserve the original effective selection: **28 RF** and
+**1,536 APRS-IS** rows. The generator resolves the original source hints once;
+`profile` and `options` remain unchanged provenance and do not select policies
+at runtime. Profiles still identify source/specification expectations. Historical
+and FAP rows store `legacy_positions: true`; all other rows store `false`.
+Contract tests compare complete public output, including diagnostics and evidence,
+with the previous settings for every row, and prove custom stored policies work
+independently of source hints. Sequence steps and supplemental source checks use
+the same explicit row configuration.
+
+## Expectations and provenance
+
 `expected` is a subset of the public JSON representation. Missing keys make no
 assertion; explicit nulls do. `source_expected` preserves the original assertions.
 `unmapped` lists source paths outside the JSON projection. For core rows,
@@ -45,8 +82,7 @@ timestamps and incomplete GLL or telemetry that FAP accepts, short telemetry
 FAP pads, and an `O` token FAP skips in weather reports. The
 generator applies the overrides, copies the reasons into the row's
 `divergence` field and leaves `outcome` and `source_expected` as FAP captured
-them. Historical and FAP rows parse with `legacy_positions=True`, since those
-receivers search other text for an embedded `!` position.
+them. Legacy position searches follow the explicit row setting described above.
 
 The schema migration rewrote 35 stored expectations (33 FAP and two historical
 position cases): equivalent weather units, compressed weather wind nesting,
@@ -66,6 +102,8 @@ values remain unchanged and are also checked.
 Sequence rows contain `state_expected` and run all preceding steps through a test
 receiver implemented using public packet models. State is not added to the codec.
 
+## Round trips
+
 All 1,564 rows pass without xfails. Every row also participates in encoding tests:
 1,305 semantic round trips under an explicit permissive envelope policy
 (`EnvelopePolicy(".*", ".*", ".*")`), and 259 explicit malformed/conformance
@@ -81,6 +119,13 @@ those round-trippable packets because of their address formats (including SSID
 under the default policy.
 This preserves the source vectors while exercising both representation and
 transport constraints through the public API.
+
+Round-trip decoding and a separate serialization check use each row's stored
+policy. Of the 1,305 representational round trips, 25 are refused by their stored
+envelope policy (the 15 APRS-IS refusals above plus 10 RF-only refusals); the other
+1,280 pass that policy. The permissive representation policy remains an explicit
+test override, not a replacement for the row's policy. It allows invalid-address
+vectors to test semantic encoding while their transport refusals are checked.
 
 Round-trip tests remove all evidence fields before serialization, check semantic
 fields at wire precision, and require canonical bytes to stabilize. Raw wrappers

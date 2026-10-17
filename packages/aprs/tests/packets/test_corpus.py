@@ -50,17 +50,11 @@ def differences(actual: Any, expected: Any, path: str = "$") -> list[str]:
     )
 
 
-# Receivers in these profiles search other text for an embedded "!" position.
-LEGACY_POSITION_PROFILES = {"historical-1.0", "compatibility-fap"}
-
-
 def parse_row(row: dict[str, Any], raw: bytes) -> aprs.Packet | aprs.Malformed:
-    options = row.get("options") or {}
-    strict = row["profile"] == "strict-envelope" or options.get("ax25")
     return aprs.parse_packet(
         raw,
-        policy=aprs.RF if strict else aprs.APRS_IS,
-        legacy_positions=row["profile"] in LEGACY_POSITION_PROFILES,
+        policy=aprs.EnvelopePolicy(**row["policy"]),
+        legacy_positions=row["legacy_positions"],
     )
 
 
@@ -116,7 +110,7 @@ def check(row: dict[str, Any]) -> None:
         for step in rows():
             if step.get("sequence") == row["sequence"]:
                 state = receiver.receive(
-                    aprs.parse_packet(step["packet"].encode("latin1"))
+                    parse_row(step, step["packet"].encode("latin1"))
                 )
                 if step["id"] == row["id"]:
                     errors.extend(differences(state, row["state_expected"]))

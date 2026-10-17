@@ -5,13 +5,13 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
+from dataclasses import asdict, fields, replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 from generate_vectors import records
-from packets.test_corpus import check, differences
+from packets.test_corpus import check, differences, parse_row
 
 from hamkit import aprs as a
 
@@ -35,6 +35,79 @@ def test_complete_source_extraction() -> None:
         records(), key=lambda r: r["id"]
     )
     assert len({row.get("sequence", row["id"]) for row in rows}) == 1548
+
+
+def test_every_row_has_complete_policy_and_preserves_effective_behavior() -> None:
+    policy_fields = {field.name for field in fields(a.EnvelopePolicy)}
+    rf_count = 0
+    for row in all_rows():
+        assert set(row["policy"]) == policy_fields, row["id"]
+        policy = a.EnvelopePolicy(**json.loads(json.dumps(row["policy"])))
+        assert asdict(policy) == row["policy"], row["id"]
+        # This is a migration oracle, not an operational policy selector.
+        was_rf = row["profile"] == "strict-envelope" or bool(
+            (row.get("options") or {}).get("ax25")
+        )
+        previous_policy = a.RF if was_rf else a.APRS_IS
+        legacy = row["profile"] in {"historical-1.0", "compatibility-fap"}
+        assert policy == previous_policy, row["id"]
+        assert type(row["legacy_positions"]) is bool
+        assert row["legacy_positions"] == legacy, row["id"]
+        raw = row["packet"].encode("latin1")
+        before = a.parse_packet(raw, policy=previous_policy, legacy_positions=legacy)
+        after = parse_row(row, raw)
+        # Equality alone ignores diagnostics/evidence, so compare the full JSON.
+        assert a.to_json_dict(after, include_defaults=True) == a.to_json_dict(
+            before, include_defaults=True
+        ), row["id"]
+        rf_count += was_rf
+    assert rf_count == 28
+
+
+def test_row_settings_override_source_hints() -> None:
+    row = next(r for r in all_rows() if r["id"] == "OTH-033")
+    row["profile"] = "strict-envelope"
+    row["options"] = {"ax25": True}
+    custom = a.EnvelopePolicy(".*", ".*", ".*", max_information_bytes=0)
+    row["policy"] = asdict(custom)
+    row["legacy_positions"] = True
+    result = parse_row(row, row["packet"].encode("latin1"))
+    assert isinstance(result, a.Packet)
+    assert isinstance(result.payload, a.LegacyPosition)
+    assert any(d.message == "information exceeds 0 bytes" for d in result.diagnostics)
+    del row["policy"]
+    with pytest.raises(KeyError, match="policy"):
+        parse_row(row, row["packet"].encode("latin1"))
+
+
+def test_roundtrip_runner_uses_stored_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    from packets.test_roundtrip_corpus import test_vector_roundtrip
+
+    row = next(r for r in all_rows() if r["id"] == "STA-008")
+    row["profile"] = "strict-envelope"
+    row["options"] = {"ax25": True}
+    custom = a.EnvelopePolicy(".*", ".*", ".*", max_tnc2_line_bytes=1000)
+    row["policy"] = asdict(custom)
+    parse, serialize = a.parse_packet, a.serialize_packet
+    parsed_policies, sent_policies = [], []
+
+    def record_parse(raw, **kwargs):
+        parsed_policies.append(kwargs["policy"])
+        return parse(raw, **kwargs)
+
+    def record_serialize(value, **kwargs):
+        sent_policies.append(kwargs.get("policy", a.APRS_IS))
+        return serialize(value, **kwargs)
+
+    monkeypatch.setattr(a, "parse_packet", record_parse)
+    monkeypatch.setattr(a, "serialize_packet", record_serialize)
+    # validate_packet calls its module's serialize_packet, so observe both.
+    from hamkit.aprs import _codec
+
+    monkeypatch.setattr(_codec, "serialize_packet", record_serialize)
+    test_vector_roundtrip(row)
+    assert parsed_policies == [custom, custom]
+    assert custom in sent_policies
 
 
 def test_comparator_checks_missing_null_lists_and_tolerances() -> None:

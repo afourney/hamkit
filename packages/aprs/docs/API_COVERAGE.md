@@ -69,6 +69,13 @@ expectations record where FAP's interpretation differs from the
 specification-following public decoder (`tests/fap_divergences.json`), each
 with its reasons.
 
+Each JSONL row stores a complete serialized `EnvelopePolicy` under `policy`
+(28 RF and 1,536 APRS-IS), plus an explicit `legacy_positions` boolean. Corpus,
+sequence and round-trip runners reconstruct that policy directly. Source
+`profile` and `options` remain provenance, not runtime envelope-policy hints.
+The generator resolves the historical hints once; contract tests verify unchanged
+effective parsing, including diagnostics, for every row.
+
 The 23 sequence occurrences run through a test application receiver using public
 models. Ownership, deduplication, acknowledgment construction, calibration,
 bulletin replacement, status fallback and station-specific weather association
@@ -161,6 +168,10 @@ default-policy refusals and validate the other 1,290 under the default policy. T
 fields, packet bytes or payload conformance checks. Dedicated policy tests cover
 custom patterns, optional and zero limits, boundary sizes including CRLF,
 repeated markers, and consistent outer-envelope handling of third-party packets.
+
+The round-trip runner also checks each row's stored policy separately: 25 of the
+1,305 representable packets have envelope refusals under that policy, and 1,280
+validate. The additional 10 refusals exercise RF address/path constraints.
 
 PHG/PHGR vectors exercise the public API directly. The PHGR rate character and required slash, ordinary PHG separators,
 and PHG comment whitespace are handled by the shared public decoder/encoder.

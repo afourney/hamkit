@@ -418,13 +418,13 @@ def check_public_phg(row, packet):
 
 def check_rejection(row):
     from generate_vectors import header, translate
-    from packets.test_corpus import differences
+    from packets.test_corpus import differences, parse_row
 
     raw = row["packet"].encode("latin1")
     source = row["source_expected"]
     if row["profile"] == "compatibility-fap":
         return []  # The rejection itself is asserted; FAP's partial fields are not.
-    p = a.parse_packet(raw)
+    p = parse_row(row, raw)
     errors = []
     if "header" in source:
         assert p.header is not None

@@ -12,8 +12,11 @@ import copy
 import json
 import re
 from collections import Counter
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
+
+from hamkit import aprs
 
 ROOT = Path(__file__).parents[1]
 SOURCE = ROOT / "docs/APRS_COMPLIANCE_VECTORS.md"
@@ -855,6 +858,16 @@ def records() -> list[JSON]:
             row["source_expected"] = copy.deepcopy(step["expected"])
             if "options" in case:
                 row["options"] = case["options"]
+            # Source hints are provenance. Resolve them once into explicit runner
+            # configuration; consumers must not infer policies from them again.
+            strict = case["profile"] == "strict-envelope" or (
+                case.get("options") or {}
+            ).get("ax25")
+            row["policy"] = asdict(aprs.RF if strict else aprs.APRS_IS)
+            row["legacy_positions"] = case["profile"] in {
+                "historical-1.0",
+                "compatibility-fap",
+            }
             if case.get("note"):
                 row["note"] = case["note"]
             for key in ("scope_note", "extension_tags"):

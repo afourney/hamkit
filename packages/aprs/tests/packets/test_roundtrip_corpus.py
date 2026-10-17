@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from packets.test_corpus import LEGACY_POSITION_PROFILES, load, rows
+from packets.test_corpus import load, parse_row, rows
 
 from hamkit import aprs as a
 
@@ -39,6 +39,19 @@ APRS_IS_ADDRESS_REFUSALS = {
     # APRS-IS drops SSID -0; RF and the permissive corpus policy accept it.
     "HDR-002",
     "HDR-036",
+}
+# Stored RF policies also refuse these otherwise representable envelopes.
+ROW_POLICY_REFUSALS = APRS_IS_ADDRESS_REFUSALS | {
+    "BAD-009",
+    "BAD-010",
+    "BAD-011",
+    "BAD-012",
+    "FAP-009",
+    "FAP-011",
+    "FAP-013",
+    "FAP-015",
+    "FAP-016",
+    "FAP-048",
 }
 CHECKSUM_FINDING = "$.payload.metadata.checksum_valid"
 
@@ -102,8 +115,8 @@ def same_semantics(x: Any, y: Any, path="$") -> None:
 
 @pytest.mark.parametrize("row", load())
 def test_vector_roundtrip(row):
-    legacy = row["profile"] in LEGACY_POSITION_PROFILES
-    packet = a.parse_packet(row["packet"].encode("latin1"), legacy_positions=legacy)
+    policy = a.EnvelopePolicy(**row["policy"])
+    packet = parse_row(row, row["packet"].encode("latin1"))
     # JSON is lossless even for malformed or nonconforming received packets.
     assert a.to_json_dict(a.from_json(a.to_json(packet))) == a.to_json_dict(packet)
     exception = EXCEPTIONS.get(row["id"])
@@ -130,7 +143,14 @@ def test_vector_roundtrip(row):
             a.serialize_packet(clean, policy=CORPUS_POLICY)
         assert [d.message for d in caught.value.diagnostics] == exception["reasons"]
         return
-    # Verify the stricter default independently of representational round trips.
+    # Check the stored envelope policy separately from the permissive round trip.
+    if row["id"] in ROW_POLICY_REFUSALS:
+        with pytest.raises(a.ConformanceError) as caught:
+            a.serialize_packet(clean, policy=policy)
+        assert all(d.path.startswith("$.header.") for d in caught.value.diagnostics)
+    else:
+        a.validate_packet(clean, policy=policy)
+    # Keep the independent APRS-IS default-policy coverage as well.
     if row["id"] in APRS_IS_ADDRESS_REFUSALS:
         with pytest.raises(a.ConformanceError) as caught:
             a.serialize_packet(clean)
@@ -138,7 +158,7 @@ def test_vector_roundtrip(row):
     else:
         a.validate_packet(clean)
     wire = a.serialize_packet(clean, policy=CORPUS_POLICY)
-    decoded = a.parse_packet(wire, legacy_positions=legacy)
+    decoded = parse_row(row, wire)
     assert isinstance(decoded, a.Packet)
     if isinstance(clean.payload, a.NMEA):
         n = clean.payload
@@ -173,3 +193,5 @@ def test_no_stale_exception_ids():
     assert EXCEPTIONS.keys() <= {r["id"] for r in rows()}
     assert APRS_IS_ADDRESS_REFUSALS <= {r["id"] for r in rows()}
     assert not APRS_IS_ADDRESS_REFUSALS.intersection(EXCEPTIONS)
+    assert ROW_POLICY_REFUSALS <= {r["id"] for r in rows()}
+    assert not ROW_POLICY_REFUSALS.intersection(EXCEPTIONS)

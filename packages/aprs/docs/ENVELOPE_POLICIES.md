@@ -68,6 +68,12 @@ schema. For configuration JSON, use `dataclasses.asdict(policy)` with
 `json.dumps`, and reconstruct with `aprs.EnvelopePolicy(**json.loads(text))`;
 `None` becomes JSON `null`.
 
+The executable JSONL corpus uses this format in every row's `policy` object,
+including all three patterns and all three limits. Its separate `legacy_positions`
+boolean controls historical embedded-position searches. Test runners load these
+fields directly; source profiles and receiver options are retained as provenance.
+See the [vector schema and runner configuration](../tests/vectors/README.md#runner-configuration).
+
 This replaces `EnvelopeProfile` and the `profile="rf"`/`profile="monitor"`
 arguments. `policy=aprs.RF` replaces the RF profile. The new default `APRS_IS`
 enforces address formats and the 512-byte line limit that `monitor` did not.
