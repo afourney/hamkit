@@ -1218,6 +1218,8 @@ Standalone tag: `hop`. [Back to type map](#type-map-and-object-catalog).
 
 Standalone tag: `header`. [Back to type map](#type-map-and-object-catalog).
 
+A missing/null destination is an automatic header template, valid in a Packet only for Mic-E. Other Packet payloads require a destination. Mic-E serialization derives it from semantic fields without mutating the template; explicit addresses are checked.
+
 ```json
 {
   "type": "header",
@@ -1227,12 +1229,12 @@ Standalone tag: `header`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field         | JSON value / allowed values | Presence / default     |
-| ------------- | --------------------------- | ---------------------- |
-| `type`        | `"header"`                  | see [Tags](#tags)      |
-| `source`      | string                      | **required**           |
-| `destination` | string                      | **required**           |
-| `path`        | array of [Hop](#hop)        | optional; default `[]` |
+| Field         | JSON value / allowed values | Presence / default       |
+| ------------- | --------------------------- | ------------------------ |
+| `type`        | `"header"`                  | see [Tags](#tags)        |
+| `source`      | string                      | **required**             |
+| `destination` | string or null              | optional; default `null` |
+| `path`        | array of [Hop](#hop)        | optional; default `[]`   |
 
 ### Position
 

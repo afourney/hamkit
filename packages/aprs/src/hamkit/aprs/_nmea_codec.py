@@ -42,7 +42,7 @@ def _coordinates(fields: list[str]) -> Coordinates | None:
 
 
 def header_symbol(header: Header | None) -> Symbol | None:
-    if header is None:
+    if header is None or header.destination is None:
         return None
     dest = header.destination.split("-")[0]
     match = re.fullmatch(r"(?:GPS|SPC|SYM)([CE])(\d{2})", dest)

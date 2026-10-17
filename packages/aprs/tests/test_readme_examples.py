@@ -94,7 +94,7 @@ class ReadmeTests(unittest.TestCase):
     ) -> None:
         # 29 construction pairs, 5 parsing inputs with 5 JSON displays, then one
         # each of unsupported encoding, repair and refusal to send.
-        self.assertEqual(len(self.examples), 72)
+        self.assertEqual(len(self.examples), 75)
         namespace: dict[str, Any] | None = None
         for index, example in enumerate(self.examples):
             with self.subTest(example=index + 1):
@@ -193,7 +193,15 @@ class ReadmeTests(unittest.TestCase):
             # Construction examples print the model name; wire examples print
             # the encoded line. Both must be valid compositions now.
             if self.examples[index][3] != type(json_packet.payload).__name__ + "\n":
-                self.assertEqual(wire.decode("utf-8") + "\n", self.examples[index][3])
+                self.assertEqual(
+                    (
+                        repr(wire)
+                        if isinstance(json_packet.payload, a.MicE)
+                        else wire.decode("utf-8")
+                    )
+                    + "\n",
+                    self.examples[index][3],
+                )
 
         self.assertEqual(families, set(get_args(a.Payload)))
 
@@ -210,4 +218,4 @@ class ReadmeTests(unittest.TestCase):
             self.assertNotIn("aprs.to_json", source)
             self.assertEqual(self.examples[index + 1][0], "continuation")
             count += 1
-        self.assertEqual(count, 5)
+        self.assertEqual(count, 6)

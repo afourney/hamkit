@@ -60,8 +60,14 @@ class Hop(Validated):
 
 @dataclass(frozen=True)
 class Header(Validated):
+    """TNC2 header; destination=None requests automatic packing in a Mic-E Packet.
+
+    A standalone automatic header is a template, not serializable wire text.
+    Other packet payloads require an explicit destination.
+    """
+
     source: str
-    destination: str
+    destination: str | None = None
     path: tuple[Hop, ...] = ()
 
     @classmethod
@@ -78,6 +84,10 @@ class Header(Validated):
         )
 
     def __str__(self) -> str:
+        if self.destination is None:
+            raise EnvelopeError(
+                "automatic destination needs a Mic-E packet; use serialize_packet"
+            )
         route = "".join(
             "," + hop.address + ("*" if hop.repeated else "") for hop in self.path
         )

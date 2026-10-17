@@ -186,7 +186,7 @@ class ModelContractTests(unittest.TestCase):
         self.assertNotEqual(unavailable, zero)
         self.assertNotEqual(absent, zero)
 
-    def test_mic_e_requires_context(self) -> None:
+    def test_mic_e_decoding_requires_context(self) -> None:
         with self.assertRaises(a.ContextRequiredError):
             a.parse_payload(b"`12345678")
         mic_e = a.MicE(
@@ -196,8 +196,8 @@ class ModelContractTests(unittest.TestCase):
             message="off_duty",
             extensions=a.Extensions(motion=a.Motion()),
         )
-        with self.assertRaises(a.ContextRequiredError):
-            a.serialize_payload(mic_e)
+        with self.assertRaises(a.FieldError):
+            a.serialize_payload(mic_e)  # Missing motion is still unencodable.
         with self.assertRaises(a.FieldError):
             a.serialize_packet(a.Packet(HEADER, mic_e))
         parsed = a.parse_packet(b"N0CALL>490S5P:`123456>/")

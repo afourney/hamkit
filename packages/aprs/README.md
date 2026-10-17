@@ -683,7 +683,8 @@ encoding. They remain useful for storing or exchanging structured data.
 
 #### Mic-E
 
-**Wire encoding available.** Compact position data with a Mic-E message type. The supplied destination must match latitude, hemisphere and message; the encoder verifies it. `device_code` holds the APRS 1.2 type code: the type byte that begins the status text plus any declared suffix that ends it, such as `` `_% `` (Yaesu FTM-400DR) or `]=` (Kenwood TM-D710).
+**Wire encoding available.** Compact position data with a Mic-E message type. Omit the destination: the library packs latitude, message, ambiguity and
+longitude flags into it. An explicit destination is checked against those fields. `device_code` holds the APRS 1.2 type code: the type byte that begins the status text plus any declared suffix that ends it, such as `` `_% `` (Yaesu FTM-400DR) or `]=` (Kenwood TM-D710).
 
 Build with Python:
 
@@ -691,22 +692,22 @@ Build with Python:
 from hamkit import aprs
 
 packet = aprs.Packet(
-    aprs.Header("N0CALL", "TY0P0P"),
+    aprs.Header("N0CALL"),
     aprs.MicE(
-        49,
-        -72,
+        47.75,
+        -122.15,
         aprs.Symbol("/", ">"),
         message="en_route",
         extensions=aprs.Extensions(motion=aprs.Motion(90, 10)),
     ),
 )
-print(type(packet.payload).__name__)
+print(aprs.serialize_packet(packet))
 ```
 
 Output:
 
 ```text
-MicE
+b'N0CALL>TW4UPP:`2a\x1c\x1d\x1cv>/'
 ```
 
 Build the same packet from JSON:
@@ -719,13 +720,12 @@ packet = aprs.from_json(
 {
   "type": "packet",
   "header": {
-    "source": "N0CALL",
-    "destination": "TY0P0P"
+    "source": "N0CALL"
   },
   "payload": {
     "type": "mic_e",
-    "latitude_deg": 49,
-    "longitude_deg": -72,
+    "latitude_deg": 47.75,
+    "longitude_deg": -122.15,
     "symbol": {
       "table_id": "/",
       "code": ">"
@@ -741,14 +741,100 @@ packet = aprs.from_json(
 }
 """
 )
-print(type(packet.payload).__name__)
+print(aprs.serialize_packet(packet))
 ```
 
 Output:
 
 ```text
-MicE
+b'N0CALL>TW4UPP:`2a\x1c\x1d\x1cv>/'
 ```
+
+Read the resulting packet. Decoding keeps the explicit received destination:
+
+```python
+from hamkit import aprs
+
+packet = aprs.parse_packet(b'N0CALL>TW4UPP:`2a\x1c\x1d\x1cv>/')
+print(packet)
+```
+
+Output:
+
+```text
+Packet(header=Header(source='N0CALL', destination='TW4UPP', path=()), payload=MicE(latitude_deg=47.75, longitude_deg=-122.15, symbol=Symbol(table_id='/', code='>'), message='en_route', comment='', fix='current', ambiguity=0, device_code=None, extensions=Extensions(motion=Motion(course_deg=90, speed_knots=10, zero_pair='unspecified'), altitude=None, phg=None, range=None, signal=None, bearing=None, dao=None, area=None, signpost=None, weather=None, storm=None, telemetry=None)), diagnostics=())
+```
+
+Show the same decoded packet as JSON:
+
+```python
+print(aprs.to_json(packet, indent=2))
+```
+
+Output:
+
+```text
+{
+  "type": "packet",
+  "header": {
+    "source": "N0CALL",
+    "destination": "TW4UPP"
+  },
+  "payload": {
+    "type": "mic_e",
+    "latitude_deg": 47.75,
+    "longitude_deg": -122.15,
+    "symbol": {
+      "table_id": "/",
+      "code": ">"
+    },
+    "message": "en_route",
+    "extensions": {
+      "motion": {
+        "course_deg": 90,
+        "speed_knots": 10,
+        "course_code": 90,
+        "speed_code": 10
+      }
+    }
+  },
+  "original_wire": "N0CALL>TW4UPP:`2a\u001c\u001d\u001cv>/"
+}
+```
+
+For a newly constructed packet, `header.destination` stays `None`; every send
+recomputes it from the current payload without mutating your model. A parsed
+packet instead retains its explicit address. If you change latitude, message,
+ambiguity or longitude flags, clear the destination to request regeneration;
+otherwise a conflicting explicit address is rejected. This example edits a
+received packet and asks the library to repack it:
+
+```python
+from dataclasses import replace
+from hamkit import aprs
+
+received = aprs.parse_tnc2_line(b'N0CALL>TW4UPP:`2a\x1c\x1d\x1cv>/\r\n')
+packet = aprs.Packet(
+    replace(received.header, destination=None),
+    replace(received.payload, latitude_deg=-47.75),
+)
+print(aprs.serialize_packet(packet))
+```
+
+Output:
+
+```text
+b'N0CALL>TW45PP:`2a\x1c\x1d\x1cv>/'
+```
+
+The generated destination has six characters and no SSID; path hops remain
+caller-supplied. Explicit destination SSIDs are retained. The mixed wire state
+`message="unknown"` cannot be uniquely generated: retain its explicit received
+destination or choose a known standard/custom message. An omitted JSON
+destination (or `null`) requests the same automatic behavior. Other packet types
+still require a destination, and Mic-E payload JSON still requires its normal
+semantic fields. Mic-E payload-only encoding can derive its packing, but
+payload-only decoding still needs the actual received header.
 
 #### Object
 

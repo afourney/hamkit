@@ -96,6 +96,8 @@ def read(
     diagnostics: list,
     policy: EnvelopePolicy = _DEFAULT_POLICY,
 ) -> MicE:
+    if header.destination is None:
+        raise FieldError("Mic-E decoding requires an explicit destination")
     lat, n, message, offset, west = destination(header.destination)
     b = information[1:]
     if len(b) < 8 or any(not 28 <= c <= 127 for c in b[:6]):
@@ -156,16 +158,74 @@ def _longitude_degrees_byte(degrees: int, offset: bool) -> int:
     raise FieldError("Mic-E destination longitude offset does not match longitude")
 
 
-def position_bytes(p: MicE, header: Header) -> bytes:
-    """Check the joint header/position fields and encode the longitude bytes."""
-    p = replace(
-        p,
-        latitude_deg=dao_offset(p.latitude_deg, p.extensions.dao, "latitude", -1),
-        longitude_deg=dao_offset(p.longitude_deg, p.extensions.dao, "longitude", -1),
+def _base_coordinates(p: MicE) -> tuple[float, float]:
+    return (
+        dao_offset(p.latitude_deg, p.extensions.dao, "latitude", -1),
+        dao_offset(p.longitude_deg, p.extensions.dao, "longitude", -1),
     )
-    lat, n, message, offset, west = destination(header.destination)
+
+
+def destination_for(p: MicE) -> str:
+    """Pack APRS101 pp44–46 latitude, message and longitude flags, without an SSID.
+
+    Omission requests automatic encoding; an explicit address remains a caller
+    assertion. Unknown mixed message bits have no unique semantic encoding.
+    """
+    latitude, longitude = _base_coordinates(p)
+    latitude = center(latitude, p.ambiguity)
+    longitude = center(longitude, p.ambiguity)
+    if abs(latitude) > 90 or abs(longitude) >= 180:
+        raise FieldError("Mic-E coordinate/ambiguity cell is outside the wire range")
+    units = round(abs(latitude) * 6000)
+    degrees, minutes = divmod(units, 6000)
+    digits = f"{degrees:02d}{minutes:04d}"
+    if p.message == "unknown":
+        raise FieldError(
+            "unknown Mic-E message requires an explicit destination or a known message"
+        )
+    custom = p.message.startswith("custom_")
+    bits = 7 - int(p.message[-1]) if custom else _MESSAGES.index(p.message)
+    longitude_degrees = round(abs(longitude) * 6000) // 6000
+    if longitude_degrees >= 180:
+        raise FieldError("Mic-E rounded longitude is outside the wire range")
+    flags = (
+        math.copysign(1, latitude) > 0,
+        longitude_degrees < 10 or longitude_degrees >= 100,
+        math.copysign(1, longitude) < 0,
+    )
+    result = []
+    for index, digit in enumerate(digits):
+        high = bool(bits & (1 << (2 - index))) if index < 3 else flags[index - 3]
+        is_custom = index < 3 and custom and high
+        if index >= 6 - p.ambiguity:
+            result.append("K" if is_custom else "Z" if high else "L")
+        else:
+            result.append(chr((65 if is_custom else 80 if high else 48) + int(digit)))
+    return "".join(result)
+
+
+def resolve_header(header: Header, p: MicE) -> Header:
+    """Return a generated header without mutating the packet or its template."""
+    return (
+        replace(header, destination=destination_for(p))
+        if header.destination is None
+        else header
+    )
+
+
+def position_bytes(p: MicE, header: Header | None) -> bytes:
+    """Check the joint header/position fields and encode the longitude bytes."""
+    address = (
+        destination_for(p)
+        if header is None or header.destination is None
+        else header.destination
+    )
+    latitude, longitude = _base_coordinates(p)
+    p = replace(p, latitude_deg=latitude, longitude_deg=longitude)
+    lat, n, message, offset, west = destination(address)
     if (
         abs(lat - center(p.latitude_deg, p.ambiguity)) > 1 / 12000
+        or (math.copysign(1, lat) != math.copysign(1, p.latitude_deg))
         or n != p.ambiguity
         or message != p.message
         or west != (math.copysign(1, p.longitude_deg) < 0)
@@ -173,14 +233,16 @@ def position_bytes(p: MicE, header: Header) -> bytes:
         raise FieldError(
             "Mic-E destination does not match latitude, ambiguity, message, or longitude hemisphere"
         )
-    units = round(abs(p.longitude_deg) * 6000)
+    units = round(abs(center(p.longitude_deg, p.ambiguity)) * 6000)
     degrees, minutes = divmod(units, 6000)
     minutes, hundredths = divmod(minutes, 100)
     degree_byte = _longitude_degrees_byte(degrees, offset)
     return bytes([degree_byte, minutes + (88 if minutes < 10 else 28), hundredths + 28])
 
 
-def write(p: MicE, header: Header, policy: EnvelopePolicy = _DEFAULT_POLICY) -> bytes:
+def write(
+    p: MicE, header: Header | None, policy: EnvelopePolicy = _DEFAULT_POLICY
+) -> bytes:
     position = position_bytes(p, header)
     m = p.extensions.motion
     if m is None or m.course_deg is None or m.speed_knots is None:

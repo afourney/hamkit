@@ -67,6 +67,7 @@ from ._models import (
     NWSBulletin,
     Object,
     Opaque,
+    Packet,
     Position,
     Query,
     Radiogram,
@@ -75,6 +76,7 @@ from ._models import (
     Response,
     Status,
     TelemetryDefinition,
+    Trace,
     UserDefined,
 )
 from ._nmea import GGA, GLL, RMC, VTG, WPL, NMEAMetadata
@@ -488,6 +490,8 @@ def _capability(v: Capability) -> None:
 def _addresses(v: Any) -> None:
     for name in ("address",) if isinstance(v, Hop) else ("source", "destination"):
         value = getattr(v, name)
+        if name == "destination" and value is None:
+            continue
         if not value or any(c in " >,:*" for c in value):
             fail(name, "empty or invalid address token")
 
@@ -641,3 +645,15 @@ def _nmea(v: NMEA) -> None:
         fail("position_usable", "cannot mark an invalid fix as usable")
     if v.metadata.checksum_valid is False:
         fail("position_usable", "cannot mark a failed-checksum report as usable")
+
+
+@invariant(Packet)
+def _packet_destination(v: Packet) -> None:
+    if v.header.destination is None and not isinstance(v.payload, MicE):
+        fail("header.destination", "destination is required except for Mic-E packets")
+
+
+@invariant(Trace)
+def _trace_header(v: Trace) -> None:
+    if v.header.destination is None:
+        fail("header.destination", "trace headers require an explicit destination")

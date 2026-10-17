@@ -102,10 +102,12 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   Field overflow is rejected. No saturation or text truncation is performed.
   Numeric overlays use table IDs `a`–`j`; sending compressed positions with
   `0`–`9` table IDs is refused as nonconforming.
-- Mic-E requires a destination consistent with latitude, ambiguity, message and
+- Mic-E generates an omitted destination from latitude, ambiguity, message and
   longitude flags. `check_packet` reports mismatches at `$.header.destination`,
   and sending raises `ConformanceError`; packet headers are not silently changed.
-  Payload-only Mic-E still requires header context. Longitude degrees
+  Explicit destinations are checked for consistency; omitted destinations remain
+  automatic templates and are recomputed without mutation. Payload-only Mic-E
+  decoding requires its received header; encoding derives the needed bits. Longitude degrees
   use APRS101's table, so 100–109° are sent as `l`–`u`, never as control bytes.
 - Mic-E status interpretation is policy-selected. With `mice_device_ids`,
   apostrophe/backtick selectors introduce device text even if the following text

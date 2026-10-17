@@ -260,7 +260,7 @@ def _decode_payload(
         )
     if (
         header is not None
-        and header.destination.split("-")[0] in ("BEACON", "ID", "UIDIGI", "CQ")
+        and (header.destination or "").split("-")[0] in ("BEACON", "ID", "UIDIGI", "CQ")
         or len(information) > 1
         and information[:1].isalpha()
         and b" " in information
@@ -631,8 +631,6 @@ def _encode_payload(
             payload.position, header, max_depth, depth, policy
         )
     if isinstance(payload, MicE):
-        if header is None:
-            raise ContextRequiredError("Mic-E encoding needs the packet header")
         from . import _mic_e
 
         return _mic_e.write(payload, header, policy)
@@ -714,13 +712,21 @@ def _encode_payload(
     raise TypeError("unsupported payload model")
 
 
+def _wire_header(packet: Packet) -> Header:
+    if isinstance(packet.payload, MicE):
+        from ._mic_e import resolve_header
+
+        return resolve_header(packet.header, packet.payload)
+    return packet.header
+
+
 def _serialize(
     packet: Packet, max_depth: int, depth: int, policy: EnvelopePolicy
 ) -> bytes:
     information = _encode_payload(
         packet.payload, packet.header, max_depth, depth, policy
     )
-    return str(packet.header).encode("ascii") + b":" + information
+    return str(_wire_header(packet)).encode("ascii") + b":" + information
 
 
 def _bound_depth(value: Packet | Payload, max_depth: int) -> None:
@@ -774,12 +780,13 @@ def _findings(
         or policy.max_tnc2_line_bytes is not None
     ):
         try:
+            header = _wire_header(value)
             information = _encode_payload(
                 value.payload, value.header, max_depth, 0, policy
             )
         except (CodecNotImplementedError, ContextRequiredError, FieldError):
             return findings  # Reported elsewhere; there are no bytes to measure.
-        line_bytes = len(str(value.header).encode("ascii")) + 1 + len(information) + 2
+        line_bytes = len(str(header).encode("ascii")) + 1 + len(information) + 2
         findings = (*findings, *_envelope_sizes(policy, len(information), line_bytes))
     return findings
 
@@ -790,10 +797,6 @@ def _ready_to_send(
     _bound_depth(value, max_depth)
     validate_tree(value)
     payload = value.payload if isinstance(value, Packet) else value
-    if isinstance(payload, MicE) and not isinstance(value, Packet):
-        raise ContextRequiredError(
-            "Mic-E encoding needs the header; use serialize_packet"
-        )
     if (
         isinstance(payload, m.NMEA)
         and payload.symbol is not None
@@ -837,7 +840,9 @@ def serialize_payload(
 ) -> bytes:
     """Encode an information field alone, with the same payload validation as packets.
 
-    Mic-E and NMEA with an explicit symbol need header context; use serialize_packet.
+    Mic-E destination bits are derived from the payload. To obtain the matching
+    header too, use serialize_packet with Header(source). NMEA with an explicit
+    symbol still needs header context.
     """
     if isinstance(payload, (Packet, Malformed)):
         raise TypeError("serialize_payload requires a payload model")

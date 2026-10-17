@@ -100,7 +100,7 @@ def check(
     for node, path in walk(value):
         # Envelope policies apply to the outer header, not encapsulated text.
         node_policy: EnvelopePolicy | None = policy
-        if isinstance(node, Header) and (
+        if isinstance(node, (Header, Packet)) and (
             not check_envelope or path not in ("$", "$.header")
         ):
             node_policy = None
@@ -171,7 +171,7 @@ def _header(v: Header, policy: EnvelopePolicy | None) -> Iterator[Finding]:
         ("source", v.source, policy.source_pattern),
         ("destination", v.destination, policy.destination_pattern),
     ):
-        if re.fullmatch(pattern, address) is None:
+        if address is not None and re.fullmatch(pattern, address) is None:
             yield f"$.{name}", f"address does not match {name}_pattern"
     for i, hop in enumerate(v.path):
         if re.fullmatch(policy.path_address_pattern, hop.address) is None:
@@ -192,6 +192,12 @@ def _packet(v: Packet, policy: EnvelopePolicy | None) -> Iterator[Finding]:
 
         try:
             _mic_e.position_bytes(payload, v.header)
+            if v.header.destination is None:
+                for path, message in _header(
+                    _mic_e.resolve_header(v.header, payload), policy
+                ):
+                    if path == "$.destination":
+                        yield "$.header" + path[1:], message
         except FieldError as exc:
             yield "$.header.destination", str(exc)
     if isinstance(payload, NMEA) and payload.symbol is not None:

@@ -217,6 +217,8 @@ their own fully expanded examples in the field table.
     for schema, value in zip(_SCHEMAS, samples):
         name = schema.model.__name__
         doc += f"\n### {name}\n\nStandalone tag: `{schema.tag}`. [Back to type map](#type-map-and-object-catalog).\n\n"
+        if schema.model is a.Header:
+            doc += "A missing/null destination is an automatic header template, valid in a Packet only for Mic-E. Other Packet payloads require a destination. Mic-E serialization derives it from semantic fields without mutating the template; explicit addresses are checked.\n\n"
         if schema.model is a.Weather:
             doc += "Weather measurements are direct JSON properties; `weather` is not a JSON property.\n\n"
         doc += (
