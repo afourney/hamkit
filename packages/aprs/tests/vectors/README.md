@@ -26,7 +26,8 @@ wheel. Tests and vectors are repository resources, not runtime package data.
 
 ## Row contract
 
-- `id`, `title`, `profile`, `source`, and optional `note` preserve provenance.
+- `id`, `title`, `profile`, `source`, and optional `note`, `scope_note` and
+  `extension_tags` preserve provenance, copied verbatim from the source case.
 - `packet` is a **Latin-1 byte carrier**, not text to UTF-8 encode. Use
   `packet.encode("latin-1")`. JSON escapes preserve every control/high-bit byte.
   The generator checks source byte lengths and any supplied hex before writing.
@@ -38,6 +39,13 @@ wheel. Tests and vectors are repository resources, not runtime package data.
   makes no assertion; an explicit null does. This matches the source contract,
   which permits additional correctly decoded fields. These are not snapshots of
   current parser output. The generator imports no APRS parser or models.
+- Projections use the model's wire units and enums. Rain is projected from the
+  source's hundredths of an inch as inches (its millimetre conversions stay
+  unmapped), so unavailable rain readings remain explicit nulls. Storm kinds
+  map to `HC`/`TS`/`TD`, and Mic-E altitude to `mic_e`; an unknown source value
+  fails generation. DF bearing `usable`/`accuracy_less_than_deg` are not
+  projected: they derive from a quality-code mapping the sources dispute (see
+  `docs/UNRESOLVED_SPEC.md`). FAP rows keep FAP's own metric weather units.
 - `unmapped` lists source paths not consumed by the public-JSON projection.
   Their values remain in `source_expected`; passing the projection does **not**
   claim those assertions pass. Examples include derived grid/range views,
@@ -53,8 +61,9 @@ wheel. Tests and vectors are repository resources, not runtime package data.
 No decoder implementation is used to generate desired expectations. Field and
 unit renames, conversions, and FAP compatibility mappings are explicit in
 `generate_vectors.py`. The integrity tests verify exact regeneration, unique IDs,
-section/row counts, and that projected keys belong to public JSON models, even
-for codecs that cannot yet decode their packets. Coordinate tolerance is 1e-8
+section/row counts, and that projected keys and enum values belong to public
+JSON models, even for codecs that cannot yet decode their packets. Coordinate
+tolerance is 1e-8
 degrees; other floating measurements use 1e-6 absolute / 1e-9 relative tolerance.
 
 ## Expected failures and unresolved assertions
@@ -79,7 +88,7 @@ invented passing placeholders. No other packet entries are omitted from the
 behavioral projections. Existing planned codec gaps, source compatibility
 choices, and adapter/state work are distinct from parser regressions.
 
-At creation on base `16b711c`, the 1,561 corpus cases yield **631 passes and 930
+Currently the 1,561 corpus cases yield **642 passes and 919
 expected failures**, including the 23 unresolved state occurrences. These are
 projection results, not a claim of complete compliance with every source field.
 The complete suite includes the pre-existing tests and harness checks.
@@ -89,7 +98,7 @@ The complete suite includes the pre-existing tests and harness checks.
 | hdr.jsonl |   51 |   51 |                0 |
 | pos.jsonl |   68 |   56 |               12 |
 | tim.jsonl |   20 |   17 |                3 |
-| ext.jsonl |   50 |   39 |               11 |
+| ext.jsonl |   50 |   50 |                0 |
 | cmp.jsonl |  122 |    0 |              122 |
 | mic.jsonl |  265 |    0 |              265 |
 | obj.jsonl |   53 |    0 |               53 |

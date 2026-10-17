@@ -210,6 +210,13 @@ invalid values stays in `comment` with a diagnostic, and extensions this
 version cannot decode yet (such as `!DAO!` or weather) make the payload
 `Opaque` rather than being mistaken for comment text.
 
+When sending, measurements such as course, speed and altitude are rounded to
+whole units, like coordinates. Values with no exact wire form (PHG power must
+be n² watts) and values that would read back with a different meaning (a known
+speed of zero with no course) raise `ConformanceError`. Modeled fields the wire
+format cannot carry, such as a PHG rate or an altitude reference, raise
+`CodecNotImplementedError` instead of being dropped.
+
 Build with Python:
 
 ```python

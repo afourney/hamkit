@@ -102,9 +102,6 @@ def weather(data: JSON) -> JSON:
         "temperature_f": ("temperature", "fahrenheit"),
         "humidity_percent": ("humidity", "percent"),
         "pressure_hpa": ("pressure", "hPa"),
-        "rain_1h_mm": ("rain_1h", "mm"),
-        "rain_24h_mm": ("rain_24h", "mm"),
-        "rain_since_midnight_mm": ("rain_since_midnight", "mm"),
         "snow_24h_inches": ("snow_24h", "inches"),
         "luminosity_w_m2": ("luminosity", "W/m2"),
         "rain_counter_raw": ("rain_counter", "count"),
@@ -112,6 +109,13 @@ def weather(data: JSON) -> JSON:
     for key, (name, unit) in units.items():
         if key in data:
             result[name] = {"value": data[key], "unit": unit}
+    # Rain is sent in hundredths of an inch. Project that wire unit, like every
+    # other reading; the source's millimetre conversions stay unmapped.
+    for name in ("rain_1h", "rain_24h", "rain_since_midnight"):
+        if f"{name}_hundredth_in" in data:
+            hundredths = data[f"{name}_hundredth_in"]
+            value = None if hundredths is None else hundredths / 100
+            result[name] = {"value": value, "unit": "inches"}
     if "wind_speed_raw" in data:
         result["wind_speed"] = {
             "value": data["wind_speed_raw"],
@@ -163,6 +167,8 @@ def translate(e: JSON) -> JSON:
         p["compression"] = select(c, "fix nmea_source origin_code")
         if "csT_raw" in c:
             p["compression"]["raw"] = c["csT_raw"]
+        if "ignored" in c:
+            p["compression"]["ignored"] = c["ignored"]
     if "mic_e" in e:
         m = e["mic_e"]
         names = {
@@ -192,7 +198,8 @@ def translate(e: JSON) -> JSON:
         (
             "df_bearing",
             "bearing",
-            "bearing_deg hits_code range_code quality_code usable accuracy_less_than_deg",
+            # usable/accuracy derive from a disputed Q mapping; see UNRESOLVED_SPEC.md.
+            "bearing_deg hits_code range_code quality_code",
         ),
         (
             "area",
@@ -206,9 +213,12 @@ def translate(e: JSON) -> JSON:
     if "altitude" in e and kind != "nmea":
         alt = e["altitude"]
         unit = "feet" if "feet" in alt else "meters"
-        enc = {"comment": "feet_extension", "mic-e": "mic_e"}.get(
-            alt.get("encoding"), alt.get("encoding", "feet_extension")
-        )
+        enc = {
+            "comment": "feet_extension",
+            "compressed": "compressed",
+            "mic-e": "mic_e",
+            "mic-e-base91": "mic_e",
+        }[alt.get("encoding", "comment")]
         ext["altitude"] = {
             "measurement": {"value": alt[unit], "unit": unit},
             "encoding": enc,
@@ -305,7 +315,12 @@ def translate(e: JSON) -> JSON:
     if "storm" in e:
         storm = e["storm"]
         p.setdefault("extensions", {})["storm"] = {
-            "kind": storm["type"],
+            # APRS101 storm codes; unknown source names fail generation.
+            "kind": {
+                "hurricane": "HC",
+                "tropical-storm": "TS",
+                "tropical-depression": "TD",
+            }[storm["type"]],
             **select(
                 storm,
                 "predicted sustained_wind_knots peak_gust_knots central_pressure_hpa hurricane_radius_nm tropical_storm_radius_nm whole_gale_radius_nm",
@@ -603,6 +618,9 @@ def records() -> list[JSON]:
                 row["options"] = case["options"]
             if case.get("note"):
                 row["note"] = case["note"]
+            for key in ("scope_note", "extension_tags"):
+                if key in case:
+                    row[key] = case[key]
             if "steps" in case:
                 row["expected"] = None
                 row[

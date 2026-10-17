@@ -47,12 +47,12 @@ def test_comparator_checks_missing_null_lists_and_tolerances() -> None:
 def test_known_gap_does_not_hide_an_unrelated_regression(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = next(r for r in all_rows() if r["id"] == "EXT-039")
+    row = next(r for r in all_rows() if r["id"] == "STA-008")
     packet = a.parse_packet(row["packet"].encode("latin-1"))
-    assert isinstance(packet, a.Packet) and isinstance(packet.payload, a.Position)
+    assert isinstance(packet, a.Packet) and isinstance(packet.payload, a.Status)
     with pytest.raises(KnownGap):
         check(row)
-    bad = replace(packet, payload=replace(packet.payload, latitude_deg=0))
+    bad = replace(packet, header=a.Header("WRONG", "APRS"))
     monkeypatch.setattr(a, "parse_packet", lambda *args, **kwargs: bad)
     with pytest.raises(AssertionError) as error:
         check(row)
@@ -62,18 +62,11 @@ def test_known_gap_does_not_hide_an_unrelated_regression(
 def test_completed_gap_returns_success_for_strict_xpass(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = next(r for r in all_rows() if r["id"] == "EXT-039")
+    row = next(r for r in all_rows() if r["id"] == "STA-008")
     packet = a.parse_packet(row["packet"].encode("latin-1"))
-    assert isinstance(packet, a.Packet) and isinstance(packet.payload, a.Position)
-    extensions = packet.payload.extensions
-    assert extensions.bearing is not None
-    bearing = replace(extensions.bearing, usable=True, accuracy_less_than_deg=240)
-    fixed = replace(
-        packet,
-        payload=replace(
-            packet.payload, extensions=replace(extensions, bearing=bearing)
-        ),
-    )
+    assert isinstance(packet, a.Packet) and isinstance(packet.payload, a.Status)
+    status = a.Status(" Home", grid=a.Grid("IO91"), symbol=a.Symbol("/", "-"))
+    fixed = replace(packet, payload=status)
     monkeypatch.setattr(a, "parse_packet", lambda *args, **kwargs: fixed)
     check(row)  # The parametrized test's strict mark turns this into XPASS/failure.
 
@@ -92,10 +85,10 @@ def test_parser_exception_is_not_an_expected_failure(
 
 
 def test_projection_keys_belong_to_public_json_models() -> None:
-    """Catch adapter typos even when an entire codec is currently unimplemented."""
+    """Catch adapter typos and invalid enum values, even for missing codecs."""
     import dataclasses
     import types
-    from typing import Union, get_args, get_origin, get_type_hints
+    from typing import Literal, Union, get_args, get_origin, get_type_hints
 
     from hamkit.aprs._json import _SCHEMAS
 
@@ -106,6 +99,13 @@ def test_projection_keys_belong_to_public_json_models() -> None:
             return
         model: Any
         origin, args = get_origin(annotation), get_args(annotation)
+        # Enforce enums only where every non-null option is a Literal.
+        options = args if origin in (Union, types.UnionType) else (annotation,)
+        options = tuple(t for t in options if t is not type(None))
+        if options and all(get_origin(t) is Literal for t in options):
+            allowed = [v for t in options for v in get_args(t)]
+            assert value in allowed, (path, value, allowed)
+            return
         if isinstance(value, dict):
             if "type" in value:
                 assert value["type"] in tags, (path, value["type"])

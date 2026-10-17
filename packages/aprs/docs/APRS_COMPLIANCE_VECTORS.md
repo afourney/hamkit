@@ -35924,7 +35924,7 @@ General and directed queries; geographic footprints; response payloads; capabili
       "ack_requested": false
     },
     "query": {
-      "type": "PING?",
+      "type": "PING",
       "directed": true,
       "ack_requested": false
     }

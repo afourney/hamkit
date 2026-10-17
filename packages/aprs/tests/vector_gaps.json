@@ -796,54 +796,6 @@
   },
   {
     "kind": "fields",
-    "reason": "DF usability/accuracy annotations are not decoded from quality codes.",
-    "cases": {
-      "EXT-038": {
-        "$.payload.extensions.bearing.usable": null
-      },
-      "EXT-039": {
-        "$.payload.extensions.bearing.usable": null,
-        "$.payload.extensions.bearing.accuracy_less_than_deg": null
-      },
-      "EXT-040": {
-        "$.payload.extensions.bearing.usable": null,
-        "$.payload.extensions.bearing.accuracy_less_than_deg": null
-      },
-      "EXT-041": {
-        "$.payload.extensions.bearing.usable": null,
-        "$.payload.extensions.bearing.accuracy_less_than_deg": null
-      },
-      "EXT-042": {
-        "$.payload.extensions.bearing.usable": null,
-        "$.payload.extensions.bearing.accuracy_less_than_deg": null
-      },
-      "EXT-043": {
-        "$.payload.extensions.bearing.usable": null,
-        "$.payload.extensions.bearing.accuracy_less_than_deg": null
-      },
-      "EXT-044": {
-        "$.payload.extensions.bearing.usable": null,
-        "$.payload.extensions.bearing.accuracy_less_than_deg": null
-      },
-      "EXT-045": {
-        "$.payload.extensions.bearing.usable": null,
-        "$.payload.extensions.bearing.accuracy_less_than_deg": null
-      },
-      "EXT-046": {
-        "$.payload.extensions.bearing.usable": null,
-        "$.payload.extensions.bearing.accuracy_less_than_deg": null
-      },
-      "EXT-047": {
-        "$.payload.extensions.bearing.usable": null,
-        "$.payload.extensions.bearing.accuracy_less_than_deg": null
-      },
-      "EXT-049": {
-        "$.payload.extensions.bearing.accuracy_less_than_deg": null
-      }
-    }
-  },
-  {
-    "kind": "fields",
     "reason": "Explicit FAP compatibility difference; source defaults/options or text normalization differ.",
     "cases": {
       "FAP-001": {
