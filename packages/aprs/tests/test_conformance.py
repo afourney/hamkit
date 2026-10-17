@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
 # SPDX-License-Identifier: MIT
 """APRS rules a well-formed model can break: reported, and never sent."""
+
 from __future__ import annotations
 
 import unittest
@@ -269,10 +270,18 @@ class PlaceTests(unittest.TestCase):
                 value = a.Position(1, 2, symbol, extensions=a.Extensions(motion=motion))
                 self.assertEqual(a.parse_payload(a.serialize_payload(value)), value)
 
+    def test_phg_rate_roundtrip(self) -> None:
+        for rate in (0, 5):
+            value = a.Position(
+                1,
+                2,
+                SYMBOL,
+                extensions=a.Extensions(phg=a.PHG(25, 80, 3, rate_per_hour=rate)),
+            )
+            self.assertEqual(a.parse_payload(a.serialize_payload(value)), value)
+
     def test_unencoded_extension_fields_are_explicitly_unsupported(self) -> None:
         for extensions, symbol in (
-            (a.Extensions(phg=a.PHG(25, 80, 3, rate_per_hour=5)), SYMBOL),
-            (a.Extensions(phg=a.PHG(25, 80, 3, rate_per_hour=0)), SYMBOL),
             (
                 a.Extensions(
                     altitude=a.Altitude(
@@ -394,7 +403,7 @@ class PlaceTests(unittest.TestCase):
                     extensions=a.Extensions(motion=a.Motion(), telemetry=telemetry),
                 )
             ),
-            {"$.payload.extensions.telemetry.encoding"},
+            set(),
         )
 
 

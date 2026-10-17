@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 """Received input: lenient where usable, Malformed only where undecodable."""
+
 import copy
 import dataclasses
 import json
@@ -91,7 +92,7 @@ class LenientDecodingTests(unittest.TestCase):
         with self.assertRaises(a.ConformanceError):
             a.serialize_packet(packet)
 
-    def test_recognized_but_undecoded_extensions_are_unsupported(self) -> None:
+    def test_recognized_extensions_decode(self) -> None:
         for information in (
             b"!4903.50N/07201.75W>hi !W12!",
             b"!4903.50N/07201.75W>|!!!!|",
@@ -101,9 +102,8 @@ class LenientDecodingTests(unittest.TestCase):
             with self.subTest(information=information):
                 packet = a.parse_packet(b"N0CALL>APRS:" + information)
                 assert isinstance(packet, a.Packet)
-                self.assertIsInstance(packet.payload, a.Opaque)
-                with self.assertRaises(a.CodecNotImplementedError):
-                    a.parse_packet(b"N0CALL>APRS:" + information, unsupported="raise")
+                self.assertIsInstance(packet.payload, a.Position)
+                self.assertEqual(a.parse_packet(a.serialize_packet(packet)), packet)
 
     def test_invalid_df_bearing_is_inspectable_but_not_sendable(self) -> None:
         raw = b"N0CALL>APRS:!4903.50N/07201.75W\\088/036/999/729"
@@ -205,17 +205,15 @@ class MalformedTests(unittest.TestCase):
         self.assertEqual(a.from_json(a.to_json(binary)), binary)
 
     def test_unknown_codec_is_not_a_malformed_diagnosis(self) -> None:
-        for raw in (
-            b"N0CALL>APRS:_not-yet-interpreted",
-            b"N0CALL>APRS:T#incomplete",
-            b"N0CALL>APRS:~\xff",
-        ):
+        for raw in (b"N0CALL>APRS:~\xff",):
             result = a.parse_packet(raw)
             assert isinstance(result, a.Packet)
             assert isinstance(result.payload, a.Opaque)
             self.assertEqual(a.serialize_packet(result), raw)
             with self.assertRaises(a.CodecNotImplementedError):
                 a.parse_packet(raw, unsupported="raise")
+        for raw in (b"N0CALL>APRS:_not-a-timestamp", b"N0CALL>APRS:T#incomplete"):
+            self.assertIsInstance(a.parse_packet(raw), a.Malformed)
         result = a.parse_packet(b">490S5P:`12345678")
         assert isinstance(result, a.Malformed)
         self.assertEqual(

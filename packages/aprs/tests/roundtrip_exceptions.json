@@ -1,0 +1,1262 @@
+{
+  "BAD-001": {
+    "kind": "malformed",
+    "reasons": [
+      "missing information separator",
+      "missing source separator",
+      "empty or invalid address token"
+    ]
+  },
+  "BAD-002": {
+    "kind": "malformed",
+    "reasons": ["missing information separator"]
+  },
+  "BAD-003": {
+    "kind": "malformed",
+    "reasons": ["missing source separator"]
+  },
+  "BAD-004": {
+    "kind": "malformed",
+    "reasons": ["empty or invalid address token"]
+  },
+  "BAD-005": {
+    "kind": "malformed",
+    "reasons": ["empty or invalid address token"]
+  },
+  "BAD-006": {
+    "kind": "malformed",
+    "reasons": ["information field is empty"]
+  },
+  "BAD-007": {
+    "kind": "malformed",
+    "reasons": ["empty or invalid address token"]
+  },
+  "BAD-008": {
+    "kind": "malformed",
+    "reasons": ["empty or invalid address token"]
+  },
+  "BAD-014": {
+    "kind": "malformed",
+    "reasons": ["empty or invalid address token"]
+  },
+  "BAD-015": {
+    "kind": "malformed",
+    "reasons": ["coordinate out of range", "coordinate out of range"]
+  },
+  "BAD-016": {
+    "kind": "malformed",
+    "reasons": ["coordinate out of range", "coordinate out of range"]
+  },
+  "BAD-017": {
+    "kind": "malformed",
+    "reasons": ["coordinate out of range", "coordinate out of range"]
+  },
+  "BAD-018": {
+    "kind": "malformed",
+    "reasons": ["coordinate out of range", "coordinate out of range"]
+  },
+  "BAD-019": {
+    "kind": "malformed",
+    "reasons": ["coordinate out of range", "coordinate out of range"]
+  },
+  "BAD-020": {
+    "kind": "malformed",
+    "reasons": ["coordinate out of range", "coordinate out of range"]
+  },
+  "BAD-021": {
+    "kind": "malformed",
+    "reasons": ["invalid coordinate syntax", "invalid coordinate syntax"]
+  },
+  "BAD-022": {
+    "kind": "malformed",
+    "reasons": ["invalid coordinate syntax", "invalid coordinate syntax"]
+  },
+  "BAD-023": {
+    "kind": "malformed",
+    "reasons": ["invalid coordinate syntax", "invalid coordinate syntax"]
+  },
+  "BAD-024": {
+    "kind": "malformed",
+    "reasons": [
+      "ambiguity must hide trailing minute digits",
+      "position ambiguity is not implemented"
+    ]
+  },
+  "BAD-025": {
+    "kind": "malformed",
+    "reasons": [
+      "longitude cannot be more ambiguous than latitude",
+      "position ambiguity is not implemented"
+    ]
+  },
+  "BAD-026": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated uncompressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "missing or truncated field"
+    ]
+  },
+  "BAD-027": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated uncompressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "missing or truncated field"
+    ]
+  },
+  "BAD-028": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated uncompressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "missing or truncated field"
+    ]
+  },
+  "BAD-029": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated uncompressed position",
+      "missing or truncated field",
+      "missing or truncated field"
+    ]
+  },
+  "BAD-030": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated uncompressed position",
+      "missing or truncated field",
+      "missing or truncated field"
+    ]
+  },
+  "BAD-031": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated uncompressed position",
+      "missing or truncated field",
+      "missing or truncated field"
+    ]
+  },
+  "BAD-032": {
+    "kind": "malformed",
+    "reasons": ["truncated uncompressed position", "missing or truncated field"]
+  },
+  "BAD-033": {
+    "kind": "conformance",
+    "reasons": ["begins with an invalid data extension"]
+  },
+  "BAD-036": {
+    "kind": "conformance",
+    "reasons": ["begins with an invalid data extension"]
+  },
+  "BAD-037": {
+    "kind": "conformance",
+    "reasons": ["begins with an invalid data extension"]
+  },
+  "BAD-038": {
+    "kind": "conformance",
+    "reasons": ["begins with an invalid data extension"]
+  },
+  "BAD-039": {
+    "kind": "conformance",
+    "reasons": ["contains an invalid /A= altitude"]
+  },
+  "BAD-040": {
+    "kind": "conformance",
+    "reasons": ["contains an invalid /A= altitude"]
+  },
+  "BAD-041": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated uncompressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "missing or truncated field"
+    ]
+  },
+  "BAD-042": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated compressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "missing or truncated field"
+    ]
+  },
+  "BAD-043": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated compressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "missing or truncated field"
+    ]
+  },
+  "BAD-044": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated compressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "missing or truncated field"
+    ]
+  },
+  "BAD-045": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated compressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "missing or truncated field"
+    ]
+  },
+  "BAD-046": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated compressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "missing or truncated field"
+    ]
+  },
+  "BAD-047": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated compressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "missing or truncated field"
+    ]
+  },
+  "BAD-048": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated compressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "missing or truncated field"
+    ]
+  },
+  "BAD-049": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated compressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-050": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated compressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-051": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated compressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-052": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated compressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-053": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated compressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-054": {
+    "kind": "malformed",
+    "reasons": [
+      "invalid base-91 field",
+      "missing or truncated field",
+      "missing or truncated field",
+      "position ambiguity is not implemented"
+    ]
+  },
+  "BAD-055": {
+    "kind": "malformed",
+    "reasons": [
+      "invalid base-91 field",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-056": {
+    "kind": "malformed",
+    "reasons": [
+      "invalid base-91 field",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-057": {
+    "kind": "malformed",
+    "reasons": [
+      "invalid base-91 field",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-058": {
+    "kind": "malformed",
+    "reasons": [
+      "invalid base-91 field",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-059": {
+    "kind": "malformed",
+    "reasons": [
+      "invalid base-91 field",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-060": {
+    "kind": "malformed",
+    "reasons": [
+      "invalid compressed symbol table",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-061": {
+    "kind": "malformed",
+    "reasons": [
+      "invalid compressed symbol table",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-062": {
+    "kind": "malformed",
+    "reasons": [
+      "invalid compressed symbol table",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-063": {
+    "kind": "malformed",
+    "reasons": [
+      "invalid compressed symbol table",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-064": {
+    "kind": "malformed",
+    "reasons": [
+      "invalid compressed symbol table",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-065": {
+    "kind": "malformed",
+    "reasons": [
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-066": {
+    "kind": "malformed",
+    "reasons": [
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "BAD-067": {
+    "kind": "malformed",
+    "reasons": ["invalid Mic-E destination"]
+  },
+  "BAD-068": {
+    "kind": "malformed",
+    "reasons": ["invalid Mic-E destination"]
+  },
+  "BAD-069": {
+    "kind": "malformed",
+    "reasons": ["invalid Mic-E destination"]
+  },
+  "BAD-070": {
+    "kind": "malformed",
+    "reasons": ["invalid Mic-E destination"]
+  },
+  "BAD-071": {
+    "kind": "malformed",
+    "reasons": ["invalid Mic-E destination"]
+  },
+  "BAD-072": {
+    "kind": "malformed",
+    "reasons": ["invalid Mic-E destination"]
+  },
+  "BAD-073": {
+    "kind": "malformed",
+    "reasons": ["information field is empty"]
+  },
+  "BAD-074": {
+    "kind": "malformed",
+    "reasons": ["truncated or invalid Mic-E information"]
+  },
+  "BAD-075": {
+    "kind": "malformed",
+    "reasons": ["truncated or invalid Mic-E information"]
+  },
+  "BAD-076": {
+    "kind": "malformed",
+    "reasons": ["truncated or invalid Mic-E information"]
+  },
+  "BAD-077": {
+    "kind": "malformed",
+    "reasons": ["truncated or invalid Mic-E information"]
+  },
+  "BAD-078": {
+    "kind": "malformed",
+    "reasons": ["truncated or invalid Mic-E information"]
+  },
+  "BAD-079": {
+    "kind": "malformed",
+    "reasons": ["truncated or invalid Mic-E information"]
+  },
+  "BAD-080": {
+    "kind": "malformed",
+    "reasons": ["truncated or invalid Mic-E information"]
+  },
+  "BAD-081": {
+    "kind": "malformed",
+    "reasons": ["truncated or invalid Mic-E information"]
+  },
+  "BAD-082": {
+    "kind": "malformed",
+    "reasons": ["invalid object name or alive marker"]
+  },
+  "BAD-083": {
+    "kind": "malformed",
+    "reasons": ["invalid object name or alive marker"]
+  },
+  "BAD-084": {
+    "kind": "malformed",
+    "reasons": ["invalid object name or alive marker"]
+  },
+  "BAD-085": {
+    "kind": "malformed",
+    "reasons": ["timestamp must contain six digits and a suffix"]
+  },
+  "BAD-086": {
+    "kind": "conformance",
+    "reasons": ["item names have at least three characters"]
+  },
+  "BAD-087": {
+    "kind": "malformed",
+    "reasons": ["invalid item name or marker"]
+  },
+  "BAD-088": {
+    "kind": "malformed",
+    "reasons": ["invalid item name or marker"]
+  },
+  "BAD-089": {
+    "kind": "conformance",
+    "reasons": ["exceeds 67 bytes"]
+  },
+  "BAD-090": {
+    "kind": "malformed",
+    "reasons": ["message requires a nine-byte addressee and colon"]
+  },
+  "BAD-091": {
+    "kind": "malformed",
+    "reasons": ["message requires a nine-byte addressee and colon"]
+  },
+  "BAD-092": {
+    "kind": "malformed",
+    "reasons": ["requires 1..5 alphanumeric characters"]
+  },
+  "BAD-093": {
+    "kind": "malformed",
+    "reasons": ["requires 1..5 alphanumeric characters"]
+  },
+  "BAD-094": {
+    "kind": "malformed",
+    "reasons": ["requires 1..5 alphanumeric characters"]
+  },
+  "BAD-095": {
+    "kind": "malformed",
+    "reasons": ["requires 1..5 alphanumeric characters"]
+  },
+  "BAD-096": {
+    "kind": "conformance",
+    "reasons": ["contains a reserved character (| ~)"]
+  },
+  "BAD-097": {
+    "kind": "conformance",
+    "reasons": ["contains a reserved character (| ~)"]
+  },
+  "BAD-098": {
+    "kind": "conformance",
+    "reasons": ["classic telemetry requires 0..999 or MIC"]
+  },
+  "BAD-099": {
+    "kind": "conformance",
+    "reasons": ["requires an integer in 0..255"]
+  },
+  "BAD-100": {
+    "kind": "conformance",
+    "reasons": ["requires an integer in 0..255"]
+  },
+  "BAD-101": {
+    "kind": "conformance",
+    "reasons": ["requires an integer in 0..255"]
+  },
+  "BAD-102": {
+    "kind": "malformed",
+    "reasons": ["telemetry requires five analog channels and digital bits"]
+  },
+  "BAD-103": {
+    "kind": "malformed",
+    "reasons": ["telemetry requires eight binary digits"]
+  },
+  "BAD-104": {
+    "kind": "malformed",
+    "reasons": ["telemetry requires eight binary digits"]
+  },
+  "BAD-105": {
+    "kind": "conformance",
+    "reasons": [
+      "required report slot; use Measurement(None, unit) if unavailable"
+    ]
+  },
+  "BAD-106": {
+    "kind": "malformed",
+    "reasons": ["must be in 1..12"]
+  },
+  "BAD-107": {
+    "kind": "conformance",
+    "reasons": ["reading outside the quantity's range"]
+  },
+  "BAD-109": {
+    "kind": "malformed",
+    "reasons": [
+      "missing information separator",
+      "missing source separator",
+      "empty or invalid address token"
+    ]
+  },
+  "BAD-110": {
+    "kind": "malformed",
+    "reasons": ["missing information separator"]
+  },
+  "BAD-111": {
+    "kind": "malformed",
+    "reasons": ["information field is empty"]
+  },
+  "BAD-112": {
+    "kind": "malformed",
+    "reasons": ["missing information separator", "missing source separator"]
+  },
+  "BAD-113": {
+    "kind": "malformed",
+    "reasons": ["user-defined payload needs user ID and type"]
+  },
+  "BAD-114": {
+    "kind": "malformed",
+    "reasons": ["user-defined payload needs user ID and type"]
+  },
+  "BAD-115": {
+    "kind": "conformance",
+    "reasons": ["status exceeds 62 bytes"]
+  },
+  "BAD-116": {
+    "kind": "conformance",
+    "reasons": ["status exceeds 62 bytes"]
+  },
+  "BAD-117": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "BAD-121": {
+    "kind": "malformed",
+    "reasons": ["invalid symbol table or overlay"]
+  },
+  "BAD-122": {
+    "kind": "malformed",
+    "reasons": ["numeric overlays a-j exist only in compressed form"]
+  },
+  "BAD-123": {
+    "kind": "malformed",
+    "reasons": ["invalid symbol table or overlay"]
+  },
+  "BAD-124": {
+    "kind": "malformed",
+    "reasons": ["protocol token must be printable ASCII"]
+  },
+  "BAD-125": {
+    "kind": "malformed",
+    "reasons": ["protocol token must be printable ASCII"]
+  },
+  "FAP-018": {
+    "kind": "malformed",
+    "reasons": [
+      "invalid coordinate syntax",
+      "invalid coordinate syntax",
+      "invalid coordinate syntax"
+    ]
+  },
+  "FAP-019": {
+    "kind": "malformed",
+    "reasons": ["invalid object name or alive marker"]
+  },
+  "FAP-021": {
+    "kind": "malformed",
+    "reasons": ["invalid symbol table or overlay"]
+  },
+  "FAP-030": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-031": {
+    "kind": "malformed",
+    "reasons": [
+      "truncated compressed position",
+      "missing or truncated field",
+      "missing or truncated field",
+      "invalid coordinate syntax"
+    ]
+  },
+  "FAP-032": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-033": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-038": {
+    "kind": "malformed",
+    "reasons": ["missing information separator"]
+  },
+  "FAP-039": {
+    "kind": "malformed",
+    "reasons": ["missing source separator"]
+  },
+  "FAP-040": {
+    "kind": "malformed",
+    "reasons": ["missing information separator"]
+  },
+  "FAP-041": {
+    "kind": "malformed",
+    "reasons": ["information field is empty"]
+  },
+  "FAP-042": {
+    "kind": "malformed",
+    "reasons": ["missing source separator"]
+  },
+  "FAP-043": {
+    "kind": "malformed",
+    "reasons": ["empty or invalid address token"]
+  },
+  "FAP-046": {
+    "kind": "malformed",
+    "reasons": ["empty or invalid address token"]
+  },
+  "FAP-049": {
+    "kind": "malformed",
+    "reasons": ["empty or invalid address token"]
+  },
+  "FAP-050": {
+    "kind": "malformed",
+    "reasons": ["empty or invalid address token"]
+  },
+  "FAP-057": {
+    "kind": "malformed",
+    "reasons": ["invalid item name or marker"]
+  },
+  "FAP-060": {
+    "kind": "malformed",
+    "reasons": ["truncated uncompressed position"]
+  },
+  "FAP-061": {
+    "kind": "malformed",
+    "reasons": ["invalid item name or marker"]
+  },
+  "FAP-062": {
+    "kind": "conformance",
+    "reasons": ["exceeds 67 bytes"]
+  },
+  "FAP-064": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters", "exceeds 67 bytes"]
+  },
+  "FAP-065": {
+    "kind": "conformance",
+    "reasons": ["exceeds 67 bytes"]
+  },
+  "FAP-162": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-163": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-164": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-165": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-166": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-167": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-168": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-169": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-170": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-171": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-172": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-173": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-174": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-175": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-176": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-177": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-178": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-179": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-180": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-181": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-182": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-183": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-184": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-185": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-186": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-187": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-188": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-189": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-190": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-191": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-192": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-193": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-297": {
+    "kind": "conformance",
+    "reasons": ["reply-ack ID and ack exceed five characters"]
+  },
+  "FAP-299": {
+    "kind": "conformance",
+    "reasons": ["reply-ack ID and ack exceed five characters"]
+  },
+  "FAP-300": {
+    "kind": "conformance",
+    "reasons": ["reply-ack ID and ack exceed five characters"]
+  },
+  "FAP-301": {
+    "kind": "conformance",
+    "reasons": ["reply-ack ID and ack exceed five characters"]
+  },
+  "FAP-302": {
+    "kind": "conformance",
+    "reasons": ["reply-ack ID and ack exceed five characters"]
+  },
+  "FAP-303": {
+    "kind": "conformance",
+    "reasons": ["reply-ack ID and ack exceed five characters"]
+  },
+  "FAP-304": {
+    "kind": "conformance",
+    "reasons": ["reply-ack ID and ack exceed five characters"]
+  },
+  "FAP-305": {
+    "kind": "conformance",
+    "reasons": ["reply-ack ID and ack exceed five characters"]
+  },
+  "FAP-306": {
+    "kind": "conformance",
+    "reasons": ["reply-ack ID and ack exceed five characters"]
+  },
+  "FAP-343": {
+    "kind": "malformed",
+    "reasons": ["message requires a nine-byte addressee and colon"]
+  },
+  "FAP-344": {
+    "kind": "malformed",
+    "reasons": ["message requires a nine-byte addressee and colon"]
+  },
+  "FAP-348": {
+    "kind": "malformed",
+    "reasons": ["invalid Mic-E hex telemetry"]
+  },
+  "FAP-349": {
+    "kind": "malformed",
+    "reasons": ["invalid symbol table or overlay"]
+  },
+  "FAP-350": {
+    "kind": "malformed",
+    "reasons": ["invalid Mic-E destination"]
+  },
+  "FAP-351": {
+    "kind": "malformed",
+    "reasons": ["truncated or invalid Mic-E information"]
+  },
+  "FAP-352": {
+    "kind": "malformed",
+    "reasons": ["invalid Mic-E destination"]
+  },
+  "FAP-353": {
+    "kind": "malformed",
+    "reasons": ["invalid symbol table or overlay"]
+  },
+  "FAP-354": {
+    "kind": "malformed",
+    "reasons": ["invalid Mic-E destination"]
+  },
+  "FAP-355": {
+    "kind": "malformed",
+    "reasons": ["protocol token must be printable ASCII"]
+  },
+  "FAP-356": {
+    "kind": "malformed",
+    "reasons": ["invalid Mic-E destination"]
+  },
+  "FAP-362": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-365": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA sentence identifier"]
+  },
+  "FAP-367": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-369": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-370": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-371": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-372": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-373": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-375": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-376": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-377": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-378": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-379": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-380": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-381": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-382": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-383": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-384": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-385": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-386": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-387": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-388": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-389": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-390": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-391": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-392": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-393": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-394": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-395": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-396": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-397": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-398": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA field"]
+  },
+  "FAP-399": {
+    "kind": "malformed",
+    "reasons": ["invalid object name or alive marker"]
+  },
+  "FAP-403": {
+    "kind": "malformed",
+    "reasons": ["invalid object name or alive marker"]
+  },
+  "FAP-404": {
+    "kind": "malformed",
+    "reasons": ["invalid object name or alive marker"]
+  },
+  "FAP-410": {
+    "kind": "malformed",
+    "reasons": ["truncated uncompressed position"]
+  },
+  "FAP-411": {
+    "kind": "malformed",
+    "reasons": ["truncated compressed position"]
+  },
+  "FAP-412": {
+    "kind": "malformed",
+    "reasons": ["invalid compressed symbol table"]
+  },
+  "FAP-415": {
+    "kind": "conformance",
+    "reasons": ["would be read back as a data extension"]
+  },
+  "FAP-419": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-430": {
+    "kind": "malformed",
+    "reasons": ["invalid Mic-E hex telemetry"]
+  },
+  "FAP-432": {
+    "kind": "conformance",
+    "reasons": [
+      "requires an integer in 0..255",
+      "requires an integer in 0..255"
+    ]
+  },
+  "FAP-433": {
+    "kind": "conformance",
+    "reasons": [
+      "requires an integer in 0..255",
+      "requires an integer in 0..255",
+      "requires an integer in 0..255",
+      "requires an integer in 0..255",
+      "requires an integer in 0..255"
+    ]
+  },
+  "FAP-434": {
+    "kind": "malformed",
+    "reasons": ["telemetry requires five analog channels and digital bits"]
+  },
+  "FAP-435": {
+    "kind": "malformed",
+    "reasons": ["telemetry requires five analog channels and digital bits"]
+  },
+  "FAP-436": {
+    "kind": "malformed",
+    "reasons": ["telemetry requires five analog channels and digital bits"]
+  },
+  "FAP-437": {
+    "kind": "malformed",
+    "reasons": ["telemetry requires five analog channels and digital bits"]
+  },
+  "FAP-438": {
+    "kind": "malformed",
+    "reasons": ["telemetry requires five analog channels and digital bits"]
+  },
+  "FAP-439": {
+    "kind": "conformance",
+    "reasons": ["exceeds 4 bytes"]
+  },
+  "FAP-448": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-449": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-450": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-451": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-453": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-454": {
+    "kind": "malformed",
+    "reasons": ["must be in 1..31"]
+  },
+  "FAP-455": {
+    "kind": "malformed",
+    "reasons": ["must be in 1..31"]
+  },
+  "FAP-456": {
+    "kind": "malformed",
+    "reasons": ["must be in 1..31"]
+  },
+  "FAP-462": {
+    "kind": "malformed",
+    "reasons": ["longitude cannot be more ambiguous than latitude"]
+  },
+  "FAP-466": {
+    "kind": "conformance",
+    "reasons": ["text contains control characters"]
+  },
+  "FAP-469": {
+    "kind": "conformance",
+    "reasons": ["begins with an invalid data extension"]
+  },
+  "FAP-471": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-472": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-475": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-476": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-477": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-479": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-496": {
+    "kind": "conformance",
+    "reasons": [
+      "requires an integer in 0..255",
+      "requires an integer in 0..255"
+    ]
+  },
+  "FAP-497": {
+    "kind": "conformance",
+    "reasons": ["extensions and comment exceed 43 bytes"]
+  },
+  "FAP-500": {
+    "kind": "malformed",
+    "reasons": ["invalid object name or alive marker"]
+  },
+  "NME-011": {
+    "kind": "malformed",
+    "reasons": ["invalid NMEA checksum field"]
+  },
+  "OBJ-053": {
+    "kind": "malformed",
+    "reasons": ["names cannot have leading or trailing spaces"]
+  },
+  "TIM-011": {
+    "kind": "malformed",
+    "reasons": ["must be in 1..31"]
+  },
+  "TIM-012": {
+    "kind": "malformed",
+    "reasons": ["must be in 1..31"]
+  },
+  "TIM-013": {
+    "kind": "malformed",
+    "reasons": ["must be in 0..23"]
+  },
+  "TIM-014": {
+    "kind": "malformed",
+    "reasons": ["must be in 0..59"]
+  },
+  "TIM-015": {
+    "kind": "malformed",
+    "reasons": ["must be in 0..23"]
+  },
+  "TIM-016": {
+    "kind": "malformed",
+    "reasons": ["must be in 0..59"]
+  },
+  "TIM-017": {
+    "kind": "malformed",
+    "reasons": ["must be in 0..59"]
+  },
+  "TIM-018": {
+    "kind": "malformed",
+    "reasons": ["unknown timestamp suffix"]
+  }
+}

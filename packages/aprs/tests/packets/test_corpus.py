@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
 # SPDX-License-Identifier: MIT
-"""Every JSONL row is independently collected; only reviewed gaps may xfail."""
+"""Every JSONL row is independently collected, without expected-failure escapes."""
+
 from __future__ import annotations
 
 import json
@@ -13,10 +14,6 @@ import pytest
 from hamkit import aprs
 
 DIRECTORY = Path(__file__).parents[1] / "vectors"
-
-
-class KnownGap(AssertionError):
-    """A specifically enumerated missing capability, never a generic mismatch."""
 
 
 def differences(actual: Any, expected: Any, path: str = "$") -> list[str]:
@@ -53,86 +50,51 @@ def differences(actual: Any, expected: Any, path: str = "$") -> list[str]:
     )
 
 
+def rows():
+    return [
+        json.loads(line)
+        for file in sorted(DIRECTORY.glob("*.jsonl"))
+        for line in file.read_text().splitlines()
+    ]
+
+
 def load() -> list[Any]:
-    params = []
-    for file in sorted(DIRECTORY.glob("*.jsonl")):
-        for line, text in enumerate(file.read_text().splitlines(), 1):
-            row = json.loads(text)
-            label = f"{file.name}:{line}:{row['id']}"
-            marks = []
-            if row.get("gap"):
-                marks = [
-                    pytest.mark.xfail(
-                        strict=True, raises=KnownGap, reason=row["gap"]["reason"]
-                    )
-                ]
-            params.append(pytest.param(row, id=label, marks=marks))
-    assert params, "no vectors found"
-    return params
+    return [pytest.param(row, id=row["id"]) for row in rows()]
 
 
 def check(row: dict[str, Any]) -> None:
+    from hamkit.aprs._compatibility import view
+
     raw = row["packet"].encode("latin-1")
-    packet = aprs.parse_packet(
-        raw,
-        profile="rf"
-        if row["profile"] == "strict-envelope" or row.get("options", {}).get("ax25")
-        else "monitor",
-    )
-    actual = aprs.to_json_dict(packet, include_defaults=True)
+    actual, rejected = view(raw, row["profile"], row.get("options"))
     assert actual["original_wire"] == row["packet"], "original bytes changed"
-    if row.get("unresolved"):
-        raise KnownGap(row["unresolved"])
-    expected = row["expected"]
-    errors = differences(actual, expected)
+    assert not row.get("gap") and not row.get("unresolved")
+    errors = differences(actual, row["expected"])
+    if row.get("rejection") and not rejected:
+        errors.append("$: expected malformed/nonconforming input")
     if row.get("rejection"):
-        rejected = isinstance(packet, aprs.Malformed) or any(
-            d.code == "nonconforming" for d in packet.diagnostics
+        from source_details import check_rejection
+
+        errors.extend(check_rejection(row))
+    if row.get("unmapped"):
+        from source_details import check_core, check_fap
+
+        errors.extend(
+            (check_fap if row["profile"] == "compatibility-fap" else check_core)(row)
         )
-        if not rejected:
-            errors.append("$: expected malformed/nonconforming input")
-    if not errors:
-        return
-    gap = row.get("gap", {})
-    if (
-        gap.get("kind") == "opaque"
-        and isinstance(packet, aprs.Packet)
-        and isinstance(packet.payload, aprs.Opaque)
-    ):
-        if "header" in expected:
-            assert not differences(
-                actual["header"], expected["header"]
-            ), "opaque header changed"
-        assert (
-            packet.payload.information == raw.partition(b":")[2]
-        ), "opaque bytes changed"
-        assert packet.payload.diagnostic is not None
-        assert (
-            gap["reason"]
-            == "Unimplemented decoding: " + packet.payload.diagnostic.message
-        ), "different unsupported capability"
-        raise KnownGap(gap["reason"] + "\n" + "\n".join(errors))
-    if gap.get("kind") == "fields":
-        allowed = gap["allowed_actual"]
-        paths = {error.split(": ", 1)[0] for error in errors}
-        if paths <= allowed.keys():
-            for path in paths:
-                if path == "$":
-                    assert allowed[path] == "rejection" and isinstance(
-                        packet, aprs.Packet
-                    )
-                    continue
-                current: Any = actual
-                for key in path[2:].split("."):
-                    if not isinstance(current, dict) or key not in current:
-                        current = {"missing": True}
-                        break
-                    current = current[key]
-                assert (
-                    current == allowed[path]
-                ), f"{path}: changed beyond the documented gap"
-            raise KnownGap(gap["reason"] + "\n" + "\n".join(errors))
-    raise AssertionError("\n".join(errors))
+    if row.get("sequence"):
+        from receiver import Receiver
+
+        receiver = Receiver()
+        for step in rows():
+            if step.get("sequence") == row["sequence"]:
+                state = receiver.receive(
+                    aprs.parse_packet(step["packet"].encode("latin1"))
+                )
+                if step["id"] == row["id"]:
+                    errors.extend(differences(state, row["state_expected"]))
+                    break
+    assert not errors, "\n".join(errors)
 
 
 @pytest.mark.parametrize("row", load())

@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
 # SPDX-License-Identifier: MIT
 """Semantic NMEA validation applies equally to Python and JSON construction."""
+
 import json
 import unittest
 from typing import Any
@@ -117,8 +118,8 @@ class NMEAInvariantTests(unittest.TestCase):
             )
         report = a.NMEA(valid, a.NMEAMetadata("GP"), position_usable=True)
         self.assertEqual(a.from_json(a.to_json(report)), report)
-        with self.assertRaises(a.CodecNotImplementedError):
-            a.serialize_packet(a.Packet(a.Header("N0CALL", "APRS"), report))
+        packet = a.Packet(a.Header("N0CALL", "APRS"), report)
+        self.assertEqual(a.parse_packet(a.serialize_packet(packet)), packet)
 
     def test_receiver_specific_rules_are_not_invented(self) -> None:
         # No received precision is available to establish a speed tolerance.

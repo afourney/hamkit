@@ -3,13 +3,16 @@
 # SPDX-License-Identifier: MIT
 
 """Pure TNC2 parsing/composition; no AX.25, KISS, networking or radio I/O."""
+
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import get_args
 
-from . import _extensions
+from . import _data as d
+from . import _extensions, _messages
+from . import _models as m
 from ._capabilities import codec_support_for
 from ._conformance import check
 from ._data import Symbol, Timestamp
@@ -25,7 +28,6 @@ from ._errors import (
 from ._fields import (
     decode_coordinate,
     decode_timestamp,
-    encode_coordinate,
     encode_timestamp,
 )
 from ._fields.position import CoordinateAxis
@@ -45,7 +47,6 @@ from ._models import (
     Payload,
     Position,
     Reserved,
-    Status,
     ThirdParty,
     UnsupportedPolicy,
     UserDefined,
@@ -141,7 +142,9 @@ def _decode_payload(
     if dti in (b"`", b"'", b"\x1c", b"\x1d"):
         if header is None:
             raise ContextRequiredError("Mic-E decoding requires header=Header(...)")
-        raise CodecNotImplementedError("Mic-E destination and information decoding")
+        from . import _mic_e
+
+        return _mic_e.read(information, header, diagnostics)
     if dti == b"}":
         if depth >= options.max_depth:
             raise ResourceLimitError("third-party nesting limit reached")
@@ -157,16 +160,101 @@ def _decode_payload(
     if dti == b",":
         return Invalid(body)
     if information.startswith((b"!!", b"$ULTW", b"#", b"*")):
-        raise CodecNotImplementedError("vendor raw-weather interpretation")
+        from . import _weather
+
+        return m.RawWeather(
+            (
+                "ultimeter_2000"
+                if information.startswith((b"!!", b"$ULTW"))
+                else "ultimeter_ii"
+            ),
+            information,
+            weather=_weather.vendor(information),
+        )
     if dti in (b"!", b"=", b"/", b"@"):
         return _decode_position(dti, body, diagnostics)
     if dti == b">":
-        timestamp = None
-        if len(body) >= 7 and body[:6].isdigit() and body[6:7] == b"z":
-            timestamp, body = _timestamp(body[:7]), body[7:]
-        return Status(free_text(body, "$.text", diagnostics), timestamp=timestamp)
+        return _messages.status(body, diagnostics)
+    if dti == b"?":
+        return _messages.query(information)
+    if dti == b"<":
+        tokens = []
+        for part in token(body, "$.tokens").split(","):
+            name, sep, value = part.partition("=")
+            tokens.append(d.Capability(name, value if sep else None))
+        return m.Capabilities(tuple(tokens))
+    if information.startswith(b"T#"):
+        return _messages.telemetry(information, diagnostics)
+    if dti == b"_":
+        from . import _weather
+
+        return _weather.read(body, diagnostics=diagnostics)[0]
+    if dti == b";":
+        if len(body) < 17 or body[9:10] not in (b"*", b"_"):
+            raise FieldError("invalid object name or alive marker")
+        name = token(body[:9], "$.name").rstrip()
+        position = _decode_position(b"/", body[10:], diagnostics)
+        assert position.timestamp is not None
+        return m.Object(
+            name,
+            position.latitude_deg,
+            position.longitude_deg,
+            position.symbol,
+            timestamp=position.timestamp,
+            alive=body[9:10] == b"*",
+            comment=position.comment,
+            ambiguity=position.ambiguity,
+            compression=position.compression,
+            extensions=position.extensions,
+        )
+    if dti == b")":
+        match = re.match(rb"([^!_]{1,9})([!_])(.*)", body, re.DOTALL)
+        if not match:
+            raise FieldError("invalid item name or marker")
+        position = _decode_position(b"!", match[3], diagnostics)
+        return m.Item(
+            token(match[1], "$.name"),
+            position.latitude_deg,
+            position.longitude_deg,
+            position.symbol,
+            alive=match[2] == b"!",
+            comment=position.comment,
+            ambiguity=position.ambiguity,
+            compression=position.compression,
+            extensions=position.extensions,
+        )
+    if dti == b"$":
+        from . import _nmea_codec
+
+        return _nmea_codec.read(information, header, diagnostics)
+    if dti == b"[":
+        match = re.match(rb"([A-Ra-r]{2}\d{2}(?:[A-Xa-x]{2})?)(.*)", body, re.DOTALL)
+        if not match:
+            raise FieldError("invalid Maidenhead locator")
+        return m.Maidenhead(
+            d.Grid(match[1].decode().upper()),
+            comment=free_text(match[2], "$.comment", diagnostics),
+        )
+    if dti == b"%":
+        match = re.fullmatch(rb"%(\d{3})/(\d)", information)
+        if match:
+            return m.Agrelo(int(match[1]), int(match[2]), raw=information)
     if dti == b":":
         return _decode_message(body, diagnostics)
+    offset = information.find(b"!")
+    if 0 < offset < 40:
+        return m.LegacyPosition(
+            information[:offset],
+            _decode_position(b"!", information[offset + 1 :], diagnostics),
+        )
+    if (
+        header is not None
+        and header.destination.split("-")[0] in ("BEACON", "ID", "UIDIGI", "CQ")
+        or len(information) > 1
+        and information[:1].isalpha()
+        and b" " in information
+    ):
+        return m.Beacon(free_text(information, "$.text", diagnostics))
     raise CodecNotImplementedError("unsupported information field family")
 
 
@@ -176,34 +264,63 @@ def _decode_position(
     timestamp = None
     if dti in (b"/", b"@"):
         timestamp, body = _timestamp(body[:7]), body[7:]
-    if body and body[:1] in b"/\\ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij":
-        raise CodecNotImplementedError("compressed positions")
-    # Compressed numeric overlays can start with a digit, but not a DDMM. field.
-    if (
-        len(body) >= 5
-        and body[4:5] != b"."
-        and body[:1] in b"0123456789"
-        and body[7:8] not in (b"N", b"S")
-        and body[17:18] not in (b"E", b"W")
-    ):
-        raise CodecNotImplementedError("compressed or unsupported position format")
+    from . import _position_codec as pc
+
+    compressed = bool(
+        body
+        and (
+            body[:1] in b"/\\ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij"
+            or (len(body) >= 13 and body[4:5] != b"." and body[7:8] not in (b"N", b"S"))
+        )
+    )
+    if compressed:
+        latitude, longitude, symbol, compression, primary, rest = pc.compressed(body)
+        if body[10] != 32 and body[12] - 33 >= 64:
+            diagnostics.append(
+                Diagnostic(
+                    "nonconforming", "reserved compression type bit", "$.compression"
+                )
+            )
+        extensions, rest = _extensions.read(rest, symbol)
+        for name in ("motion", "altitude", "range"):
+            value = getattr(primary, name)
+            if value is not None:
+                extensions = replace(extensions, **{name: value})
+        if symbol.code in "_W" and primary.motion is not None:
+            weather = extensions.weather or d.Weather()
+            weather = replace(
+                weather,
+                wind_direction=d.Measurement(primary.motion.course_deg, "degrees"),
+                wind_speed=d.Measurement(primary.motion.speed_knots, "knots"),
+            )
+            extensions = replace(extensions, motion=None, weather=weather)
+        return Position(
+            pc.dao_offset(latitude, extensions.dao, "latitude"),
+            pc.dao_offset(longitude, extensions.dao, "longitude"),
+            symbol,
+            compression=compression,
+            extensions=extensions,
+            timestamp=timestamp,
+            messaging=dti in (b"=", b"@"),
+            comment=free_text(rest, "$.comment", diagnostics),
+        )
     if len(body) < 19:
         raise ModelError("$", "truncated uncompressed position")
-    latitude = _coordinate(body[:8], "latitude")
-    longitude = _coordinate(body[9:18], "longitude")
+    latitude, longitude, ambiguity = pc.coordinates(body[:8], body[9:18])
     try:
         symbol = Symbol(chr(body[8]), chr(body[18]))
     except ModelError as exc:
         raise ModelError("$.symbol" + exc.path[1:], exc.message) from exc
     extensions, rest = _extensions.read(body[19:], symbol)
     return Position(
-        latitude,
-        longitude,
+        pc.dao_offset(latitude, extensions.dao, "latitude"),
+        pc.dao_offset(longitude, extensions.dao, "longitude"),
         symbol,
         comment=free_text(rest, "$.comment", diagnostics),
         messaging=dti in (b"=", b"@"),
         timestamp=timestamp,
         extensions=extensions,
+        ambiguity=ambiguity,
     )
 
 
@@ -215,7 +332,9 @@ def _decode_message(body: bytes, diagnostics: list[Diagnostic]) -> Payload:
     address = token(body[:9], "$.addressee").rstrip(" ")
     body = body[10:]
     if _special_message(address, body):
-        raise CodecNotImplementedError("specialized message semantics")
+        special = _messages.specialized(address, body, diagnostics)
+        if special is not None:
+            return special
     ack = _ACK.fullmatch(body)
     if ack:
         return Acknowledgment(
@@ -230,6 +349,10 @@ def _decode_message(body: bytes, diagnostics: list[Diagnostic]) -> Payload:
         number, brace, ack_part = identifier.partition(b"}")
         message_id = token(number, "$.message_id")
         reply_ack = token(ack_part, "$.reply_ack") if brace else None
+    if not separator:
+        response = _messages.response(address, text)
+        if response is not None:
+            return response
     return Message(
         address,
         free_text(text, "$.text", diagnostics),
@@ -297,6 +420,10 @@ def _parse(
 
     if not separator:
         issue("$.payload", "missing information separator")
+    if envelope.count(b">") > 1 and b"," not in envelope:
+        parts = envelope.split(b">")
+        if all(parts):
+            envelope = parts[0] + b">" + parts[-1] + b"," + b",".join(parts[1:-1])
     source, arrow, route = envelope.partition(b">")
     if not arrow:
         issue("$.header", "missing source separator")
@@ -416,10 +543,69 @@ def _encode_payload(
     payload: Payload, header: Header | None, max_depth: int, depth: int
 ) -> bytes:
     """Construct an information field from validated, conforming values."""
+    application = _messages.write(payload)
+    if application is not None:
+        return application
+    if isinstance(payload, m.Weather):
+        from . import _weather
+
+        return _weather.write(payload)
+    if isinstance(payload, (m.Object, m.Item)):
+        p = payload
+        position = Position(
+            p.latitude_deg,
+            p.longitude_deg,
+            p.symbol,
+            comment=p.comment,
+            ambiguity=p.ambiguity,
+            compression=p.compression,
+            extensions=p.extensions,
+        )
+        raw = _encode_payload(position, header, max_depth, depth)[1:]
+        if isinstance(p, m.Object):
+            return (
+                b";"
+                + p.name.ljust(9).encode()
+                + (b"*" if p.alive else b"_")
+                + encode_timestamp(p.timestamp)
+                + raw
+            )
+        return b")" + p.name.encode() + (b"!" if p.alive else b"_") + raw
+    if isinstance(payload, m.NMEA):
+        from . import _nmea_codec
+
+        if payload.symbol is not None and payload.symbol != _nmea_codec.header_symbol(
+            header
+        ):
+            raise FieldError("NMEA symbol does not match the packet header")
+        return _nmea_codec.write(payload)
+    if isinstance(payload, (m.RawWeather, m.ExternalExtension)):
+        return payload.information
+    if isinstance(payload, m.Agrelo):
+        return b"%%%03d/%d" % (round(payload.bearing_deg), payload.quality_code)
+    if isinstance(payload, m.Maidenhead):
+        return (
+            b"["
+            + payload.grid.locator.encode()
+            + (
+                payload.symbol.table_id.encode() + payload.symbol.code.encode()
+                if payload.symbol
+                else b""
+            )
+            + payload.comment.encode()
+        )
+    if isinstance(payload, m.Beacon):
+        return payload.text.encode()
+    if isinstance(payload, m.LegacyPosition):
+        return payload.prefix + _encode_payload(
+            payload.position, header, max_depth, depth
+        )
     if isinstance(payload, MicE):
         if header is None:
             raise ContextRequiredError("Mic-E encoding needs the packet header")
-        raise CodecNotImplementedError("Mic-E joint destination/information encoding")
+        from . import _mic_e
+
+        return _mic_e.write(payload, header)
     if isinstance(payload, ThirdParty):
         if depth >= max_depth:
             raise ResourceLimitError("third-party nesting limit reached")
@@ -433,8 +619,6 @@ def _encode_payload(
     if isinstance(payload, Opaque):
         return payload.information
     if isinstance(payload, Position):
-        if payload.compression is not None or payload.ambiguity:
-            raise CodecNotImplementedError("compressed or ambiguous position encoding")
         raw = (
             (b"@" if payload.messaging else b"/")
             if payload.timestamp
@@ -442,23 +626,36 @@ def _encode_payload(
         )
         if payload.timestamp is not None:
             raw += encode_timestamp(payload.timestamp)
+        from . import _position_codec as pc
+
         symbol = payload.symbol
+        extensions = payload.extensions
+        payload = replace(
+            payload,
+            latitude_deg=pc.dao_offset(
+                payload.latitude_deg, extensions.dao, "latitude", -1
+            ),
+            longitude_deg=pc.dao_offset(
+                payload.longitude_deg, extensions.dao, "longitude", -1
+            ),
+        )
+        if payload.compression is not None:
+            position_wire, extensions = pc.compressed_bytes(payload)
+        else:
+            position_wire = (
+                pc.coordinate_bytes(payload.latitude_deg, "latitude", payload.ambiguity)
+                + symbol.table_id.encode()
+                + pc.coordinate_bytes(
+                    payload.longitude_deg, "longitude", payload.ambiguity
+                )
+                + symbol.code.encode()
+            )
         return (
             raw
-            + encode_coordinate(payload.latitude_deg, "latitude")
-            + symbol.table_id.encode("ascii")
-            + encode_coordinate(payload.longitude_deg, "longitude")
-            + symbol.code.encode("ascii")
-            + _extensions.write(payload.extensions, symbol)
+            + position_wire
+            + _extensions.write(extensions, symbol)
             + payload.comment.encode("utf-8")
         )
-    if isinstance(payload, Status):
-        if payload.grid is not None or payload.beam is not None:
-            raise CodecNotImplementedError("structured status grid/symbol/beam")
-        raw = b">"
-        if payload.timestamp is not None:
-            raw += encode_timestamp(payload.timestamp)
-        return raw + payload.text.encode("utf-8")
     if isinstance(payload, (Message, Acknowledgment)):
         raw = b":" + payload.addressee.ljust(9).encode("ascii") + b":"
         reply = b"" if payload.reply_ack is None else b"}" + payload.reply_ack.encode()
@@ -468,6 +665,13 @@ def _encode_payload(
             verb = b"rej" if payload.rejected else b"ack"
             return raw + verb + payload.message_id.encode("ascii") + reply
         body = payload.text.encode("utf-8")
+        if (
+            payload.message_id is None
+            and _messages.response(payload.addressee, body) is not None
+        ):
+            raise FieldError(
+                "message text would be interpreted as a query response; use Response"
+            )
         if _special_message(payload.addressee, body):
             raise CodecNotImplementedError("specialized message")
         if payload.message_id is not None:

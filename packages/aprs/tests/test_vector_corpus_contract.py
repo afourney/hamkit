@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
 # SPDX-License-Identifier: MIT
 """Fixture provenance and regression guards, independent of codec progress."""
+
 from __future__ import annotations
 
 import json
@@ -10,7 +11,7 @@ from typing import Any
 
 import pytest
 from generate_vectors import records
-from packets.test_corpus import KnownGap, check, differences
+from packets.test_corpus import check, differences
 
 from hamkit import aprs as a
 
@@ -44,31 +45,17 @@ def test_comparator_checks_missing_null_lists_and_tolerances() -> None:
     assert not differences(1.0, 1.0000000001, "$.latitude_deg")
 
 
-def test_known_gap_does_not_hide_an_unrelated_regression(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_mismatch_cannot_be_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
+    from hamkit.aprs import _compatibility
+
     row = next(r for r in all_rows() if r["id"] == "STA-008")
+    check(row)
     packet = a.parse_packet(row["packet"].encode("latin-1"))
-    assert isinstance(packet, a.Packet) and isinstance(packet.payload, a.Status)
-    with pytest.raises(KnownGap):
-        check(row)
+    assert isinstance(packet, a.Packet)
     bad = replace(packet, header=a.Header("WRONG", "APRS"))
-    monkeypatch.setattr(a, "parse_packet", lambda *args, **kwargs: bad)
-    with pytest.raises(AssertionError) as error:
+    monkeypatch.setattr(_compatibility, "parse_packet", lambda *args, **kwargs: bad)
+    with pytest.raises(AssertionError, match="header.source"):
         check(row)
-    assert not isinstance(error.value, KnownGap)
-
-
-def test_completed_gap_returns_success_for_strict_xpass(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    row = next(r for r in all_rows() if r["id"] == "STA-008")
-    packet = a.parse_packet(row["packet"].encode("latin-1"))
-    assert isinstance(packet, a.Packet) and isinstance(packet.payload, a.Status)
-    status = a.Status(" Home", grid=a.Grid("IO91"), symbol=a.Symbol("/", "-"))
-    fixed = replace(packet, payload=status)
-    monkeypatch.setattr(a, "parse_packet", lambda *args, **kwargs: fixed)
-    check(row)  # The parametrized test's strict mark turns this into XPASS/failure.
 
 
 def test_parser_exception_is_not_an_expected_failure(
@@ -79,7 +66,9 @@ def test_parser_exception_is_not_an_expected_failure(
     def broken(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("unexpected parser crash")
 
-    monkeypatch.setattr(a, "parse_packet", broken)
+    from hamkit.aprs import _compatibility
+
+    monkeypatch.setattr(_compatibility, "parse_packet", broken)
     with pytest.raises(RuntimeError, match="unexpected parser crash"):
         check(row)
 
@@ -138,3 +127,29 @@ def test_projection_keys_belong_to_public_json_models() -> None:
     for row in all_rows():
         if row["expected"] is not None:
             validate(row["expected"], a.Packet, row["id"])
+
+
+def test_original_vector_bytes_expectations_and_provenance_are_unchanged() -> None:
+    """Frozen at PR #4 head b97beb7970c6b6fec2c0b6e30200f348bb87d96c."""
+    import hashlib
+
+    keys = [
+        "id",
+        "title",
+        "profile",
+        "source",
+        "packet",
+        "outcome",
+        "source_expected",
+        "options",
+        "note",
+        "scope_note",
+        "extension_tags",
+        "sequence",
+    ]
+    original = [{k: r[k] for k in keys if k in r} for r in all_rows()]
+    encoded = json.dumps(original, sort_keys=True, separators=(",", ":")).encode()
+    assert (
+        hashlib.sha256(encoded).hexdigest()
+        == "2db005c07f133aa738ccf3ec65b6364bf57d48cceff447a72c63e659c612573e"
+    )

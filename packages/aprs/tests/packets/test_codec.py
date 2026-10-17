@@ -141,13 +141,9 @@ class PacketTests(unittest.TestCase):
 
     def test_unsupported_preserved(self) -> None:
         for information in (
-            b"`\x1c\x7f\xff",
-            b";object",
-            b"T#001,1,2,3,4,5,00000000",
-            b"!4903.5 N/07201.7 W-",
-            b"!/5L!!<*e7>7P[",
-            b":BLN0     :Notice",
-            b":NWS-WARN :Warning{123",
+            b"~unknown",
+            b"&reserved",
+            b"$GPXYZ,unknown",
         ):
             with self.subTest(information=information):
                 packet = parse_packet(b"N0CALL>APRS:" + information)
@@ -163,7 +159,7 @@ class PacketTests(unittest.TestCase):
             b">APRS:>x",
             b"N0CALL>APRS,:>x",
             b"N0CALL>APRS,D1**:>x",
-            b"N0CALL>APRS>BAD:>x",
+            b"N0CALL>APRS>>BAD:>x",
             b"N0CALL >APRS:>x",
         ):
             with self.subTest(wire=wire):

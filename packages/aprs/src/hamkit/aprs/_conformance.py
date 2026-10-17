@@ -9,6 +9,7 @@ UTF-8 bytes. UTF-8 free text (messages, bulletins, status and comments) follows
 the APRS 1.2 proposed-draft guidance (aprs.org/aprs12/utf-8.txt), adopted for
 compatibility rather than as a ratified requirement.
 """
+
 from __future__ import annotations
 
 import re
@@ -32,7 +33,7 @@ from ._data import (
     TelemetryUnits,
     Weather,
 )
-from ._errors import CodecNotImplementedError
+from ._errors import CodecNotImplementedError, FieldError
 from ._models import (
     Acknowledgment,
     AutoAnswer,
@@ -334,17 +335,25 @@ def _item(v: Item, profile: EnvelopeProfile) -> Iterator[Finding]:
         yield "$.name", "item names have at least three characters"
 
 
-@_conformance(Position)
+@_conformance(Position, Object, Item)
 def _position(v: Position, profile: EnvelopeProfile) -> Iterator[Finding]:
     """The encoded tail must read back as the same extensions and comment."""
-    if v.compression is not None or v.ambiguity:
-        return  # No encoder yet; serialization raises CodecNotImplementedError.
+    if any(_located(v, profile)):
+        return  # Report structural slot errors without secondary comment errors.
     try:
-        prefix = _extensions.write(v.extensions, v.symbol)
+        extensions = v.extensions
+        if v.compression is not None:
+            from ._position_codec import compressed_bytes
+
+            _, extensions = compressed_bytes(v)
+        prefix = _extensions.write(extensions, v.symbol)
     except CodecNotImplementedError:
         return
     except _extensions.Unrepresentable as exc:
         yield exc.path, exc.message
+        return
+    except FieldError as exc:
+        yield "$.extensions", str(exc)
         return
     comment = v.comment.encode("utf-8")
     if len(prefix) + len(comment) > 43:
@@ -352,7 +361,7 @@ def _position(v: Position, profile: EnvelopeProfile) -> Iterator[Finding]:
     try:
         expected, _ = _extensions.read(prefix, v.symbol)
         actual, rest = _extensions.read(prefix + comment, v.symbol)
-    except CodecNotImplementedError:
+    except (CodecNotImplementedError, FieldError):
         yield "$.comment", "contains extension syntax this version cannot decode"
         return
     if (actual, rest) != (expected, comment):
@@ -388,14 +397,14 @@ def _located(v: Any, profile: EnvelopeProfile) -> Iterator[Finding]:
         if getattr(e, name) is not None and symbol != required:
             yield "$.symbol", f"{name} requires symbol {''.join(required)}"
     if e.weather is not None:
-        if v.symbol.code != "_":
+        if v.symbol.code not in "_W":
             yield "$.symbol", "located weather uses the weather symbol"
         if primary or e.bearing is not None:
             yield "$.extensions.weather", "weather uses the wind extension slot"
         yield from _weather_report(e.weather, "$.extensions.weather", positioned=True)
     if e.telemetry is not None:
         allowed = (
-            ("mic_e_hex", "mic_e_binary")
+            ("mic_e_hex", "mic_e_binary", "base91_comment")
             if isinstance(v, MicE)
             else ("base91_comment",)
         )
@@ -475,8 +484,10 @@ def _weather(v: Weather, profile: EnvelopeProfile) -> Iterator[Finding]:
 
 @_conformance(Telemetry)
 def _telemetry(v: Telemetry, profile: EnvelopeProfile) -> Iterator[Finding]:
-    def analog(low: int, high: int) -> Iterator[Finding]:
+    def analog(low: int, high: int, missing: tuple[int, ...] = ()) -> Iterator[Finding]:
         for i, value in enumerate(v.analog):
+            if i in missing and value is None:
+                continue
             if (
                 value is None
                 or not float(value).is_integer()
@@ -498,7 +509,14 @@ def _telemetry(v: Telemetry, profile: EnvelopeProfile) -> Iterator[Finding]:
         counts = (2, 5) if v.encoding == "mic_e_hex" else (5,)
         if len(v.analog) not in counts:
             yield "$.analog", f"{v.encoding} carries {' or '.join(map(str, counts))} channels"
-        yield from analog(0, 255)
+        missing = (
+            (1, 3, 4)
+            if v.encoding == "mic_e_hex"
+            and len(v.analog) == 5
+            and all(v.analog[i] is None for i in (1, 3, 4))
+            else ()
+        )
+        yield from analog(0, 255, missing)
         if v.digital:
             yield "$.digital", "Mic-E telemetry has no digital channels"
         if v.sequence is not None:

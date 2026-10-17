@@ -8,32 +8,25 @@ import hamkit.aprs as a
 
 
 class PolicyTests(unittest.TestCase):
-    def test_unimplemented_families_have_explicit_failure(self) -> None:
-        for information in (
-            b"!/5L!!<*e7>7P[",
-            b";OBJECT   *",
-            b")ITEM!",
-            b"_10171230",
-            b"T#001,1,2,3,4,5,00000000",
-            b":BLN0     :Notice",
-            b":N0CALL   :PARM.Temp",
-            b"?APRS?",
-            b"<IGATE",
-            b"$GPGGA,",
-            b"$ULTW0000",
-            b"!!0000",
-            b"%123/4",
-            b"[IO91SX",
+    def test_implemented_families_and_truncated_reports(self) -> None:
+        for information, cls in (
+            (b"!/5L!!<*e7>7P[", a.Position),
+            (b"T#001,1,2,3,4,5,00000000", a.Telemetry),
+            (b":BLN0     :Notice", a.Bulletin),
+            (b":N0CALL   :PARM.Temp", a.TelemetryDefinition),
+            (b"?APRS?", a.Query),
+            (b"<IGATE", a.Capabilities),
+            (b"$ULTW0000", a.RawWeather),
+            (b"!!0000", a.RawWeather),
+            (b"%123/4", a.Agrelo),
+            (b"[IO91SX", a.Maidenhead),
         ):
             with self.subTest(information=information):
-                with self.assertRaises(a.CodecNotImplementedError):
-                    a.parse_payload(information, unsupported="raise")
-                value = a.parse_payload(information)
-                assert isinstance(value, a.Opaque)
-                self.assertEqual(value.information, information)
-                self.assertEqual(
-                    value.diagnostic.code if value.diagnostic else None, "unsupported"
+                self.assertIsInstance(
+                    a.parse_payload(information, unsupported="raise"), cls
                 )
+        for information in (b";OBJECT   *", b")ITEM!", b"$GPGGA,"):
+            self.assertIsInstance(a.parse_payload(information), a.Malformed)
 
     def test_malformed_recovery_is_separate(self) -> None:
         raw = b"N0CALL>APRS:!9000.01N/07201.75W-"
@@ -99,11 +92,11 @@ class PolicyTests(unittest.TestCase):
             a.parse_packet(wire, max_third_party_depth=1)
         with self.assertRaises(a.ResourceLimitError):
             a.parse_payload(b"}W1AW>APRS:>Ready", max_third_party_depth=0)
-        parsed = a.parse_packet(b"N0CALL>APRS:}W1AW>490S5P:`12345678")
+        parsed = a.parse_packet(b"N0CALL>APRS:}W1AW>490S5P:`123456>/")
         assert isinstance(parsed, a.Packet)
         assert isinstance(parsed.payload, a.ThirdParty)
         self.assertEqual(parsed.payload.packet.header.destination, "490S5P")
-        self.assertIsInstance(parsed.payload.packet.payload, a.Opaque)
+        self.assertIsInstance(parsed.payload.packet.payload, a.MicE)
 
     def test_third_party_findings_carry_their_path(self) -> None:
         parsed = a.parse_packet(b"N0CALL>APRS:}W1AW>APRS:>Caf\xe9|")
@@ -135,19 +128,13 @@ class PolicyTests(unittest.TestCase):
             self.assertEqual(a.parse_payload(b">" + text.encode()), a.Status(text))
             self.assertEqual(a.serialize_payload(a.Status(text)), b">" + text.encode())
 
-    def test_new_fields_never_imply_working_codecs(self) -> None:
+    def test_mdhm_and_dao_codecs(self) -> None:
         from hamkit.aprs._fields import decode_timestamp, encode_timestamp
 
-        with self.assertRaises(a.CodecNotImplementedError):
-            encode_timestamp(a.Timestamp.mdhm(10, 17, 12, 30))
-        with self.assertRaises(a.CodecNotImplementedError):
-            decode_timestamp(b"10171230")
-        with self.assertRaises(a.CodecNotImplementedError):
-            a.serialize_payload(
-                a.Position(
-                    49,
-                    -72,
-                    a.Symbol("/", "-"),
-                    extensions=a.Extensions(dao=a.DAO("W")),
-                )
-            )
+        stamp = a.Timestamp.mdhm(10, 17, 12, 30)
+        self.assertEqual(encode_timestamp(stamp), b"10171230")
+        self.assertEqual(decode_timestamp(b"10171230"), stamp)
+        p = a.Position(
+            49, -72, a.Symbol("/", "-"), extensions=a.Extensions(dao=a.DAO("W"))
+        )
+        self.assertEqual(a.parse_payload(a.serialize_payload(p)), p)

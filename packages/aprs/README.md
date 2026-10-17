@@ -4,12 +4,12 @@ Parse APRS packets, build them in Python, check them before sending, and move
 them to and from JSON. Pure Python · MIT license · Python 3.11+ · no runtime
 dependencies.
 
-This is an **alpha API**. Basic status, position, message and acknowledgment
-packets work today, along with the envelope/raw formats shown below. Other
-families have usable Python and JSON models but **no wire codec yet**. Those
-sections say **Model + JSON only** and print the constructed model's name;
-they do not claim to produce a TNC2 line. Calling `serialize_packet` on those
-models raises `CodecNotImplementedError`.
+This is an **alpha API** with decoding and encoding for the packet families in
+our [compliance corpus](docs/APRS_COMPLIANCE_VECTORS.md): positions (including
+compressed, ambiguous and Mic-E), objects/items, weather, telemetry, messages,
+queries/responses, status, NMEA and historical formats. Unknown or explicitly
+raw formats preserve their bytes. Public models and JSON shapes are unchanged.
+See [codec coverage and compatibility policies](docs/API_COVERAGE.md) for limits.
 
 Install from a repository checkout with `python -m pip install -e packages/aprs`.
 Construction examples run independently, including those that embed JSON
@@ -142,7 +142,7 @@ N0CALL>APRS:>Ready
 ## Working wire examples
 
 Each example uses the supported subset of its family. More elaborate fields can
-still require an unimplemented codec; see the [coverage notes](docs/API_COVERAGE.md).
+use their own wire layout; see the [coverage notes](docs/API_COVERAGE.md).
 Serialization returns bytes. Optional fields are keyword-only.
 
 ### Position
@@ -206,16 +206,16 @@ Output:
 Course/speed (`088/036`) is decoded into `extensions.motion`, and `comment`
 holds the text after it, including its leading space. PHG, RNG, DFS, DF
 bearing and `/A=` altitude are decoded the same way. Extension-shaped text with
-invalid values stays in `comment` with a diagnostic, and extensions this
-version cannot decode yet (such as `!DAO!` or weather) make the payload
-`Opaque` rather than being mistaken for comment text.
+invalid values stays in `comment` with a diagnostic. DAO precision, base91
+telemetry, weather, storm, area and signpost extensions also have structured
+decoders and encoders.
 
 When sending, measurements such as course, speed and altitude are rounded to
 whole units, like coordinates. Values with no exact wire form (PHG power must
 be n² watts) and values that would read back with a different meaning (a known
 speed of zero with no course) raise `ConformanceError`. Modeled fields the wire
-format cannot carry, such as a PHG rate or an altitude reference, raise
-`CodecNotImplementedError` instead of being dropped.
+format cannot carry, such as an independent altitude reference, raise
+a representability error instead of being dropped.
 
 Build with Python:
 
@@ -642,14 +642,11 @@ N0CALL>APRS:~vendor data
 
 ## Model and JSON examples
 
-**Model + JSON only** means the values below can be built, inspected, checked,
-saved and loaded now, but cannot yet be serialized to APRS wire bytes. Both
-forms print the same payload class name to confirm the model they construct.
-The JSON is the actual data shape, not a proposed wire encoding. No future wire
-output is shown.
+These examples show equivalent Python and JSON construction, printing the
+payload class name. They can also be serialized with `serialize_packet`.
+Raw wrappers intentionally preserve their information bytes.
 
-For example, this is what happens if you ask the current encoder to write a
-weather report to the wire:
+For example, encode a positionless weather report:
 
 ```python
 from hamkit import aprs
@@ -664,16 +661,13 @@ packet = aprs.Packet(
         timestamp=aprs.Timestamp.mdhm(10, 17, 12, 30),
     ),
 )
-try:
-    print(aprs.serialize_packet(packet).decode("utf-8"))
-except aprs.CodecNotImplementedError as error:
-    print(type(error).__name__)
+print(aprs.serialize_packet(packet).decode("utf-8"))
 ```
 
 Output:
 
 ```text
-CodecNotImplementedError
+N0CALL>APRS:_10171230c270s012g015t068
 ```
 
 The following examples build and load these models without asking for wire
@@ -683,7 +677,7 @@ encoding. They remain useful for storing or exchanging structured data.
 
 #### Mic-E
 
-**Model + JSON only.** Compact position data with a Mic-E message type. A future encoder derives the destination address from the latitude and message.
+**Wire encoding available.** Compact position data with a Mic-E message type. The supplied destination must match latitude, hemisphere and message; the encoder verifies it.
 
 Build with Python:
 
@@ -691,7 +685,7 @@ Build with Python:
 from hamkit import aprs
 
 packet = aprs.Packet(
-    aprs.Header("N0CALL", "APRS"),
+    aprs.Header("N0CALL", "TY0P0P"),
     aprs.MicE(
         49,
         -72,
@@ -720,7 +714,7 @@ packet = aprs.from_json(
   "type": "packet",
   "header": {
     "source": "N0CALL",
-    "destination": "APRS"
+    "destination": "TY0P0P"
   },
   "payload": {
     "type": "mic_e",
@@ -752,7 +746,7 @@ MicE
 
 #### Object
 
-**Model + JSON only.** A named, timestamped object at a position.
+**Wire encoding available.** A named, timestamped object at a position.
 
 Build with Python:
 
@@ -821,7 +815,7 @@ Object
 
 #### Item
 
-**Model + JSON only.** A named item at a position, without an object timestamp.
+**Wire encoding available.** A named item at a position, without an object timestamp.
 
 Build with Python:
 
@@ -877,7 +871,7 @@ Item
 
 #### Weather
 
-**Model + JSON only.** A positionless report: wind, gust and temperature slots plus an MDHM timestamp. Measurements have explicit units. Use the same Weather model in `Extensions.weather` for located weather.
+**Wire encoding available.** A positionless report: wind, gust and temperature slots plus an MDHM timestamp. Measurements have explicit units. Use the same Weather model in `Extensions.weather` for located weather.
 
 Build with Python:
 
@@ -963,7 +957,7 @@ Weather
 
 #### Telemetry readings
 
-**Model + JSON only.** Five analog and eight digital channels. None represents an unavailable channel, not zero.
+**Wire encoding available.** Five analog and eight digital channels. None represents an unavailable channel, not zero.
 
 Build with Python:
 
@@ -1035,7 +1029,7 @@ Telemetry
 
 #### Telemetry definition
 
-**Model + JSON only.** Channel names for N0CALL's telemetry. TelemetryUnits, TelemetryEquations and TelemetryBits are the other definition variants.
+**Wire encoding available.** Channel names for N0CALL's telemetry. TelemetryUnits, TelemetryEquations and TelemetryBits are the other definition variants.
 
 Build with Python:
 
@@ -1095,7 +1089,7 @@ TelemetryDefinition
 
 #### Automatic answer
 
-**Model + JSON only.** An automatic reply addressed to W1AW.
+**Wire encoding available.** An automatic reply addressed to W1AW.
 
 Build with Python:
 
@@ -1147,7 +1141,7 @@ AutoAnswer
 
 #### Bulletin
 
-**Model + JSON only.** A bulletin identifier, text and optional group. A letter identifier makes it an announcement.
+**Wire encoding available.** A bulletin identifier, text and optional group. A letter identifier makes it an announcement.
 
 Build with Python:
 
@@ -1199,7 +1193,7 @@ Bulletin
 
 #### NWS bulletin
 
-**Model + JSON only.** A National Weather Service product envelope, distinct from a general bulletin.
+**Wire encoding available.** A National Weather Service product envelope, distinct from a general bulletin.
 
 Build with Python:
 
@@ -1252,7 +1246,7 @@ NWSBulletin
 
 #### Radiogram
 
-**Model + JSON only.** One NTS radiogram record in its delivery envelope. This example carries text line 1.
+**Wire encoding available.** One NTS radiogram record in its delivery envelope. This example carries text line 1.
 
 Build with Python:
 
@@ -1309,7 +1303,7 @@ Radiogram
 
 #### Query
 
-**Model + JSON only.** A query with a geographic footprint.
+**Wire encoding available.** A query with a geographic footprint.
 
 Build with Python:
 
@@ -1367,7 +1361,7 @@ Query
 
 #### Response
 
-**Model + JSON only.** A query response listing directly heard stations. HeardStation and Trace are other response variants.
+**Wire encoding available.** A query response listing directly heard stations. HeardStation and Trace are other response variants.
 
 Build with Python:
 
@@ -1424,7 +1418,7 @@ Response
 
 #### Capabilities
 
-**Model + JSON only.** A station advertises a protocol capability token.
+**Wire encoding available.** A station advertises a protocol capability token.
 
 Build with Python:
 
@@ -1480,7 +1474,7 @@ Capabilities
 
 #### NMEA
 
-**Model + JSON only.** A GLL navigation sentence. GGA, RMC, VTG and WPL are also modeled.
+**Wire encoding available.** A GLL navigation sentence. GGA, RMC, VTG and WPL are also modeled.
 
 Build with Python:
 
@@ -1544,7 +1538,7 @@ NMEA
 
 #### Raw vendor weather
 
-**Model + JSON only.** Preserve vendor bytes and their declared format; this is not a decoded weather observation.
+**Wire encoding available.** Preserve vendor bytes and their declared format; this is not a decoded weather observation.
 
 Build with Python:
 
@@ -1595,7 +1589,7 @@ RawWeather
 
 #### Agrelo
 
-**Model + JSON only.** Direction-finding bearing and quality.
+**Wire encoding available.** Direction-finding bearing and quality.
 
 Build with Python:
 
@@ -1644,7 +1638,7 @@ Agrelo
 
 #### Maidenhead beacon
 
-**Model + JSON only.** The historical bracket-style grid beacon. `Grid.bounds` and `Grid.center` are computed from the locator.
+**Wire encoding available.** The historical bracket-style grid beacon. `Grid.bounds` and `Grid.center` are computed from the locator.
 
 Build with Python:
 
@@ -1696,7 +1690,7 @@ Maidenhead
 
 #### Legacy position
 
-**Model + JSON only.** A historical prefix around a position.
+**Wire encoding available.** A historical prefix around a position.
 
 Build with Python:
 
@@ -1755,7 +1749,7 @@ LegacyPosition
 
 #### Non-APRS beacon
 
-**Model + JSON only.** Plain beacon text with no APRS interpretation.
+**Wire encoding available.** Plain beacon text with no APRS interpretation.
 
 Build with Python:
 
@@ -1803,7 +1797,7 @@ Beacon
 
 #### External extension
 
-**Model + JSON only.** Preserve external-format data by name; its grammar has not been implemented.
+**Wire encoding available.** Preserve external-format data by name; its grammar has not been implemented.
 
 Build with Python:
 
@@ -1921,8 +1915,7 @@ ratified spec is ASCII). Bytes that are not valid UTF-8 are read as
 Latin-1 with a diagnostic, never dropped or replaced. Pass `profile="rf"` to
 also report AX.25 address and size limits.
 
-Unsupported payloads are kept as `Opaque`. This weather packet's information
-field is retained, not decoded into Weather measurements:
+Positionless weather decodes into measurements with explicit units and a timestamp:
 
 ```python
 from hamkit import aprs
@@ -1936,7 +1929,7 @@ print(packet)
 Output:
 
 ```text
-Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Opaque(information=b'_10090556c220s004g005t077r001p025P012h50b09900WRSW', diagnostic=Diagnostic(code='unsupported', message='unsupported information field family', path='$')), diagnostics=())
+Packet(header=Header(source='N0CALL', destination='APRS', path=()), payload=Weather(wind_direction=Measurement(value=220.0, unit='degrees'), wind_speed=Measurement(value=4.0, unit='mph'), gust=Measurement(value=5.0, unit='mph'), temperature=Measurement(value=77.0, unit='fahrenheit'), humidity=Measurement(value=50.0, unit='percent'), pressure=Measurement(value=990.0, unit='hPa'), rain_1h=Measurement(value=0.01, unit='inches'), rain_24h=Measurement(value=0.25, unit='inches'), rain_since_midnight=Measurement(value=0.12, unit='inches'), snow_24h=None, luminosity=None, rain_counter=None, water_height=None, software_code='W', device_code='RSW', timestamp=Timestamp(kind='mdhm_utc', hour=5, minute=56, day=9, second=None, month=10), comment=''), diagnostics=())
 ```
 
 Show that same result as JSON:
@@ -1955,12 +1948,62 @@ Output:
     "destination": "APRS"
   },
   "payload": {
-    "type": "opaque",
-    "information": "_10090556c220s004g005t077r001p025P012h50b09900WRSW",
-    "diagnostic": {
-      "code": "unsupported",
-      "message": "unsupported information field family"
-    }
+    "type": "weather",
+    "wind_direction": {
+      "value": 220.0,
+      "unit": "degrees",
+      "raw": "220"
+    },
+    "wind_speed": {
+      "value": 4.0,
+      "unit": "mph",
+      "raw": "004"
+    },
+    "gust": {
+      "value": 5.0,
+      "unit": "mph",
+      "raw": "005"
+    },
+    "temperature": {
+      "value": 77.0,
+      "unit": "fahrenheit",
+      "raw": "077"
+    },
+    "humidity": {
+      "value": 50.0,
+      "unit": "percent",
+      "raw": "50"
+    },
+    "pressure": {
+      "value": 990.0,
+      "unit": "hPa",
+      "raw": "09900"
+    },
+    "rain_1h": {
+      "value": 0.01,
+      "unit": "inches",
+      "raw": "001"
+    },
+    "rain_24h": {
+      "value": 0.25,
+      "unit": "inches",
+      "raw": "025"
+    },
+    "rain_since_midnight": {
+      "value": 0.12,
+      "unit": "inches",
+      "raw": "012"
+    },
+    "software_code": "W",
+    "device_code": "RSW",
+    "timestamp": {
+      "kind": "mdhm_utc",
+      "hour": 5,
+      "minute": 56,
+      "day": 9,
+      "month": 10
+    },
+    "raw": "10090556c220s004g005t077r001p025P012h50b09900WRSW"
   },
   "original_wire": "N0CALL>APRS:_10090556c220s004g005t077r001p025P012h50b09900WRSW"
 }
@@ -1984,7 +2027,7 @@ print(packet)
 Output:
 
 ```text
-Malformed(original_wire=b'N0CALL>APRS:!4903.50N/19000.00W-', diagnostics=(Diagnostic(code='malformed', message='coordinate out of range', path='$.payload.longitude_deg'),), recovered={'type': 'packet', 'header': {'source': 'N0CALL', 'destination': 'APRS'}, 'payload': {'type': 'position', 'messaging': False, 'latitude_deg': 49.05833333333333, 'comment': '', 'symbol': {'table_id': '/', 'code': '-'}}})
+Malformed(original_wire=b'N0CALL>APRS:!4903.50N/19000.00W-', diagnostics=(Diagnostic(code='malformed', message='coordinate out of range', path='$.payload'), Diagnostic(code='malformed', message='coordinate out of range', path='$.payload.longitude_deg')), recovered={'type': 'packet', 'header': {'source': 'N0CALL', 'destination': 'APRS'}, 'payload': {'type': 'position', 'messaging': False, 'latitude_deg': 49.05833333333333, 'comment': '', 'symbol': {'table_id': '/', 'code': '-'}}})
 ```
 
 Show that same result as JSON:
@@ -2000,6 +2043,11 @@ Output:
   "type": "malformed",
   "original_wire": "N0CALL>APRS:!4903.50N/19000.00W-",
   "diagnostics": [
+    {
+      "code": "malformed",
+      "message": "coordinate out of range",
+      "path": "$.payload"
+    },
     {
       "code": "malformed",
       "message": "coordinate out of range",
@@ -2099,7 +2147,8 @@ Output:
   the structured fields.
 - A missing weather measurement differs from `Measurement(None, "mph")`, which
   means an unavailable reading. Zero is an actual measurement. Units are
-  explicit; no automatic conversion is performed.
+  explicit. Encoders convert supported measurement units to the selected wire
+  units and quantize to field precision; they reject overflow.
 - `to_json_dict` and `from_json_dict` work with dictionaries. Use
   `to_json(packet, indent=2, include_defaults=True)` to show optional defaults.
   `from_json(text, expected_type=aprs.Packet)` checks the expected model.
@@ -2120,8 +2169,8 @@ decisions.
 - [Wire support by family](docs/API_COVERAGE.md): implemented subsets and gaps.
 - [Naming guide](docs/NAMING.md): public names and why some qualifiers remain.
 - [Compliance vectors](docs/APRS_COMPLIANCE_VECTORS.md): specification references
-  and the future packet/field test corpus. These examples are illustrations, not
-  a claim that the complete corpus passes.
+  and the complete packet/field test corpus. Every row is tested, including
+  profile-specific source assertions and sequence behavior.
 
 Run the examples and unit tests with
-`python -m unittest discover -s packages/aprs/tests -v` from the repository root.
+`python -m pytest packages/aprs/tests -q` from the repository root.

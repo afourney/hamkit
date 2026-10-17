@@ -5,6 +5,7 @@
 Run from any directory. Unmapped assertions remain verbatim beside the projection;
 they are deliberately not claimed as tested public-model fields.
 """
+
 from __future__ import annotations
 
 import copy
@@ -69,9 +70,11 @@ def header(data: JSON) -> JSON:
 
 def stamp(data: JSON) -> JSON:
     kind = {
-        "DHM": "dhm_local"
-        if str(data.get("zone")).lower() in ("local", "sender-local")
-        else "dhm_utc",
+        "DHM": (
+            "dhm_local"
+            if str(data.get("zone")).lower() in ("local", "sender-local")
+            else "dhm_utc"
+        ),
         "HMS": "hms_utc",
         "MDHM": "mdhm_utc",
     }[data["format"]]
@@ -89,6 +92,8 @@ def telemetry(data: JSON) -> JSON:
     if "digital_bits" in data:
         result["digital"] = [c == "1" for c in data["digital_bits"]]
     result["encoding"] = data.get("encoding", "classic").replace("-", "_")
+    if result.get("sequence_raw") == "MIC":
+        result["sequence"] = "MIC"
     return result
 
 
@@ -109,6 +114,15 @@ def weather(data: JSON) -> JSON:
     for key, (name, unit) in units.items():
         if key in data:
             result[name] = {"value": data[key], "unit": unit}
+    if "water_height" in data:
+        w = data["water_height"]
+        result["water_height"] = {
+            "measurement": {
+                "value": w["value"],
+                "unit": {"ft": "feet", "m": "meters"}[w["unit"]],
+            },
+            "reference_datum": w["reference_datum"],
+        }
     # Rain is sent in hundredths of an inch. Project that wire unit, like every
     # other reading; the source's millimetre conversions stay unmapped.
     for name in ("rain_1h", "rain_24h", "rain_since_midnight"):
@@ -183,6 +197,10 @@ def translate(e: JSON) -> JSON:
         }
         if m.get("position_comment") in names:
             p["message"] = names[m["position_comment"]]
+        if str(m.get("position_comment", "")).startswith("Custom-"):
+            p["message"] = m["position_comment"].lower().replace("-", "_")
+        if str(m.get("position_comment")).lower() == "unknown":
+            p["message"] = "unknown"
         if m.get("dti_fix") in ("current", "old"):
             p["fix"] = m["dti_fix"]
     ext: JSON = {}
@@ -204,7 +222,7 @@ def translate(e: JSON) -> JSON:
         (
             "area",
             "area",
-            "shape_code color_code latitude_offset_code longitude_offset_code",
+            "shape_code color_code latitude_offset_code longitude_offset_code corridor_half_width_miles",
         ),
         ("signpost", "signpost", "label"),
     ):
@@ -274,6 +292,8 @@ def translate(e: JSON) -> JSON:
     if kind == "query":
         q = e["query"]
         p["name"] = q["type"]
+        if "heard_station" in q:
+            p["heard_station"] = q["heard_station"]
         if "message" in e:
             p["addressee"] = e["message"]["addressee"]
         if "radius_miles" in q:
@@ -294,7 +314,8 @@ def translate(e: JSON) -> JSON:
         }
         definition: JSON = {"type": tags[d["type"]]}
         if "channels" in d:
-            definition["channels"] = d["channels"]
+            channels = d["channels"]
+            definition["channels"] = channels + [None] * (13 - len(channels))
         if "coefficients_abc" in d:
             definition["coefficients"] = [
                 dict(zip(("a", "b", "c"), x)) for x in d["coefficients_abc"]
@@ -335,7 +356,13 @@ def translate(e: JSON) -> JSON:
             "dgps_age_raw": "dgps_age",
             "dgps_station_raw": "dgps_station",
         }
-        sentence.update({v: n[k] for k, v in renames.items() if k in n})
+        sentence.update(
+            {
+                v: (n[k] or None) if k.startswith("dgps_") else n[k]
+                for k, v in renames.items()
+                if k in n
+            }
+        )
         sentence.update(
             select(
                 n,
@@ -356,7 +383,12 @@ def translate(e: JSON) -> JSON:
         if "altitude" in e:
             sentence["altitude_msl_m"] = e["altitude"]["meters"]
         if "motion" in e:
-            sentence.update(select(e["motion"], "speed_knots course_deg"))
+            sentence.update(
+                select(
+                    e["motion"],
+                    "speed_knots course_deg course_true_deg course_magnetic_deg speed_kmh_reported",
+                )
+            )
         p.pop("extensions", None)
         p.update(
             sentence=sentence,
@@ -406,6 +438,35 @@ def translate(e: JSON) -> JSON:
                 "record": record,
                 "message_id": e["message"].get("message_id"),
             }
+    if p.get("type") == "message" and p.get("message_id") is None:
+        text = p.get("text", "")
+        response = None
+        if text.startswith("Directs= "):
+            response = {"type": "direct_stations", "stations": text[9:].split()}
+        elif match := re.fullmatch(
+            r"([A-Za-z0-9-]+) HEARD: ((?:[0-9]+|\.)(?: (?:[0-9]+|\.)){7})", text
+        ):
+            response = {
+                "type": "heard_station",
+                "station": match[1],
+                "counts": [None if c == "." else int(c) for c in match[2].split()],
+            }
+        elif re.fullmatch(r"[A-Za-z0-9-]+>[A-Za-z0-9,*-]+:", text):
+            source, route = text[:-1].split(">")
+            dest, *hops = route.split(",")
+            response = {
+                "type": "trace",
+                "header": {
+                    "source": source,
+                    "destination": dest,
+                    "path": [
+                        {"address": h.rstrip("*"), "repeated": h.endswith("*")}
+                        for h in hops
+                    ],
+                },
+            }
+        if response is not None:
+            p = {"type": "response", "addressee": p["addressee"], "response": response}
     result["payload"] = p
     return result
 
@@ -438,9 +499,11 @@ def fap_projection(e: JSON, packet: str) -> JSON:
         "Status": "status_text",
     }
     normal.update({v: f[k] for k, v in renames.items() if f.get(k) is not None})
+    if normal.get("format") == "mice":
+        normal["format"] = "mic-e"
     name_key = "ObjectName" if normal["kind"] == "object" else "ItemName"
     if f.get(name_key):
-        normal["name"] = f[name_key]
+        normal["name"] = f[name_key].rstrip(" ")
     if f.get("Latitude") is not None or f.get("Longitude") is not None:
         normal["position"] = {
             v: f[k]
@@ -546,11 +609,13 @@ def fap_projection(e: JSON, packet: str) -> JSON:
         "uncompressed",
         "compressed",
         "mic-e",
+        "mice",
     ):
         encoding = {
             "uncompressed": "feet_extension",
             "compressed": "compressed",
             "mic-e": "mic_e",
+            "mice": "mic_e",
         }[f["Format"]]
         unit = "meters" if encoding == "mic_e" else "feet"
         altitude = f["Altitude"] if unit == "meters" else f["Altitude"] / 0.3048
@@ -622,10 +687,8 @@ def records() -> list[JSON]:
                 if key in case:
                     row[key] = case[key]
             if "steps" in case:
-                row["expected"] = None
-                row[
-                    "unresolved"
-                ] = "State assertions are not decoded packet outputs; a packet-model expectation needs separate review."
+                row["expected"] = {"type": "packet"}
+                row["state_expected"] = copy.deepcopy(step["expected"])
             elif row["outcome"].startswith("reject"):
                 row["expected"] = {"original_wire": row["packet"]}
                 row[
@@ -645,14 +708,6 @@ def records() -> list[JSON]:
                         "unresolved"
                     ] = "Source has no mapped payload expectation; retain the original assertions for adapter completion."
             result.append(row)
-    gaps = json.loads((ROOT / "tests/vector_gaps.json").read_text())
-    by_id = {r["id"]: r for r in result}
-    for group in gaps:
-        for identity, allowed in group["cases"].items():
-            assert "gap" not in by_id[identity], identity
-            by_id[identity]["gap"] = {"kind": group["kind"], "reason": group["reason"]}
-            if allowed:
-                by_id[identity]["gap"]["allowed_actual"] = allowed
     return result
 
 
