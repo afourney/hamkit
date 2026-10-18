@@ -1,0 +1,27 @@
+name: APRS-IS sampler
+
+on:
+  pull_request:
+    paths:
+      - scripts/**
+      - .github/workflows/aprs-is-sampler.yml
+  push:
+    paths:
+      - scripts/**
+      - .github/workflows/aprs-is-sampler.yml
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.15"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m unittest discover -s scripts/tests -v
