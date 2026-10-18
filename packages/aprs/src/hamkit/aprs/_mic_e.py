@@ -15,11 +15,12 @@ import re
 from dataclasses import replace
 from typing import cast
 
+from ._ambiguity import center, center_wire
 from ._data import Altitude, Extensions, Measurement, Motion, Symbol, Telemetry
 from ._errors import FieldError
 from ._models import Header, MicE
 from ._policy import _DEFAULT_POLICY, EnvelopePolicy
-from ._position_codec import base91, center, center_wire, dao_offset, pack91
+from ._position_codec import base91, dao_offset, pack91
 from ._text import free_text
 
 # Declared version suffixes. The manufacturer/version pair after ` or ' does

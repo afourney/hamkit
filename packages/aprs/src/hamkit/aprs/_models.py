@@ -5,10 +5,10 @@
 """Public packet models. Construction does not imply an available wire codec."""
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from typing import Literal, TypeAlias
 
+from ._ambiguity import axis_extent
 from ._data import (
     Beam,
     Capability,
@@ -94,18 +94,6 @@ class Header(Validated):
         return f"{self.source}>{self.destination}{route}"
 
 
-_AMBIGUITY_MINUTES = {1: 0.1, 2: 1.0, 3: 10.0, 4: 60.0}
-
-
-def _ambiguous_axis(value: float, digits: int, limit: int) -> tuple[float, float]:
-    size = _AMBIGUITY_MINUTES[digits]
-    low = min(math.floor(abs(value) * 60 / size + 1e-9) * size, limit * 60 - size)
-    high = low + size
-    if math.copysign(1, value) < 0:
-        return (-high / 60, -low / 60)
-    return (low / 60, high / 60)
-
-
 class _Located:
     """Shared views for payloads that report a place."""
 
@@ -119,12 +107,12 @@ class _Located:
 
     @property
     def ambiguity_extent(self) -> Extent | None:
-        """The transmitted cell when ambiguity hides trailing digits."""
+        """The selected wire cell; raises FieldError if it exceeds axis bounds."""
         if not self.ambiguity:
             return None
         return Extent(
-            _ambiguous_axis(self.latitude_deg, self.ambiguity, 90),
-            _ambiguous_axis(self.longitude_deg, self.ambiguity, 180),
+            axis_extent(self.latitude_deg, self.ambiguity, 90),
+            axis_extent(self.longitude_deg, self.ambiguity, 180),
         )
 
 

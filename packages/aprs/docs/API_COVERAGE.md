@@ -96,9 +96,12 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
 `information`/`data` are their authoritative semantic content.
 
 - Uncompressed coordinates round to hundredths of minutes; ambiguity transmits
-  the requested cell, selected before decimal rounding. Both coordinates use the
-  same ambiguity level. Exact pole/antimeridian coordinates whose cell would
-  extend beyond the axis bounds are refused. Compressed coordinates round to their base91 grid. DAO
+  the requested cell, selected before decimal rounding. Derived `ambiguity_extent`
+  bounds and encoding share the same cell selector, with no boundary epsilon.
+  Both coordinates use the same ambiguity level. Exact pole/antimeridian coordinates whose cell would
+  extend beyond the axis bounds are refused; requesting `ambiguity_extent` for
+  such a cell raises `FieldError` rather than clamping to a neighboring cell.
+  Compressed coordinates round to their base91 grid. DAO
   now stores `datum` and `encoding`, without latitude/longitude codes. The refined
   coordinate is rounded once, then split into hundredth-minute and DAO parts,
   including carry across minute/degree boundaries. Parsing applies supported

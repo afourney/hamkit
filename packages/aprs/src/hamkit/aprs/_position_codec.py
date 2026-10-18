@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
-from decimal import Decimal
 
+from ._ambiguity import center, center_wire
 from ._data import Altitude, Compression, Extensions, Measurement, Motion, Range, Symbol
 from ._errors import FieldError
 from ._fields.position import CoordinateAxis, decode_coordinate, encode_coordinate
@@ -38,25 +38,6 @@ def ambiguity(raw: bytes) -> int:
     if n > 4 or b" " in digits[: -n or None]:
         raise FieldError("ambiguity must hide trailing minute digits")
     return n
-
-
-def center(value: float, n: int) -> float:
-    if not n:
-        return value
-    cell = (0.1, 1, 10, 60)[n - 1]
-    return math.copysign(
-        (int(Decimal(str(abs(value))) * 60 // Decimal(str(cell))) + 0.5) * cell / 60,
-        value,
-    )
-
-
-def center_wire(value: float, n: int) -> float:
-    """Center a decoded hundredth-minute value without float boundary drift."""
-    if not n:
-        return value
-    cell_units = (10, 100, 1000, 6000)[n - 1]
-    units = round(abs(value) * 6000)
-    return math.copysign((units // cell_units + 0.5) * cell_units / 6000, value)
 
 
 def coordinates(lat: bytes, lon: bytes) -> tuple[float, float, int]:
