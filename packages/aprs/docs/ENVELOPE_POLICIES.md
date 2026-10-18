@@ -123,7 +123,11 @@ of an existing encoded field requires explicit opt-in. Recognizing structured
 content inside a previously free-text comment is the separately approved default
 category; DAO can refine coordinates, but it does not redefine the original
 coordinate digits. Expanded telemetry leaves 0–255 values unchanged. Radiation
-and voltage add sensor tags. Reading complete Mic-E hex telemetry as device text
+and voltage add sensor tags. One known exception is accepted deliberately: a
+report ending in exactly `X` or `V` plus three digits is an APRS 1.1
+software/unit code that `weather_extensions` reads as a sensor value instead,
+but real codes are almost always letters, so the extension stays on by default.
+Reading complete Mic-E hex telemetry as device text
 reuses an existing telemetry field; fixed-width water height rescales an
 existing F field. Future high-speed
 reinterpretation must be classified as `reinterpretive` if implemented; it has
