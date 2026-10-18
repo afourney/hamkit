@@ -313,3 +313,24 @@ def test_size_and_range_quantize_without_stale_codes(policy):
     wire, parsed = checked(df, policy)
     assert wire.endswith(b"/270/749")
     assert parsed.payload.extensions.bearing.range_miles == 16
+
+
+@pytest.mark.parametrize("policy", POLICIES)
+@pytest.mark.parametrize("sign,address", [(1, "YPZZLZ"), (-1, "YPZLLZ")])
+def test_explicit_mice_header_cannot_bypass_pole_cell_validation(policy, sign, address):
+    value = a.MicE(
+        sign * 90,
+        -72,
+        SYMBOL,
+        message="off_duty",
+        ambiguity=4,
+        extensions=a.Extensions(motion=a.Motion(90, 10)),
+    )
+    for destination in (None, address):
+        packet = a.Packet(a.Header("N0CALL", destination), value)
+        assert a.check_packet(packet, policy=policy)
+        for operation in (a.validate_packet, a.serialize_packet):
+            with pytest.raises(a.ConformanceError):
+                operation(packet, policy=policy)
+    with pytest.raises(a.ConformanceError):
+        a.serialize_payload(value, policy=policy)

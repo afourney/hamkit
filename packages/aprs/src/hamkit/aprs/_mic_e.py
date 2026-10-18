@@ -161,7 +161,13 @@ def _longitude_degrees_byte(degrees: int, offset: bool) -> int:
 def _base_coordinates(p: MicE) -> tuple[float, float]:
     from ._dao import base_coordinates
 
-    return base_coordinates(p)
+    latitude, longitude = base_coordinates(p)
+    if (
+        abs(center(latitude, p.ambiguity)) > 90
+        or abs(center(longitude, p.ambiguity)) >= 180
+    ):
+        raise FieldError("Mic-E coordinate/ambiguity cell is outside the wire range")
+    return latitude, longitude
 
 
 def destination_for(p: MicE) -> str:
@@ -173,8 +179,6 @@ def destination_for(p: MicE) -> str:
     latitude, longitude = _base_coordinates(p)
     latitude = center(latitude, p.ambiguity)
     longitude = center(longitude, p.ambiguity)
-    if abs(latitude) > 90 or abs(longitude) >= 180:
-        raise FieldError("Mic-E coordinate/ambiguity cell is outside the wire range")
     units = round(abs(latitude) * 6000)
     degrees, minutes = divmod(units, 6000)
     digits = f"{degrees:02d}{minutes:04d}"
