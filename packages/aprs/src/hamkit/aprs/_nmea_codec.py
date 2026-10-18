@@ -13,7 +13,7 @@ from typing import Any, cast
 from . import _nmea as n
 from ._data import Coordinates, Measurement, Symbol
 from ._errors import CodecNotImplementedError, FieldError, Unrepresentable
-from ._models import NMEA, Diagnostic, Header
+from ._models import NMEA, Header
 from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 from ._text import free_text, token
 
@@ -130,8 +130,8 @@ def read(
                 hdop=number(7),
                 altitude_msl=Measurement(number(8), "meters") if f[8] else None,
                 geoid_separation=Measurement(number(10), "meters") if f[10] else None,
-                dgps_age=f[12] or None,
-                dgps_station=f[13] or None,
+                dgps_age_seconds=_plain(f[12], r"[0-9]+(?:\.[0-9]+)?", float),
+                dgps_station=_plain(f[13], r"[0-9]{1,4}", int),
             )
             usable = s.fix_quality != "invalid"
         elif kind == "GLL":
@@ -176,18 +176,14 @@ def read(
         raise
     except (ValueError, IndexError) as exc:
         raise FieldError("invalid NMEA field") from exc
-    if not usable and kind in ("GGA", "GLL", "RMC"):
-        diagnostics.append(
-            Diagnostic(
-                "nonconforming", "NMEA reports no valid fix", "$.position_usable"
-            )
-        )
+    # A void or invalid fix is legitimate NMEA; position_usable=False says so.
     return NMEA(
         s,
         n.NMEAMetadata(
             talker,
-            checksum_supplied=supplied,
+            checksum=supplied is not None,
             checksum_valid=valid,
+            checksum_supplied=supplied,
             fields_raw=fields_raw,
         ),
         position_usable=usable and valid is not False,
@@ -209,9 +205,13 @@ def _coord_fields(c: Coordinates | None) -> list[str]:
         total = round(abs(value) * 60, 7)
         degrees = int(total // 60)
         minutes = total - degrees * 60
+        # NMEA writes ddmm.mm; parsers expect the point, so keep two decimals.
+        whole, _, fraction = f"{degrees:0{width}d}{minutes:010.7f}".rstrip(
+            "0"
+        ).partition(".")
         result.extend(
             [
-                f"{degrees:0{width}d}{minutes:010.7f}".rstrip("0").rstrip("."),
+                f"{whole}.{fraction.ljust(2, '0')}",
                 hemispheres[math.copysign(1, value) < 0],
             ]
         )
@@ -263,8 +263,8 @@ def write(p: NMEA) -> bytes:
             "M",
             height_field(s.geoid_separation),
             "M",
-            s.dgps_age or "",
-            s.dgps_station or "",
+            "" if s.dgps_age_seconds is None else _decimal(s.dgps_age_seconds),
+            "" if s.dgps_station is None else f"{s.dgps_station:04d}",
         ]
     elif isinstance(s, n.GLL):
         f = [
@@ -296,7 +296,7 @@ def write(p: NMEA) -> bytes:
     else:
         f = [*_coord_fields(s.coordinates), s.name]
     raw = (p.metadata.talker + type(s).__name__ + "," + ",".join(f)).encode()
-    if p.metadata.checksum_supplied is not None or p.comment:
+    if p.metadata.checksum:
         raw += b"*" + f"{functools.reduce(operator.xor,raw,0):02X}".encode()
     return b"$" + raw + p.comment.encode()
 
@@ -343,11 +343,25 @@ def write_date(value: n.NMEADate | None) -> str:
     return f"{value.day:02d}{value.month:02d}{value.year_mod_100:02d}"
 
 
+def _plain(raw: str, pattern: str, kind: Any) -> Any:
+    """An empty field, or one plain decimal number (no sign, spaces or exponent)."""
+    if not raw:
+        return None
+    if not re.fullmatch(pattern, raw):
+        raise FieldError("invalid NMEA field")
+    return kind(raw)
+
+
+def _decimal(value: float) -> str:
+    """An ordinary decimal number; NMEA fields have no exponent form."""
+    from decimal import Decimal
+
+    return format(Decimal(f"{value:.12g}"), "f")
+
+
 def height_field(value: Measurement | None) -> str:
     from ._units import height
 
     if value is None or value.value is None:
         return ""
-    from decimal import Decimal
-
-    return format(Decimal(f'{height(value, "meters"):.12g}'), "f")
+    return _decimal(height(value, "meters"))

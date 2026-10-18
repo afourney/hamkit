@@ -133,6 +133,10 @@ class PositionInvariantTests(unittest.TestCase):
                 49, -72, SYMBOL, ambiguity=1, compression=a.Compression(ignored=True)
             )
         with self.assertRaises(a.ModelError):
-            a.Altitude(a.Measurement(None, "feet", raw=b"001234"), "feet_extension")
+            a.Altitude(
+                a.Measurement(None, "feet", raw=b"001234"), encoding="feet_extension"
+            )
         with self.assertRaises(a.ModelError):
-            a.Altitude(a.Measurement(1, "feet"), "mic_e", reference="ellipsoid")
+            a.Altitude(
+                a.Measurement(1, "feet"), encoding="mic_e", reference="ellipsoid"
+            )

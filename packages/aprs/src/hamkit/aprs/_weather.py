@@ -99,7 +99,9 @@ def read(
             field in (b"." * width, b" " * width)
             or re.fullmatch(rb"-?\d+(?:\.\d+)?", field)
         ):
-            if diagnostics is not None:
+            # Only a number after the tag is a broken field; other text is
+            # the comment (for example "home" after the report).
+            if diagnostics is not None and re.match(rb"[-.\d]", field):
                 from ._models import Diagnostic
 
                 diagnostics.append(

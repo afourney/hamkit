@@ -408,7 +408,7 @@ def translate(e: JSON) -> JSON:
         renames = {
             "time_utc_raw": "time_utc",
             "date_ddmmyy_raw": "date_ddmmyy",
-            "dgps_age_raw": "dgps_age",
+            "dgps_age_raw": "dgps_age_seconds",
             "dgps_station_raw": "dgps_station",
         }
         sentence.update(
@@ -506,6 +506,16 @@ def translate(e: JSON) -> JSON:
                 record["lines"] = fields
             if tag == "nts_text":
                 record["line"] = int(n["record_type"][1])
+            if tag == "nts_header":
+                raw = record["precedence"]
+                code = raw.removeprefix("TEST ")
+                record["precedence"] = {
+                    "R": "routine",
+                    "W": "welfare",
+                    "P": "priority",
+                    "EMERGENCY": "emergency",
+                }[code]
+                record["test"] = raw != code
             p = {
                 "type": "radiogram",
                 "addressee": e["message"]["addressee"],
@@ -1018,6 +1028,14 @@ def records() -> list[JSON]:
                 row[
                     "source_expected_scope"
                 ] = "application-state provenance only; not executed"
+            elif row["outcome"] == "reject-fix":
+                # A void or invalid fix is legitimate NMEA; it is simply not a
+                # position fix, which position_usable=False records.
+                row["expected"] = {"original_wire": row["packet"]}
+                row["rejection"] = (
+                    "No usable position fix: Malformed, nonconforming diagnostics,"
+                    " or an NMEA report with position_usable=false."
+                )
             elif row["outcome"].startswith("reject"):
                 row["expected"] = {"original_wire": row["packet"]}
                 row[

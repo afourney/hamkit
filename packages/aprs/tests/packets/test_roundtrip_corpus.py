@@ -90,11 +90,7 @@ def same_semantics(x: Any, y: Any, path="$") -> None:
     ), path
     if dataclasses.is_dataclass(x):
         for f in dataclasses.fields(x):
-            # Checksum characters describe the original lexemes, which the
-            # encoder can normalize. Their validity is checked separately.
-            if f.compare and not (
-                isinstance(x, a.NMEAMetadata) and f.name == "checksum_supplied"
-            ):
+            if f.compare:
                 same_semantics(
                     getattr(x, f.name), getattr(y, f.name), path + "." + f.name
                 )
@@ -174,7 +170,7 @@ def test_vector_roundtrip(row):
     assert isinstance(decoded, a.Packet)
     if isinstance(clean.payload, a.NMEA):
         n = clean.payload
-        if n.metadata.checksum_supplied is not None:
+        if n.metadata.checksum:
             assert isinstance(decoded.payload, a.NMEA)
             assert decoded.payload.metadata.checksum_valid is True
             if repaired:

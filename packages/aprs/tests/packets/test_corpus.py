@@ -84,6 +84,9 @@ def check(row: dict[str, Any]) -> None:
     rejected = isinstance(packet, aprs.Malformed) or any(
         d.code == "nonconforming" for d in packet.diagnostics
     )
+    if row["outcome"] == "reject-fix" and isinstance(packet, aprs.Packet):
+        payload = packet.payload
+        rejected |= isinstance(payload, aprs.NMEA) and not payload.position_usable
     assert actual["original_wire"] == row["packet"], "original bytes changed"
     assert not row.get("gap") and not row.get("unresolved")
     errors = differences(actual, row["expected"])

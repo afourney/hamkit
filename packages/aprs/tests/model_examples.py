@@ -22,7 +22,7 @@ def field_examples() -> tuple[object, ...]:
         a.Symbol("a", ">"),
         grid,
         a.Motion(360, 12, course_code=360, speed_code=12, raw=b"360/012"),
-        a.Altitude(a.Measurement(123, "meters"), "mic_e"),
+        a.Altitude(a.Measurement(123, "meters"), encoding="mic_e"),
         a.Range(12),
         a.PHG(25, 80, 3),
         a.Signal(5, 80, 3),
@@ -55,7 +55,7 @@ def field_examples() -> tuple[object, ...]:
         a.TelemetryBits((True,) * 8, project_title="Project"),
         a.NTSHeader(
             number="12",
-            precedence="R",
+            precedence="routine",
             originator="N0CALL",
             check="5",
             place="REDMOND WA",

@@ -134,7 +134,7 @@ def read(
         None if course == 0 else course, speed, course_code=course, speed_code=speed
     )
     symbol = Symbol(chr(b[7]), chr(b[6]))
-    device, extra, tail = read_status(b[8:], symbol, policy)
+    device, extra, tail = read_status(b[8:], symbol, policy, receiving=True)
     e = replace(extra, motion=motion)
     return MicE(
         dao_offset(lat, e.dao, "latitude") if not n else lat,
@@ -325,9 +325,18 @@ def _legacy_hex(tail: bytes) -> int:
 
 
 def read_status(
-    tail: bytes, symbol: Symbol, policy: EnvelopePolicy = _DEFAULT_POLICY
+    tail: bytes,
+    symbol: Symbol,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
+    *,
+    receiving: bool = False,
 ) -> tuple[str | None, Extensions, bytes]:
-    """Decode the status text after the symbol: device code, extensions, comment."""
+    """Decode the status text after the symbol: device code, extensions, comment.
+
+    Broken APRS 1.1 hex telemetry raises at $.comment. When receiving, the
+    position is kept and the status stays comment text; the send-side
+    read-back of that comment then reports the problem once.
+    """
     device = None
     suffix = b""
     telemetry = None
@@ -337,7 +346,12 @@ def read_status(
     hex_as_device = "mice_hex_as_device" in policy.extensions
     width = _legacy_hex(tail) if selector and not hex_as_device else 0
     if selector and not width and not modern:
-        raise FieldError("truncated or invalid legacy Mic-E hexadecimal telemetry")
+        if not receiving:
+            raise Unrepresentable(
+                "$.comment", "truncated or invalid legacy Mic-E hexadecimal telemetry"
+            )
+        # Only the status field is broken: keep its bytes as the comment.
+        return None, Extensions(), tail
     if width:
         values: tuple[int | None, ...] = tuple(
             bytes.fromhex(tail[1 : width + 1].decode())
@@ -356,7 +370,9 @@ def read_status(
         suffix = _suffix(device, tail[1:]) if modern else b""
         tail = tail[1 : len(tail) - len(suffix)]
     if len(tail) >= 4 and tail[3:4] == b"}":
-        altitude = Altitude(Measurement(base91(tail[:3]) - 10000, "meters"), "mic_e")
+        altitude = Altitude(
+            Measurement(base91(tail[:3]) - 10000, "meters"), encoding="mic_e"
+        )
         tail = tail[4:]
     # A legacy grid/status prefix remains literal comment text. It is neither
     # a device identifier nor a replacement for the encoded Mic-E coordinates.

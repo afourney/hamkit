@@ -99,7 +99,7 @@ class MessageInvariantTests(unittest.TestCase):
     def test_nts_optional_preamble_and_separator(self) -> None:
         header = a.NTSHeader(
             number="12",
-            precedence="R",
+            precedence="routine",
             originator="N0CALL",
             check="5",
             place="REDMOND WA",

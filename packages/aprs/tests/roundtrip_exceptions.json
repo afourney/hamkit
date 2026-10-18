@@ -566,6 +566,10 @@
     "kind": "conformance",
     "reasons": ["reading outside the quantity's range"]
   },
+  "BAD-108": {
+    "kind": "conformance",
+    "reasons": ["would be read back as the start of a malformed weather field"]
+  },
   "BAD-109": {
     "kind": "malformed",
     "reasons": [

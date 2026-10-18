@@ -43,9 +43,13 @@ def test_nmea_comment_has_an_unambiguous_checksum_boundary(policy, comment, sent
     wire, parsed = checked(payload, policy)
     assert parsed.payload.sentence == sentence
     assert parsed.payload.comment == comment
-    assert parsed.payload.metadata.checksum_valid is (True if comment else None)
-    assert payload.metadata.checksum_supplied is None  # automatic, without mutation
-    assert b"*" in wire if comment else b"*" not in wire
+    # The checksum is computed by default, without mutating the model.
+    assert parsed.payload.metadata.checksum_valid is True
+    assert payload.metadata.checksum_supplied is None
+    assert b"*" in wire
+    if not comment:
+        unsigned = replace(payload, metadata=a.NMEAMetadata("GP", checksum=False))
+        assert b"*" not in checked(unsigned, policy)[0]
     changed = replace(parsed.payload, comment="edited")
     assert checked(changed, policy)[1].payload.comment == "edited"
 

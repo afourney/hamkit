@@ -32,7 +32,7 @@ def test_editing_nmea_recomputes_checksum_and_ignores_lexical_evidence():
         ),
     )
     wire = a.serialize_packet(changed)
-    assert b"5100,N,00100,W" in wire and wire != original.original_wire
+    assert b"5100.00,N,00100.00,W" in wire and wire != original.original_wire
     decoded = packet(wire).payload
     assert isinstance(decoded, a.NMEA)
     assert decoded.sentence.coordinates == a.Coordinates(51, -1)
@@ -195,7 +195,9 @@ def test_known_bad_nmea_checksum_requires_explicit_repair():
     # Or omit the checksum entirely.
     unsigned = dataclasses.replace(
         received,
-        payload=dataclasses.replace(n, metadata=a.NMEAMetadata(n.metadata.talker)),
+        payload=dataclasses.replace(
+            n, metadata=a.NMEAMetadata(n.metadata.talker, checksum=False)
+        ),
     )
     assert b"*" not in a.serialize_packet(unsigned)
 
@@ -713,7 +715,7 @@ def _mic_e_packet(**extensions):
         (a.Altitude(a.Measurement(152, "meters")), b'"5T}'),
         (a.Altitude(a.Measurement(500, "feet")), b"/A=000500"),
         # A form the container cannot carry is replaced, not refused.
-        (a.Altitude(a.Measurement(500, "feet"), "compressed"), b"/A=000500"),
+        (a.Altitude(a.Measurement(500, "feet"), encoding="compressed"), b"/A=000500"),
     ],
 )
 def test_mic_e_altitude_form_is_chosen_by_the_library(altitude, wire):
@@ -750,7 +752,7 @@ def test_mic_e_telemetry_form_is_chosen_by_the_library(telemetry, extra, wire):
 
 
 def test_position_altitude_form_follows_the_container():
-    received = a.Altitude(a.Measurement(100, "meters"), "mic_e")
+    received = a.Altitude(a.Measurement(100, "meters"), encoding="mic_e")
     plain = a.Position(
         49, -72, a.Symbol("/", "-"), extensions=a.Extensions(altitude=received)
     )
@@ -1137,3 +1139,148 @@ def test_weather_symbol_course_speed_is_a_finding(table, code, compressed):
         value, payload=dataclasses.replace(value.payload, symbol=a.Symbol("/", ">"))
     )
     assert not a.check_packet(ordinary)
+
+
+def test_nmea_checksum_is_a_plain_choice():
+    sentence = a.GLL(a.Coordinates(49, -72), a.UTCTime(12, 30, 0), "active")
+    signed = a.Packet(
+        a.Header("N0CALL", "APRS"), a.NMEA(sentence, a.NMEAMetadata("GP"))
+    )
+    wire = a.serialize_packet(signed)
+    assert wire.endswith(b"*30")
+    received = a.parse_packet(wire)
+    meta = received.payload.metadata
+    assert (meta.checksum, meta.checksum_valid, meta.checksum_supplied) == (
+        True,
+        True,
+        "30",
+    )
+    # Received checksum facts are metadata: the parsed model equals the composed one.
+    assert received.payload.metadata == signed.payload.metadata
+    assert a.serialize_packet(received) == wire
+    unsigned = dataclasses.replace(
+        signed.payload, metadata=a.NMEAMetadata("GP", checksum=False)
+    )
+    assert b"*" not in a.serialize_payload(unsigned)
+    assert a.parse_payload(a.serialize_payload(unsigned)).metadata.checksum is False
+    with pytest.raises(a.ModelError):
+        dataclasses.replace(unsigned, comment="hello")
+
+
+@pytest.mark.parametrize(
+    "codes,comment",
+    [({"software_code": "b", "device_code": "1234"}, ""), ({}, "r00 rain")],
+)
+def test_weather_tail_that_reads_as_a_broken_field_is_a_finding(codes, comment):
+    m = a.Measurement
+    weather = a.Weather(
+        wind_direction=m(90, "degrees"),
+        wind_speed=m(5, "mph"),
+        gust=m(5, "mph"),
+        temperature=m(50, "fahrenheit"),
+        timestamp=a.Timestamp.mdhm(10, 9, 5, 56),
+        comment=comment,
+        **codes,
+    )
+    value = a.Packet(a.Header("N0CALL", "APRS"), weather)
+    path = "$.payload.software_code" if codes else "$.payload.comment"
+    assert [f.path for f in a.check_packet(value)] == [path]
+    with pytest.raises(a.ConformanceError):
+        a.serialize_packet(value)
+    # A plain-text comment after a field letter is not a broken field.
+    home = dataclasses.replace(weather, software_code=None, device_code=None)
+    home = dataclasses.replace(home, comment="home station")
+    received = a.parse_packet(
+        a.serialize_packet(dataclasses.replace(value, payload=home))
+    )
+    assert not received.diagnostics and received.payload.comment == "home station"
+
+
+@pytest.mark.parametrize(
+    "latitude,longitude,fields",
+    [
+        (49, -72, b"4900.00,N,07200.00,W"),
+        (51, -1, b"5100.00,N,00100.00,W"),
+        (49 + 3.5 / 60, -(72 + 1.75 / 60), b"4903.50,N,07201.75,W"),
+        (48.1173, 11.516666666, b"4807.038,N,01131.00,E"),
+    ],
+)
+def test_nmea_coordinates_keep_a_decimal_point(latitude, longitude, fields):
+    sentence = a.GLL(a.Coordinates(latitude, longitude), a.UTCTime(1, 2, 3), "active")
+    wire = a.serialize_payload(a.NMEA(sentence, a.NMEAMetadata("GP")))
+    assert fields in wire
+    decoded = a.parse_payload(wire).sentence.coordinates
+    assert decoded.latitude_deg == pytest.approx(latitude, abs=1e-9)
+    assert decoded.longitude_deg == pytest.approx(longitude, abs=1e-9)
+
+
+@pytest.mark.parametrize(
+    "precedence,test,wire",
+    [
+        ("routine", False, "R"),
+        ("welfare", False, "W"),
+        ("priority", True, "TEST P"),
+        ("emergency", False, "EMERGENCY"),
+    ],
+)
+def test_nts_precedence_takes_names(precedence, test, wire):
+    header = a.NTSHeader(
+        number="12",
+        precedence=precedence,
+        test=test,
+        originator="N0CALL",
+        check="5",
+        place="REDMOND WA",
+        date="OCT 15",
+    )
+    value = a.Packet(
+        a.Header("N0CALL", "APRS"), a.Radiogram("W1AW", header, message_id="001")
+    )
+    encoded = a.serialize_packet(value)
+    assert f"N#\\12\\{wire}\\\\N0CALL".encode() in encoded
+    assert a.parse_packet(encoded).payload == value.payload
+    with pytest.raises(a.ModelError):
+        dataclasses.replace(header, precedence="R")
+    bad = encoded.replace(f"\\{wire}\\".encode(), b"\\X\\")
+    assert isinstance(a.parse_packet(bad), a.Malformed)
+
+
+def test_void_nmea_fix_is_not_a_diagnostic():
+    received = a.parse_packet(b"N0CALL>APRS:$GPRMC,041518,V,,,,,,,230309,,*33")
+    assert isinstance(received, a.Packet) and not received.diagnostics
+    assert received.payload.position_usable is False
+    assert a.serialize_packet(received) == received.original_wire
+
+
+def test_altitude_encoding_is_keyword_only():
+    with pytest.raises(TypeError):
+        a.Altitude(a.Measurement(1, "feet"), "mic_e")  # type: ignore[misc]
+    assert a.Altitude(a.Measurement(1, "feet"), encoding="mic_e").encoding == "mic_e"
+
+
+@pytest.mark.parametrize(
+    "wire,device",
+    [
+        (b'N0CALL>T2SP0W:`c_Vm6hk/`"4F}_%', "`_%"),  # Yaesu FTM-400DR
+        (b"N0CALL>T2SP0W:`c_Vm6hk/'Hello|4", "'|4"),  # Byonics TinyTrack4
+    ],
+)
+def test_strict_mic_e_keeps_position_when_status_is_not_hex(wire, device):
+    strict = a.parse_packet(wire, policy=a.APRS_IS(extensions=()))
+    assert isinstance(strict, a.Packet) and isinstance(strict.payload, a.MicE)
+    assert strict.payload.extensions.motion is not None
+    assert strict.payload.device_code is None
+    assert strict.payload.comment == wire.split(b"k/", 1)[1].decode()
+    assert [(d.code, d.path) for d in strict.diagnostics] == [
+        ("nonconforming", "$.payload.comment")
+    ]
+    assert a.check_packet(strict, policy=a.APRS_IS(extensions=()))
+    with pytest.raises(a.ConformanceError):
+        a.serialize_packet(strict, policy=a.APRS_IS(extensions=()))
+    # The default policy reads the same text as an APRS 1.2 type code.
+    default = a.parse_packet(wire)
+    assert not default.diagnostics and default.payload.device_code == device
+    assert (strict.payload.latitude_deg, strict.payload.longitude_deg) == (
+        default.payload.latitude_deg,
+        default.payload.longitude_deg,
+    )

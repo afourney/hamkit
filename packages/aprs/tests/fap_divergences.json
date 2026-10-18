@@ -23,7 +23,8 @@
     "telemetry_invalid": "A non-numeric telemetry channel cannot be decoded, so the report is Malformed; FAP keeps the channels before it.",
     "telemetry_comment": "Text after the telemetry digital bits is kept as the comment; FAP discards it.",
     "weather_unknown_field": "'O' is not a weather field in APRS101, the APRS 1.1 clarification or the APRS 1.2 proposal, so the report ends there and the rest stays in the comment; FAP skips it.",
-    "compressed_dao": "DAO precision describes refinements of DDMM.hh/DDDMM.hh fields, not compressed coordinates. Preserve the DAO evidence and baseline compressed coordinates with a diagnostic; do not apply an invented correction."
+    "compressed_dao": "DAO precision describes refinements of DDMM.hh/DDDMM.hh fields, not compressed coordinates. Preserve the DAO evidence and baseline compressed coordinates with a diagnostic; do not apply an invented correction.",
+    "nmea_no_fix": "A void or invalid NMEA fix is a valid sentence that is not a position fix (position_usable=false); FAP rejects it."
   },
   "rows": {
     "FAP-005": {
@@ -116,6 +117,15 @@
         }
       }
     },
+    "FAP-358": {
+      "reasons": ["nmea_no_fix"],
+      "accept": {
+        "payload": {
+          "type": "nmea",
+          "position_usable": false
+        }
+      }
+    },
     "FAP-359": {
       "reasons": ["nmea_symbol"],
       "set": {
@@ -175,6 +185,24 @@
           "position_usable": false,
           "symbol": null,
           "comment": ""
+        }
+      }
+    },
+    "FAP-368": {
+      "reasons": ["nmea_no_fix"],
+      "accept": {
+        "payload": {
+          "type": "nmea",
+          "position_usable": false
+        }
+      }
+    },
+    "FAP-374": {
+      "reasons": ["nmea_no_fix"],
+      "accept": {
+        "payload": {
+          "type": "nmea",
+          "position_usable": false
         }
       }
     },

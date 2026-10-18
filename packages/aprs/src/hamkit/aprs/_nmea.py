@@ -18,9 +18,16 @@ from ._validation import Validated, evidence
 
 @dataclass(frozen=True)
 class NMEAMetadata(Validated):
+    """Talker and checksum choice; received checksum facts are metadata.
+
+    The library computes the checksum whenever ``checksum`` is true.
+    ``checksum_valid`` records whether a received checksum matched.
+    """
+
     talker: str
-    checksum_supplied: str | None = field(default=None, kw_only=True)
-    checksum_valid: bool | None = field(default=None, kw_only=True)
+    checksum: bool = field(default=True, kw_only=True)
+    checksum_valid: bool | None = field(default=None, kw_only=True, compare=False)
+    checksum_supplied: str | None = evidence()
     fields_raw: tuple[bytes, ...] = evidence(())
 
 
@@ -68,8 +75,8 @@ class GGA(Validated):
     hdop: float | None = field(default=None, kw_only=True)
     altitude_msl: Measurement | None = field(default=None, kw_only=True)
     geoid_separation: Measurement | None = field(default=None, kw_only=True)
-    dgps_age: str | None = field(default=None, kw_only=True)
-    dgps_station: str | None = field(default=None, kw_only=True)
+    dgps_age_seconds: float | None = field(default=None, kw_only=True)
+    dgps_station: int | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)

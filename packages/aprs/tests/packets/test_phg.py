@@ -119,7 +119,7 @@ def test_phg_rate_precedes_altitude_dao_and_telemetry(rate):
         comment="Radio",
         extensions=a.Extensions(
             phg=a.PHG(4, 20, 3, rate_per_hour=rate),
-            altitude=a.Altitude(a.Measurement(1234, "feet"), "feet_extension"),
+            altitude=a.Altitude(a.Measurement(1234, "feet"), encoding="feet_extension"),
             dao=a.DAO("W", precision="high"),
             telemetry=a.Telemetry((1, 2), sequence=3, encoding="base91_comment"),
         ),

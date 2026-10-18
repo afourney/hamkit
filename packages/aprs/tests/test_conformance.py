@@ -156,7 +156,7 @@ class MessageFamilyTests(unittest.TestCase):
             (
                 a.NTSHeader(
                     number="0",
-                    precedence="R",
+                    precedence="routine",
                     originator="N0CALL",
                     check="5",
                     place="X",
@@ -228,7 +228,7 @@ class PlaceTests(unittest.TestCase):
             (
                 a.Extensions(
                     altitude=a.Altitude(
-                        a.Measurement(1000000, "meters"), "feet_extension"
+                        a.Measurement(1000000, "meters"), encoding="feet_extension"
                     )
                 ),
                 "altitude.measurement.value",

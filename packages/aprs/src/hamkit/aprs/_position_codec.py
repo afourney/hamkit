@@ -92,7 +92,7 @@ def compressed(
         if t & 24 == 16:
             e = Extensions(
                 altitude=Altitude(
-                    Measurement(1.002 ** (c * 91 + s), "feet"), "compressed"
+                    Measurement(1.002 ** (c * 91 + s), "feet"), encoding="compressed"
                 )
             )
         elif c == 90:

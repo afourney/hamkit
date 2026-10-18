@@ -131,7 +131,7 @@ def test_altitude_equivalent_units(encoding):
                 ),
                 a.NMEAMetadata("GP"),
             )
-        e = a.Extensions(altitude=a.Altitude(reading, encoding))
+        e = a.Extensions(altitude=a.Altitude(reading, encoding=encoding))
         if encoding == "mic_e":
             return a.MicE(
                 49,
@@ -182,7 +182,7 @@ def test_altitude_equivalent_units(encoding):
 )
 def test_altitude_range_checks_use_converted_units(encoding, value):
     unit = "meters" if encoding == "mic_e" else "feet"
-    e = a.Extensions(altitude=a.Altitude(a.Measurement(value, unit), encoding))
+    e = a.Extensions(altitude=a.Altitude(a.Measurement(value, unit), encoding=encoding))
     if encoding == "mic_e":
         p = a.MicE(
             49,
@@ -253,7 +253,7 @@ def test_nmea_century_is_never_invented(year):
 
 def test_nmea_missing_and_partial_values_are_preserved():
     missing = a.NMEA(a.RMC(None, None, "void", None), a.NMEAMetadata("GP"))
-    assert send(missing)[0] == b"N0CALL>APRS:$GPRMC,,V,,,,,,,,,"
+    assert send(missing)[0] == b"N0CALL>APRS:$GPRMC,,V,,,,,,,,,*31"
     partial = a.parse_packet(b"N0CALL>APRS:$GPRMC,1234,V,,,,,,,2303,,")
     assert isinstance(partial, a.Packet)
     assert partial.payload.sentence.time_utc == a.UTCTime(12, 34)
@@ -287,7 +287,9 @@ def test_conversion_overflow_is_a_finding_and_gga_uses_decimal_numbers():
         -72,
         SYMBOL,
         extensions=a.Extensions(
-            altitude=a.Altitude(a.Measurement(1e308, "meters"), "feet_extension")
+            altitude=a.Altitude(
+                a.Measurement(1e308, "meters"), encoding="feet_extension"
+            )
         ),
     )
     assert a.check_packet(packet(p))

@@ -47,11 +47,15 @@ class NMEAInvariantTests(unittest.TestCase):
         for validity in (True, False):
             self.reject_both(
                 a.NMEAMetadata,
-                {"talker": "GP", "checksum_valid": validity},
+                {"talker": "GP", "checksum": False, "checksum_valid": validity},
                 "nmea_metadata",
             )
+        self.reject_both(
+            a.NMEAMetadata, {"talker": "GP", "checksum": "yes"}, "nmea_metadata"
+        )
         evidence = a.NMEAMetadata("GN", checksum_supplied="aF", checksum_valid=False)
         self.assertEqual(a.from_json(a.to_json(evidence)), evidence)
+        self.assertEqual(a.from_json(a.to_json(evidence)).checksum_supplied, "aF")
 
     def test_calendar_and_magnetic_variation(self) -> None:
         base = {
@@ -98,14 +102,26 @@ class NMEAInvariantTests(unittest.TestCase):
             "coordinates": None,
             "fix_quality": "invalid",
         }
-        for age in ("", "-1", "NaN", "1e3", "1,2", " 1"):
-            self.reject_both(a.GGA, {**base, "dgps_age": age}, "gga")
-        for station in ("A,B", "A*B", "$GP"):
+        for age in (-1, float("nan"), "1"):
+            self.reject_both(a.GGA, {**base, "dgps_age_seconds": age}, "gga")
+        for station in (-1, 1024, 1.5, "0042"):
             self.reject_both(a.GGA, {**base, "dgps_station": station}, "gga")
         sentence = a.GGA(
-            a.UTCTime(12, 0, 0), None, "invalid", dgps_age="0.25", dgps_station="TSTR"
+            a.UTCTime(12, 0, 0),
+            None,
+            "invalid",
+            dgps_age_seconds=0.25,
+            dgps_station=42,
         )
         self.assertEqual(a.from_json(a.to_json(sentence)), sentence)
+        wire = a.serialize_payload(a.NMEA(sentence, a.NMEAMetadata("GP")))
+        self.assertIn(b",0.25,0042*", wire)
+        self.assertEqual(a.parse_payload(wire).sentence, sentence)
+        for field in (b",1e3,0042*", b",0.25,ABCD*", b",-1,0042*"):
+            bad = wire.split(b",0.25,0042*")[0] + field.rstrip(b"*")
+            self.assertIsInstance(
+                a.parse_packet(b"N0CALL>APRS:" + bad), a.Malformed, bad
+            )
         for name in ("A,B", "A*B", "$GP"):
             with self.assertRaises(a.ModelError):
                 a.WPL(a.Coordinates(1, 2), name)

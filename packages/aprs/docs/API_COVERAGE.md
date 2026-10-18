@@ -134,7 +134,14 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   (APRS101 p39, defaulting to `"software"`), storm `kind` (`"hurricane"`,
   `"tropical_storm"`, `"tropical_depression"`), NMEA `fix_status`
   (`"active"`/`"void"`), GGA `fix_quality` (`"invalid"` … `"simulation"`, the
-  NMEA 0183 table) and a signed `magnetic_variation_deg` (east positive). DAO
+  NMEA 0183 table), GGA `dgps_age_seconds` and `dgps_station` (0–1023, written
+  as four digits) as numbers, and a signed `magnetic_variation_deg` (east
+  positive). An NTS header takes `precedence` (`"routine"`, `"welfare"`,
+  `"priority"`, `"emergency"`; written R, W, P, EMERGENCY) and `test=True` for a
+  TEST message. NTS dates and times stay text, as written on the radiogram
+  form, because APRS101 p75 defers them to the NTS handbook, which fixes no
+  format. A void or invalid NMEA fix is not a diagnostic: `position_usable` is
+  false. `Altitude.encoding` is keyword-only, like `Telemetry.encoding`. DAO
   `precision` is `"high"` (one more decimal digit of minutes, about 1.85 m) or
   `"highest"` (base-91, about 0.2 m). A DF `Bearing` takes `hit_ratio` or
   `manual`, `range_miles` and `accuracy_deg`, using APRS101's quality table
@@ -175,8 +182,10 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   telemetry is a device type byte, and declared version suffixes become part of
   `device_code` for every type byte. Complete hex stays telemetry unless
   `mice_hex_as_device` (off by default) is enabled. With both off, those
-  selectors introduce APRS101 hexadecimal telemetry, incomplete hex fields are
-  undecodable, and suffix text stays in the comment; original `>` and `]` device
+  selectors introduce APRS101 hexadecimal telemetry. Incomplete hex (such as a
+  Yaesu or TinyTrack type code read strictly) keeps the decoded position, leaves
+  the status text as the comment and is reported nonconforming at
+  `$.payload.comment`, so it is not re-sent; suffix text stays in the comment; original `>` and `]` device
   markers remain supported. There is no
   general APRS revision flag proving the sender's intent. Legacy grid/status
   text remains literal comment, separate from the encoded coordinates.
@@ -193,14 +202,16 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   its unresolved century might be a leap century; leap seconds are accepted only
   at 23:59, without inventing a leap-second calendar. Fractional seconds use a
   numeric value; lexical trailing zeros are not preserved.
-- NMEA recomputes a supplied checksum and automatically supplies one when a
-  nonempty comment needs a separator. This prevents comment text from becoming
-  the sentence's last field; metadata is not mutated. Checksum
-  characters can change when equivalent numeric spellings change. A sentence
+- NMEA checksums are a plain choice: `NMEAMetadata(checksum=True)` (the
+  default) has the library compute one, and `checksum=False` omits it. A
+  comment follows the checksum, so it requires `checksum=True`. The received
+  checksum characters are hidden evidence (`checksum_supplied`), and
+  `checksum_valid` records whether they matched; neither affects equality.
+  Coordinates are written as `ddmm.mm` with at least two decimals. A sentence
   received with a bad checksum (`checksum_valid=False`) is a conformance finding:
   it is reported when parsed and refused when sending, so corrupt data is never
   re-signed implicitly. Repair it explicitly by clearing `checksum_valid` (a fresh
-  checksum is computed) or by omitting the checksum.
+  checksum is computed) or by setting `checksum=False`.
   For an NMEA packet with a symbol, leave `header.destination` out: the library
   generates the `GPSxyz` destination from the published table
   (aprs.org/symbols/symbolsX.txt), including overlays. Received `GPSxyz`,
@@ -222,7 +233,11 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
 - Weather software/unit codes end a report (APRS101 pp. 63–66 define no comment
   after them). They are decoded only when they end the report, so sending refuses
   codes followed by a comment, and a comment alone that would read back as codes
-  (3–5 characters such as `home`).
+  (3–5 characters such as `home`). Codes or a comment that begin like a broken
+  field (a field letter followed by a number of the wrong width, such as
+  software code `b` with unit `1234`) are refused too. On receive, only a
+  number after a field letter is reported as a malformed field; other text is
+  the comment.
 - Message text is a query response only when it matches a response grammar
   completely; anything else remains an ordinary `Message`.
 - Explicit altitude references, water-height datums and DF interpretation

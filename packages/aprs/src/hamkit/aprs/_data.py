@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import datetime
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Literal, TypeAlias, get_args
 
 from ._validation import FREE_TEXT, Validated, evidence
@@ -189,7 +191,7 @@ class Altitude(Validated):
 
     measurement: Measurement
     encoding: Literal["feet_extension", "compressed", "mic_e", "nmea"] | None = field(
-        default=None, compare=False
+        default=None, compare=False, kw_only=True
     )
     reference: Literal["unspecified", "MSL", "ellipsoid"] = field(
         default="unspecified", kw_only=True
@@ -583,16 +585,26 @@ TelemetryDefinitionValue: TypeAlias = (
 )
 
 
+# ARRL precedences; the radiogram form abbreviates all but EMERGENCY.
+NTSPrecedence: TypeAlias = Literal["routine", "welfare", "priority", "emergency"]
+NTS_PRECEDENCE_CODES: Mapping[NTSPrecedence, str] = MappingProxyType(
+    {"routine": "R", "welfare": "W", "priority": "P", "emergency": "EMERGENCY"}
+)
+
+
 @dataclass(frozen=True, kw_only=True)
 class NTSHeader(Validated):
+    """The radiogram preamble; ``test`` marks a TEST message (precedence prefix)."""
+
     number: str
-    precedence: str
+    precedence: NTSPrecedence
     originator: str
     check: str
     place: str
     date: str
     handling: str | None = None
     time: str | None = None
+    test: bool = False
 
 
 @dataclass(frozen=True)

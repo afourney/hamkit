@@ -151,22 +151,22 @@ def specialized(
             if tag == "N#":
                 if len(values) != 8:
                     raise ValueError("NTS header requires eight fields")
+                number, raw, handling, originator, check, place, time, date = values
+                code = raw.removeprefix("TEST ")
+                names = {v: k for k, v in d.NTS_PRECEDENCE_CODES.items()}
+                if code not in names:
+                    raise ValueError("NTS header requires an ARRL precedence")
+                # Optional preamble fields are empty between separators.
                 record = d.NTSHeader(
-                    **dict(
-                        zip(
-                            (
-                                "number",
-                                "precedence",
-                                "handling",
-                                "originator",
-                                "check",
-                                "place",
-                                "time",
-                                "date",
-                            ),
-                            values,
-                        )
-                    )
+                    number=number,
+                    precedence=names[code],
+                    test=raw != code,
+                    handling=handling or None,
+                    originator=originator,
+                    check=check,
+                    place=place,
+                    time=time or None,
+                    date=date,
                 )
             elif tag == "NA":
                 record = d.NTSAddress(cast(Any, tuple(values)))
@@ -378,7 +378,7 @@ def write(payload):
             tag = "N#"
             values = [
                 v.number,
-                v.precedence,
+                ("TEST " if v.test else "") + d.NTS_PRECEDENCE_CODES[v.precedence],
                 v.handling or "",
                 v.originator,
                 v.check,

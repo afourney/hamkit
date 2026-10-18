@@ -1592,7 +1592,7 @@ Capabilities
 
 **Wire encoding available.** A GLL navigation sentence. GGA, RMC, VTG and WPL are also modeled.
 
-A comment requires a checksum delimiter; serialization generates it automatically when needed, without changing the metadata.
+The library computes the checksum (`NMEAMetadata(checksum=True)`, the default); pass `checksum=False` to omit it. A comment follows the checksum, so it requires one.
 
 Build with Python:
 
@@ -1611,7 +1611,7 @@ print(aprs.serialize_packet(packet).decode())
 Output:
 
 ```text
-N0CALL>APRS:$GPGLL,4900,N,07200,W,123000,A*30hello
+N0CALL>APRS:$GPGLL,4900.00,N,07200.00,W,123000,A*30hello
 ```
 
 Build the same packet from JSON:
@@ -1656,7 +1656,7 @@ print(aprs.serialize_packet(packet).decode())
 Output:
 
 ```text
-N0CALL>APRS:$GPGLL,4900,N,07200,W,123000,A*30hello
+N0CALL>APRS:$GPGLL,4900.00,N,07200.00,W,123000,A*30hello
 ```
 
 #### Area dimensions in degrees
@@ -2030,7 +2030,7 @@ print(aprs.serialize_packet(packet).decode())
 Output:
 
 ```text
-N0CALL>APRS:$GPRMC,123519.25,A,4900,N,07200,W,,,230394,,
+N0CALL>APRS:$GPRMC,123519.25,A,4900.00,N,07200.00,W,,,230394,,*2C
 ```
 
 Build the same packet from JSON:
@@ -2079,7 +2079,7 @@ print(aprs.serialize_packet(packet).decode())
 Output:
 
 ```text
-N0CALL>APRS:$GPRMC,123519.25,A,4900,N,07200,W,,,230394,,
+N0CALL>APRS:$GPRMC,123519.25,A,4900.00,N,07200.00,W,,,230394,,*2C
 ```
 
 #### Raw vendor weather

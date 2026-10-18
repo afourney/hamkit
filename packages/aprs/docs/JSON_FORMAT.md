@@ -896,27 +896,29 @@ Standalone tag: `nts_header`. [Back to type map](#type-map-and-object-catalog).
 {
   "type": "nts_header",
   "number": "12",
-  "precedence": "R",
+  "precedence": "routine",
   "originator": "N0CALL",
   "check": "5",
   "place": "REDMOND WA",
   "date": "OCT 15",
   "handling": "HXA",
-  "time": "1800"
+  "time": "1800",
+  "test": false
 }
 ```
 
-| Field        | JSON value / allowed values | Presence / default       |
-| ------------ | --------------------------- | ------------------------ |
-| `type`       | `"nts_header"`              | see [Tags](#tags)        |
-| `number`     | string                      | **required**             |
-| `precedence` | string                      | **required**             |
-| `originator` | string                      | **required**             |
-| `check`      | string                      | **required**             |
-| `place`      | string                      | **required**             |
-| `date`       | string                      | **required**             |
-| `handling`   | string or null              | optional; default `null` |
-| `time`       | string or null              | optional; default `null` |
+| Field        | JSON value / allowed values                           | Presence / default        |
+| ------------ | ----------------------------------------------------- | ------------------------- |
+| `type`       | `"nts_header"`                                        | see [Tags](#tags)         |
+| `number`     | string                                                | **required**              |
+| `precedence` | `'routine'`, `'welfare'`, `'priority'`, `'emergency'` | **required**              |
+| `originator` | string                                                | **required**              |
+| `check`      | string                                                | **required**              |
+| `place`      | string                                                | **required**              |
+| `date`       | string                                                | **required**              |
+| `handling`   | string or null                                        | optional; default `null`  |
+| `time`       | string or null                                        | optional; default `null`  |
+| `test`       | boolean                                               | optional; default `false` |
 
 ### NTSAddress
 
@@ -1097,8 +1099,9 @@ Standalone tag: `nmea_metadata`. [Back to type map](#type-map-and-object-catalog
 {
   "type": "nmea_metadata",
   "talker": "GP",
-  "checksum_supplied": "00",
+  "checksum": true,
   "checksum_valid": false,
+  "checksum_supplied": "00",
   "fields_raw": []
 }
 ```
@@ -1107,8 +1110,9 @@ Standalone tag: `nmea_metadata`. [Back to type map](#type-map-and-object-catalog
 | ------------------- | ---------------------------- | ------------------------ |
 | `type`              | `"nmea_metadata"`            | see [Tags](#tags)        |
 | `talker`            | string                       | **required**             |
-| `checksum_supplied` | string or null               | optional; default `null` |
+| `checksum`          | boolean                      | optional; default `true` |
 | `checksum_valid`    | boolean or null              | optional; default `null` |
+| `checksum_supplied` | string or null               | optional; default `null` |
 | `fields_raw`        | array of Latin-1 byte string | optional; default `[]`   |
 
 ### GGA
@@ -1140,7 +1144,7 @@ Standalone tag: `gga`. [Back to type map](#type-map-and-object-catalog).
     "unit": "meters",
     "raw": null
   },
-  "dgps_age": null,
+  "dgps_age_seconds": null,
   "dgps_station": null
 }
 ```
@@ -1155,8 +1159,8 @@ Standalone tag: `gga`. [Back to type map](#type-map-and-object-catalog).
 | `hdop`             | finite number or null                                                                                      | optional; default `null` |
 | `altitude_msl`     | [Measurement](#measurement) or null                                                                        | optional; default `null` |
 | `geoid_separation` | [Measurement](#measurement) or null                                                                        | optional; default `null` |
-| `dgps_age`         | string or null                                                                                             | optional; default `null` |
-| `dgps_station`     | string or null                                                                                             | optional; default `null` |
+| `dgps_age_seconds` | finite number or null                                                                                      | optional; default `null` |
+| `dgps_station`     | integer or null                                                                                            | optional; default `null` |
 
 ### GLL
 
@@ -1837,8 +1841,9 @@ Standalone tag: `nmea`. [Back to type map](#type-map-and-object-catalog).
   },
   "metadata": {
     "talker": "GP",
-    "checksum_supplied": null,
+    "checksum": true,
     "checksum_valid": null,
+    "checksum_supplied": null,
     "fields_raw": []
   },
   "position_usable": null,
@@ -2304,13 +2309,14 @@ Each allowed member is shown in its actual container, where it carries its tag.
       "unit": "meters",
       "raw": null
     },
-    "dgps_age": null,
+    "dgps_age_seconds": null,
     "dgps_station": null
   },
   "metadata": {
     "talker": "GP",
-    "checksum_supplied": null,
+    "checksum": true,
     "checksum_valid": null,
+    "checksum_supplied": null,
     "fields_raw": []
   },
   "position_usable": null,
@@ -2339,8 +2345,9 @@ Each allowed member is shown in its actual container, where it carries its tag.
   },
   "metadata": {
     "talker": "GP",
-    "checksum_supplied": null,
+    "checksum": true,
     "checksum_valid": null,
+    "checksum_supplied": null,
     "fields_raw": []
   },
   "position_usable": null,
@@ -2377,8 +2384,9 @@ Each allowed member is shown in its actual container, where it carries its tag.
   },
   "metadata": {
     "talker": "GP",
-    "checksum_supplied": null,
+    "checksum": true,
     "checksum_valid": null,
+    "checksum_supplied": null,
     "fields_raw": []
   },
   "position_usable": null,
@@ -2401,8 +2409,9 @@ Each allowed member is shown in its actual container, where it carries its tag.
   },
   "metadata": {
     "talker": "GP",
-    "checksum_supplied": null,
+    "checksum": true,
     "checksum_valid": null,
+    "checksum_supplied": null,
     "fields_raw": []
   },
   "position_usable": null,
@@ -2426,8 +2435,9 @@ Each allowed member is shown in its actual container, where it carries its tag.
   },
   "metadata": {
     "talker": "GP",
-    "checksum_supplied": null,
+    "checksum": true,
     "checksum_valid": null,
+    "checksum_supplied": null,
     "fields_raw": []
   },
   "position_usable": null,
@@ -2445,13 +2455,14 @@ Each allowed member is shown in its actual container, where it carries its tag.
   "record": {
     "type": "nts_header",
     "number": "12",
-    "precedence": "R",
+    "precedence": "routine",
     "originator": "N0CALL",
     "check": "5",
     "place": "REDMOND WA",
     "date": "OCT 15",
     "handling": "HXA",
-    "time": "1800"
+    "time": "1800",
+    "test": false
   },
   "message_id": null
 }

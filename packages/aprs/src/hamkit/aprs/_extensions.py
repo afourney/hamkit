@@ -234,7 +234,7 @@ def read(
     if match := _ALTITUDE.search(tail):
         feet = int(match[1])
         found["altitude"] = Altitude(
-            Measurement(feet, "feet", raw=match[1]), "feet_extension"
+            Measurement(feet, "feet", raw=match[1]), encoding="feet_extension"
         )
         tail = tail[: match.start()] + tail[match.end() :]
     if "phg" in found and "phg_rate" in policy.extensions:

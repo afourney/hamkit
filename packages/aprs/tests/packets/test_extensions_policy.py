@@ -179,7 +179,14 @@ def test_mice_reused_selector_is_explicit_even_for_complete_hex():
         with pytest.raises(a.ConformanceError):
             a.serialize_packet(value, policy=policy)
     truncated = wire[:-3]
-    assert isinstance(a.parse_packet(truncated, policy=BASELINE), a.Malformed)
+    # Strict 1.1 flags the broken telemetry but keeps the position.
+    strict = packet(truncated, BASELINE)
+    assert strict.payload.latitude_deg == old.payload.latitude_deg
+    assert strict.payload.comment == "`0"
+    assert strict.payload.extensions.telemetry is None
+    assert [d.path for d in strict.diagnostics] == ["$.payload.comment"]
+    with pytest.raises(a.ConformanceError):
+        a.serialize_packet(strict, policy=BASELINE)
     assert isinstance(a.parse_packet(truncated, policy=modern_policy), a.Packet)
 
 

@@ -65,7 +65,9 @@ class PacketTests(unittest.TestCase):
                     timestamp=timestamp,
                     extensions=Extensions(
                         motion=Motion(123, 45),
-                        altitude=Altitude(Measurement(1000, "feet"), "feet_extension"),
+                        altitude=Altitude(
+                            Measurement(1000, "feet"), encoding="feet_extension"
+                        ),
                     ),
                 )
                 self.assertEqual(parse_payload(serialize_payload(value)), value)

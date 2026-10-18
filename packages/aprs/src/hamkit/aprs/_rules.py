@@ -556,8 +556,10 @@ def _nmea_metadata(v: NMEAMetadata) -> None:
     _pattern(
         v, "checksum_supplied", re.compile(r"[0-9A-Fa-f]{2}"), "requires two hex digits"
     )
-    if v.checksum_valid is not None and v.checksum_supplied is None:
-        fail("checksum_valid", "checksum validity requires a supplied checksum")
+    if type(v.checksum) is not bool:
+        fail("checksum", "must be a bool")
+    if v.checksum_valid is not None and not v.checksum:
+        fail("checksum_valid", "checksum validity requires a checksum")
 
 
 def _nmea_token(v: Any, name: str) -> None:
@@ -582,14 +584,9 @@ def _gga(v: GGA) -> None:
         if reading is not None and reading.unit not in ("feet", "meters"):
             fail(name + ".unit", "height requires feet or meters")
     _bounds(v, "satellites", 0, 99)
-    _nonnegative(v, "hdop")
-    _pattern(
-        v,
-        "dgps_age",
-        re.compile(r"[0-9]+(?:\.[0-9]+)?"),
-        "requires a nonnegative decimal duration in seconds",
-    )
-    _nmea_token(v, "dgps_station")
+    _nonnegative(v, "hdop", "dgps_age_seconds")
+    # NMEA 0183 differential reference station IDs are 0000-1023.
+    _bounds(v, "dgps_station", 0, 1023)
 
 
 @invariant(RMC, VTG)
@@ -615,6 +612,8 @@ def _wpl(v: WPL) -> None:
 
 @invariant(NMEA)
 def _nmea(v: NMEA) -> None:
+    if v.comment and not v.metadata.checksum:
+        fail("comment", "a comment follows the checksum, so it requires checksum=True")
     if v.position_usable is not True:
         return
     sentence = v.sentence

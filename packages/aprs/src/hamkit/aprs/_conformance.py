@@ -19,6 +19,7 @@ from typing import Any
 
 from . import _extensions
 from ._data import (
+    NTS_PRECEDENCE_CODES,
     Footprint,
     Measurement,
     NTSAddress,
@@ -293,7 +294,7 @@ def _nts_values(v: Any) -> list[str]:
     if isinstance(v, NTSHeader):
         return [
             v.number,
-            v.precedence,
+            ("TEST " if v.test else "") + NTS_PRECEDENCE_CODES[v.precedence],
             v.handling or "",
             v.originator,
             v.check,
@@ -313,8 +314,6 @@ def _nts(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if isinstance(v, NTSHeader):
         if not re.fullmatch(r"(?:SVC )?[1-9][0-9]*", v.number):
             yield "$.number", "requires a positive number, optionally after SVC"
-        if not re.fullmatch(r"(?:TEST )?(?:R|W|P|EMERGENCY)", v.precedence):
-            yield "$.precedence", "requires an ARRL precedence"
         for name in ("originator", "check", "place", "date"):
             if not getattr(v, name).strip():
                 yield f"$.{name}", "required preamble value is empty"
@@ -460,6 +459,34 @@ def _weather_comment(weather: Any, comment: str) -> str | None:
     return None
 
 
+def _weather_tail(
+    w: Weather, path: str, positioned: bool, policy: EnvelopePolicy
+) -> Iterator[Finding]:
+    """Codes or comment that the decoder would start reading as a bad field."""
+    from . import _weather as codec
+
+    compressed = positioned and w.wind_direction is None and w.wind_speed is None
+    diagnostics: list[Diagnostic] = []
+    try:
+        encoded = codec.write(
+            w, positioned=positioned, compressed=compressed, policy=policy
+        )
+        codec.read(
+            encoded if positioned else encoded[1:],
+            positioned=positioned,
+            compressed=compressed,
+            diagnostics=diagnostics,
+            policy=policy,
+        )
+    except APRSError:
+        return  # Missing slots and unencodable values are reported separately.
+    if diagnostics:
+        yield (
+            f"{path}.software_code" if w.software_code else f"{path}.comment",
+            "would be read back as the start of a malformed weather field",
+        )
+
+
 def _weather_exempt_bytes(extensions: Any, policy: EnvelopePolicy) -> int:
     """Encoded weather bytes outside the 43-byte position-comment budget.
 
@@ -597,6 +624,7 @@ def _located(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
         if primary or e.bearing is not None:
             yield "$.extensions.weather", "weather uses the wind extension slot"
         yield from _weather_report(e.weather, "$.extensions.weather", positioned=True)
+        yield from _weather_tail(e.weather, "$.extensions.weather", True, policy)
     if e.telemetry is not None:
         allowed = (
             ("mic_e_hex", "mic_e_binary", "base91_comment")
@@ -714,6 +742,8 @@ def _weather(v: Weather, policy: EnvelopePolicy | None) -> Iterator[Finding]:
         else:
             if back.comment != v.comment:
                 yield "$.comment", "comment would be read back as weather fields"
+    if not problem:
+        yield from _weather_tail(v, "$", False, policy)
     for name in (
         "wind_direction",
         "wind_speed",
