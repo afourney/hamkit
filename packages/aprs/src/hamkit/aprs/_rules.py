@@ -230,12 +230,18 @@ def _antenna(v: Any) -> None:
 
 @invariant(Bearing)
 def _bearing(v: Bearing) -> None:
-    _bounds(v, "range_miles", 1, 512)
     _bounds(v, "bearing_deg", 0, 360)
-    for name in ("hits_code", "quality_code"):
-        _bounds(v, name, 0, 9)
-    if v.accuracy_less_than_deg is not None and v.accuracy_less_than_deg <= 0:
-        fail("accuracy_less_than_deg", "an angular accuracy bound must be positive")
+    _bounds(v, "hit_ratio", 0, 1)
+    if v.accuracy_deg is not None and v.accuracy_deg <= 0:
+        fail("accuracy_deg", "an angular accuracy bound must be positive")
+    if v.manual and v.hit_ratio is not None:
+        fail("hit_ratio", "a manual report has no hit ratio")
+    if v.nrq_meaningful:
+        if v.range_miles is None:
+            fail("range_miles", "a reported bearing needs a range")
+        _bounds(v, "range_miles", 1, 512)
+    elif v.range_miles is not None or v.accuracy_deg is not None:
+        fail("hit_ratio", "range and accuracy need a hit ratio or manual=True")
 
 
 @invariant(Range, Footprint)
@@ -251,13 +257,11 @@ def _beam(v: Beam) -> None:
 
 @invariant(Compression)
 def _compression(v: Compression) -> None:
-    names = ("fix", "nmea_source", "origin_code")
+    names = ("fix", "nmea_source", "origin")
     for name in names:
+        # Missing metadata is chosen when sending; ignored csT has none.
         if v.ignored and getattr(v, name) is not None:
             fail(name, "ignored csT carries no compression metadata")
-        if not v.ignored and getattr(v, name) is None:
-            fail(name, "required unless the csT bytes are ignored")
-    _bounds(v, "origin_code", 0, 7)
 
 
 @invariant(DAO)
@@ -268,12 +272,10 @@ def _dao(v: DAO) -> None:
 
 @invariant(Area)
 def _area(v: Area) -> None:
-    _bounds(v, "shape_code", 0, 9)
-    _bounds(v, "color_code", 0, 15)
     _bounds(v, "latitude_offset_deg", 0, 99**2 / 1500)
     _bounds(v, "longitude_offset_deg", 0, 99**2 / 1500)
     if v.corridor_half_width_miles is not None:
-        if v.shape_code not in (1, 6):
+        if v.shape not in ("line_down_right", "line_down_left"):
             fail("corridor_half_width_miles", "corridors apply only to line shapes")
         _nonnegative(v, "corridor_half_width_miles")
 
@@ -566,7 +568,9 @@ def _nmea_token(v: Any, name: str) -> None:
 
 @invariant(GGA, GLL, RMC)
 def _nmea_fix(v: Any) -> None:
-    active = v.fix_quality > 0 if isinstance(v, GGA) else v.fix_status == "A"
+    active = (
+        v.fix_quality != "invalid" if isinstance(v, GGA) else v.fix_status == "active"
+    )
     if active and v.coordinates is None:
         fail("coordinates", "a valid fix requires coordinates")
 
@@ -577,7 +581,6 @@ def _gga(v: GGA) -> None:
         reading = getattr(v, name)
         if reading is not None and reading.unit not in ("feet", "meters"):
             fail(name + ".unit", "height requires feet or meters")
-    _bounds(v, "fix_quality", 0, 8)
     _bounds(v, "satellites", 0, 99)
     _nonnegative(v, "hdop")
     _pattern(
@@ -601,9 +604,7 @@ def _nmea_motion(v: Any) -> None:
 
 @invariant(RMC)
 def _rmc(v: RMC) -> None:
-    _bounds(v, "magnetic_variation", 0, 180)
-    if (v.magnetic_variation is None) != (v.magnetic_variation_direction is None):
-        fail("magnetic_variation_direction", "magnitude and direction occur together")
+    _bounds(v, "magnetic_variation_deg", -180, 180)
 
 
 @invariant(WPL)
@@ -619,8 +620,8 @@ def _nmea(v: NMEA) -> None:
     sentence = v.sentence
     if getattr(sentence, "coordinates", None) is None:
         fail("position_usable", "a usable position requires coordinates")
-    if (isinstance(sentence, (GLL, RMC)) and sentence.fix_status == "V") or (
-        isinstance(sentence, GGA) and sentence.fix_quality == 0
+    if (isinstance(sentence, (GLL, RMC)) and sentence.fix_status == "void") or (
+        isinstance(sentence, GGA) and sentence.fix_quality == "invalid"
     ):
         fail("position_usable", "cannot mark an invalid fix as usable")
     if v.metadata.checksum_valid is False:
@@ -629,8 +630,15 @@ def _nmea(v: NMEA) -> None:
 
 @invariant(Packet)
 def _packet_destination(v: Packet) -> None:
-    if v.header.destination is None and not isinstance(v.payload, MicE):
-        fail("header.destination", "destination is required except for Mic-E packets")
+    # Mic-E and symbol-bearing NMEA destinations are packed by the library.
+    derived = isinstance(v.payload, MicE) or (
+        isinstance(v.payload, NMEA) and v.payload.symbol is not None
+    )
+    if v.header.destination is None and not derived:
+        fail(
+            "header.destination",
+            "destination is required except for Mic-E and NMEA with a symbol",
+        )
 
 
 @invariant(Trace)

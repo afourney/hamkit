@@ -438,25 +438,23 @@ Range is in miles, 1..512. Encoding rounds log2(miles) to a code 0..9. Hits and 
 {
   "type": "bearing",
   "bearing_deg": 120,
-  "hits_code": 3,
   "range_miles": 4,
-  "quality_code": 7,
-  "usable": null,
-  "accuracy_less_than_deg": null,
+  "accuracy_deg": 4,
+  "hit_ratio": 0.375,
+  "manual": false,
   "raw": null
 }
 ```
 
-| Field                    | JSON value / allowed values | Presence / default       |
-| ------------------------ | --------------------------- | ------------------------ |
-| `type`                   | `"bearing"`                 | see [Tags](#tags)        |
-| `bearing_deg`            | finite number               | **required**             |
-| `hits_code`              | integer                     | **required**             |
-| `range_miles`            | finite number               | **required**             |
-| `quality_code`           | integer                     | **required**             |
-| `usable`                 | boolean or null             | optional; default `null` |
-| `accuracy_less_than_deg` | finite number or null       | optional; default `null` |
-| `raw`                    | Latin-1 byte string or null | optional; default `null` |
+| Field          | JSON value / allowed values | Presence / default        |
+| -------------- | --------------------------- | ------------------------- |
+| `type`         | `"bearing"`                 | see [Tags](#tags)         |
+| `bearing_deg`  | finite number               | **required**              |
+| `range_miles`  | finite number or null       | optional; default `null`  |
+| `accuracy_deg` | finite number or null       | optional; default `null`  |
+| `hit_ratio`    | finite number or null       | optional; default `null`  |
+| `manual`       | boolean                     | optional; default `false` |
+| `raw`          | Latin-1 byte string or null | optional; default `null`  |
 
 ### Compression
 
@@ -467,20 +465,20 @@ Standalone tag: `compression`. [Back to type map](#type-map-and-object-catalog).
   "type": "compression",
   "fix": "old",
   "nmea_source": "other",
-  "origin_code": 0,
+  "origin": "compressed",
   "ignored": false,
   "raw": null
 }
 ```
 
-| Field         | JSON value / allowed values                  | Presence / default        |
-| ------------- | -------------------------------------------- | ------------------------- |
-| `type`        | `"compression"`                              | see [Tags](#tags)         |
-| `fix`         | `'old'`, `'current'` or null                 | optional; default `null`  |
-| `nmea_source` | `'other'`, `'GLL'`, `'GGA'`, `'RMC'` or null | optional; default `null`  |
-| `origin_code` | integer or null                              | optional; default `null`  |
-| `ignored`     | boolean                                      | optional; default `false` |
-| `raw`         | Latin-1 byte string or null                  | optional; default `null`  |
+| Field         | JSON value / allowed values                                                                                                           | Presence / default        |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `type`        | `"compression"`                                                                                                                       | see [Tags](#tags)         |
+| `fix`         | `'old'`, `'current'` or null                                                                                                          | optional; default `null`  |
+| `nmea_source` | `'other'`, `'GLL'`, `'GGA'`, `'RMC'` or null                                                                                          | optional; default `null`  |
+| `origin`      | `'compressed'`, `'tnc_btext'`, `'software'`, `'unassigned'`, `'kpc3'`, `'pico'`, `'other_tracker'`, `'digipeater_conversion'` or null | optional; default `null`  |
+| `ignored`     | boolean                                                                                                                               | optional; default `false` |
+| `raw`         | Latin-1 byte string or null                                                                                                           | optional; default `null`  |
 
 ### DAO
 
@@ -492,17 +490,17 @@ DAO precision codes are derived from the enclosing semantic coordinates; datum i
 {
   "type": "dao",
   "datum": "W",
-  "encoding": "decimal",
+  "precision": "high",
   "raw": null
 }
 ```
 
-| Field      | JSON value / allowed values     | Presence / default       |
-| ---------- | ------------------------------- | ------------------------ |
-| `type`     | `"dao"`                         | see [Tags](#tags)        |
-| `datum`    | string                          | optional; default `'W'`  |
-| `encoding` | `'decimal'`, `'base91'` or null | optional; default `null` |
-| `raw`      | Latin-1 byte string or null     | optional; default `null` |
+| Field       | JSON value / allowed values   | Presence / default       |
+| ----------- | ----------------------------- | ------------------------ |
+| `type`      | `"dao"`                       | see [Tags](#tags)        |
+| `datum`     | string                        | optional; default `'W'`  |
+| `precision` | `'high'`, `'highest'` or null | optional; default `null` |
+| `raw`       | Latin-1 byte string or null   | optional; default `null` |
 
 ### Area
 
@@ -513,22 +511,24 @@ Offsets are angular sizes in degrees, 0..6.534. Encoding rounds sqrt(degrees × 
 ```json
 {
   "type": "area",
-  "shape_code": 0,
-  "color_code": 3,
+  "shape": "open_circle",
+  "color": "cyan",
   "latitude_offset_deg": 0.06666666666666667,
   "longitude_offset_deg": 0.06666666666666667,
+  "intensity": "high",
   "corridor_half_width_miles": null
 }
 ```
 
-| Field                       | JSON value / allowed values | Presence / default       |
-| --------------------------- | --------------------------- | ------------------------ |
-| `type`                      | `"area"`                    | see [Tags](#tags)        |
-| `shape_code`                | integer                     | **required**             |
-| `color_code`                | integer                     | **required**             |
-| `latitude_offset_deg`       | finite number               | **required**             |
-| `longitude_offset_deg`      | finite number               | **required**             |
-| `corridor_half_width_miles` | finite number or null       | optional; default `null` |
+| Field                       | JSON value / allowed values                                                                                                                                                             | Presence / default         |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| `type`                      | `"area"`                                                                                                                                                                                | see [Tags](#tags)          |
+| `shape`                     | `'open_circle'`, `'line_down_right'`, `'open_ellipse'`, `'open_triangle'`, `'open_box'`, `'filled_circle'`, `'line_down_left'`, `'filled_ellipse'`, `'filled_triangle'`, `'filled_box'` | **required**               |
+| `color`                     | `'black'`, `'blue'`, `'green'`, `'cyan'`, `'red'`, `'violet'`, `'yellow'`, `'gray'`                                                                                                     | **required**               |
+| `latitude_offset_deg`       | finite number                                                                                                                                                                           | **required**               |
+| `longitude_offset_deg`      | finite number                                                                                                                                                                           | **required**               |
+| `intensity`                 | `'high'`, `'low'`                                                                                                                                                                       | optional; default `'high'` |
+| `corridor_half_width_miles` | finite number or null                                                                                                                                                                   | optional; default `null`   |
 
 ### Signpost
 
@@ -659,7 +659,7 @@ Standalone tag: `storm`. [Back to type map](#type-map-and-object-catalog).
 ```json
 {
   "type": "storm",
-  "kind": "HC",
+  "kind": "hurricane",
   "predicted": false,
   "sustained_wind_knots": 80,
   "peak_gust_knots": 100,
@@ -671,18 +671,18 @@ Standalone tag: `storm`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field                      | JSON value / allowed values | Presence / default       |
-| -------------------------- | --------------------------- | ------------------------ |
-| `type`                     | `"storm"`                   | see [Tags](#tags)        |
-| `kind`                     | `'HC'`, `'TS'`, `'TD'`      | **required**             |
-| `predicted`                | boolean                     | **required**             |
-| `sustained_wind_knots`     | finite number               | **required**             |
-| `peak_gust_knots`          | finite number               | **required**             |
-| `central_pressure_hpa`     | finite number               | **required**             |
-| `hurricane_radius_nm`      | finite number               | **required**             |
-| `tropical_storm_radius_nm` | finite number               | **required**             |
-| `whole_gale_radius_nm`     | finite number or null       | optional; default `null` |
-| `raw`                      | Latin-1 byte string or null | optional; default `null` |
+| Field                      | JSON value / allowed values                                | Presence / default       |
+| -------------------------- | ---------------------------------------------------------- | ------------------------ |
+| `type`                     | `"storm"`                                                  | see [Tags](#tags)        |
+| `kind`                     | `'hurricane'`, `'tropical_storm'`, `'tropical_depression'` | **required**             |
+| `predicted`                | boolean                                                    | **required**             |
+| `sustained_wind_knots`     | finite number                                              | **required**             |
+| `peak_gust_knots`          | finite number                                              | **required**             |
+| `central_pressure_hpa`     | finite number                                              | **required**             |
+| `hurricane_radius_nm`      | finite number                                              | **required**             |
+| `tropical_storm_radius_nm` | finite number                                              | **required**             |
+| `whole_gale_radius_nm`     | finite number or null                                      | optional; default `null` |
+| `raw`                      | Latin-1 byte string or null                                | optional; default `null` |
 
 ### Telemetry
 
@@ -1127,7 +1127,7 @@ Standalone tag: `gga`. [Back to type map](#type-map-and-object-catalog).
     "latitude_deg": 49,
     "longitude_deg": -72
   },
-  "fix_quality": 0,
+  "fix_quality": "invalid",
   "satellites": null,
   "hdop": null,
   "altitude_msl": {
@@ -1145,18 +1145,18 @@ Standalone tag: `gga`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field              | JSON value / allowed values         | Presence / default       |
-| ------------------ | ----------------------------------- | ------------------------ |
-| `type`             | `"gga"`                             | see [Tags](#tags)        |
-| `time_utc`         | [UTCTime](#utctime) or null         | **required**             |
-| `coordinates`      | [Coordinates](#coordinates) or null | **required**             |
-| `fix_quality`      | integer                             | **required**             |
-| `satellites`       | integer or null                     | optional; default `null` |
-| `hdop`             | finite number or null               | optional; default `null` |
-| `altitude_msl`     | [Measurement](#measurement) or null | optional; default `null` |
-| `geoid_separation` | [Measurement](#measurement) or null | optional; default `null` |
-| `dgps_age`         | string or null                      | optional; default `null` |
-| `dgps_station`     | string or null                      | optional; default `null` |
+| Field              | JSON value / allowed values                                                                                | Presence / default       |
+| ------------------ | ---------------------------------------------------------------------------------------------------------- | ------------------------ |
+| `type`             | `"gga"`                                                                                                    | see [Tags](#tags)        |
+| `time_utc`         | [UTCTime](#utctime) or null                                                                                | **required**             |
+| `coordinates`      | [Coordinates](#coordinates) or null                                                                        | **required**             |
+| `fix_quality`      | `'invalid'`, `'gps'`, `'dgps'`, `'pps'`, `'rtk'`, `'float_rtk'`, `'estimated'`, `'manual'`, `'simulation'` | **required**             |
+| `satellites`       | integer or null                                                                                            | optional; default `null` |
+| `hdop`             | finite number or null                                                                                      | optional; default `null` |
+| `altitude_msl`     | [Measurement](#measurement) or null                                                                        | optional; default `null` |
+| `geoid_separation` | [Measurement](#measurement) or null                                                                        | optional; default `null` |
+| `dgps_age`         | string or null                                                                                             | optional; default `null` |
+| `dgps_station`     | string or null                                                                                             | optional; default `null` |
 
 ### GLL
 
@@ -1174,7 +1174,7 @@ Standalone tag: `gll`. [Back to type map](#type-map-and-object-catalog).
     "minute": 30,
     "second": 0
   },
-  "fix_status": "V"
+  "fix_status": "void"
 }
 ```
 
@@ -1183,7 +1183,7 @@ Standalone tag: `gll`. [Back to type map](#type-map-and-object-catalog).
 | `type`        | `"gll"`                             | see [Tags](#tags)  |
 | `coordinates` | [Coordinates](#coordinates) or null | **required**       |
 | `time_utc`    | [UTCTime](#utctime) or null         | **required**       |
-| `fix_status`  | `'A'`, `'V'`                        | **required**       |
+| `fix_status`  | `'active'`, `'void'`                | **required**       |
 
 ### RMC
 
@@ -1202,29 +1202,27 @@ Standalone tag: `rmc`. [Back to type map](#type-map-and-object-catalog).
     "month": 10,
     "year_mod_100": 26
   },
-  "fix_status": "A",
+  "fix_status": "active",
   "coordinates": {
     "latitude_deg": 49,
     "longitude_deg": -72
   },
   "speed_knots": 12,
   "course_deg": 90,
-  "magnetic_variation": null,
-  "magnetic_variation_direction": null
+  "magnetic_variation_deg": null
 }
 ```
 
-| Field                          | JSON value / allowed values         | Presence / default       |
-| ------------------------------ | ----------------------------------- | ------------------------ |
-| `type`                         | `"rmc"`                             | see [Tags](#tags)        |
-| `time_utc`                     | [UTCTime](#utctime) or null         | **required**             |
-| `date`                         | [NMEADate](#nmeadate) or null       | **required**             |
-| `fix_status`                   | `'A'`, `'V'`                        | **required**             |
-| `coordinates`                  | [Coordinates](#coordinates) or null | **required**             |
-| `speed_knots`                  | finite number or null               | optional; default `null` |
-| `course_deg`                   | finite number or null               | optional; default `null` |
-| `magnetic_variation`           | finite number or null               | optional; default `null` |
-| `magnetic_variation_direction` | `'E'`, `'W'` or null                | optional; default `null` |
+| Field                    | JSON value / allowed values         | Presence / default       |
+| ------------------------ | ----------------------------------- | ------------------------ |
+| `type`                   | `"rmc"`                             | see [Tags](#tags)        |
+| `time_utc`               | [UTCTime](#utctime) or null         | **required**             |
+| `date`                   | [NMEADate](#nmeadate) or null       | **required**             |
+| `fix_status`             | `'active'`, `'void'`                | **required**             |
+| `coordinates`            | [Coordinates](#coordinates) or null | **required**             |
+| `speed_knots`            | finite number or null               | optional; default `null` |
+| `course_deg`             | finite number or null               | optional; default `null` |
+| `magnetic_variation_deg` | finite number or null               | optional; default `null` |
 
 ### VTG
 
@@ -1835,7 +1833,7 @@ Standalone tag: `nmea`. [Back to type map](#type-map-and-object-catalog).
       "minute": 30,
       "second": 0
     },
-    "fix_status": "A"
+    "fix_status": "active"
   },
   "metadata": {
     "talker": "GP",
@@ -2293,7 +2291,7 @@ Each allowed member is shown in its actual container, where it carries its tag.
       "latitude_deg": 49,
       "longitude_deg": -72
     },
-    "fix_quality": 0,
+    "fix_quality": "invalid",
     "satellites": null,
     "hdop": null,
     "altitude_msl": {
@@ -2337,7 +2335,7 @@ Each allowed member is shown in its actual container, where it carries its tag.
       "minute": 30,
       "second": 0
     },
-    "fix_status": "V"
+    "fix_status": "void"
   },
   "metadata": {
     "talker": "GP",
@@ -2368,15 +2366,14 @@ Each allowed member is shown in its actual container, where it carries its tag.
       "month": 10,
       "year_mod_100": 26
     },
-    "fix_status": "A",
+    "fix_status": "active",
     "coordinates": {
       "latitude_deg": 49,
       "longitude_deg": -72
     },
     "speed_knots": 12,
     "course_deg": 90,
-    "magnetic_variation": null,
-    "magnetic_variation_direction": null
+    "magnetic_variation_deg": null
   },
   "metadata": {
     "talker": "GP",

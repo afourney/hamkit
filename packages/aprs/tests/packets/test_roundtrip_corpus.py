@@ -66,12 +66,13 @@ def repair_checksum(packet: a.Packet) -> a.Packet:
 
 
 def without_evidence(value: Any) -> Any:
+    """Clear received raw evidence (hidden fields); wire metadata stays visible."""
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return dataclasses.replace(
             value,
             **{
                 f.name: without_evidence(getattr(value, f.name))
-                if f.compare
+                if f.repr
                 else f.default
                 for f in dataclasses.fields(value)
             },
@@ -181,9 +182,9 @@ def test_vector_roundtrip(row):
                 # and the receiver re-evaluates fix usability.
                 s = n.sentence
                 usable = (
-                    s.fix_quality > 0
+                    s.fix_quality != "invalid"
                     if isinstance(s, a.GGA)
-                    else s.fix_status == "A"
+                    else s.fix_status == "active"
                     if isinstance(s, (a.GLL, a.RMC))
                     else isinstance(s, a.WPL)
                 )

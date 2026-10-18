@@ -156,12 +156,14 @@ and delimiter accounting before implementing a wire codec.
 [PHG display guidance](https://www.aprs.org/symbols/PHGmobile.txt), and the
 [PHGR proposal dated 26 February 2003](https://www.aprs.org/aprs12/probes.txt).
 
-**Current behavior:** code ranges and positive accuracy bounds are checked. The
-manual flag, bearing range and PHG radii are computed properties, so they cannot
-disagree with the codes. A single Q-to-accuracy
-or usability mapping is not imposed: the original notes omit Q=6 and differ from
-APRS101 at low Q values. `Bearing.usable` and accuracy remain reported
-interpretations, not certified derivations. With `phg_rate`, PHGR uses the documented
+**Current behavior:** APRS101's p30 table is the baseline, following Rule 1
+(APRS101 plus the 1.1 addendum); the original protocol notes predate APRS101,
+omit Q=6 and differ at low Q values, and are not used. `Bearing` takes
+`hit_ratio` (N in eighths) or `manual` (N=9), `range_miles` (2^R) and
+`accuracy_deg` (the Q bound, `None` for a useless bearing); with none set, the
+NRQ is meaningless (000). The NRQ digits are derived properties, so they cannot
+disagree with the values. The WB2OSZ APRS 1.2 reference reproduces the same
+quality table. With `phg_rate`, PHGR uses the documented
 `PHGabcdr/` layout: `r` is `0`–`9` or `A`–`Z` (0–35 reports per hour), with zero
 denoting an unscheduled transmission. Its slash is required and consumed by the
 public decoder. The encoder emits the rate and slash before other extensions.
@@ -174,9 +176,9 @@ convention, not a universal rule in APRS101 (p20 says there is no separator unle
 otherwise specified). Display half-radius is a documented display choice,
 not an independently transmitted observation.
 
-**What resolves it:** identify a versioned DF mapping. Do not silently combine
-conflicting tables or treat UI guidance as
-another on-air field.
+**What resolves it:** a revised DF specification that replaces APRS101's table.
+Do not silently combine conflicting tables or treat UI guidance as another
+on-air field.
 
 ## NWS, historical beacons and vendor weather
 

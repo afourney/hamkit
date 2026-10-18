@@ -220,12 +220,9 @@ class PlaceTests(unittest.TestCase):
 
     def test_extension_values_must_be_representable(self) -> None:
         for extensions, path in (
-            (a.Extensions(phg=a.PHG(30, 80, 3)), "phg.power_w"),
-            (a.Extensions(phg=a.PHG(25, 75, 3)), "phg.height_haat_ft"),
-            (
-                a.Extensions(phg=a.PHG(25, 80, 3, directivity_deg=10)),
-                "phg.directivity_deg",
-            ),
+            # Beyond the code ranges, even after rounding.
+            (a.Extensions(phg=a.PHG(200, 80, 3)), "phg.power_w"),
+            (a.Extensions(phg=a.PHG(25, 5, 3)), "phg.height_haat_ft"),
             (a.Extensions(motion=a.Motion(90, 1000)), "motion.speed_knots"),
             (a.Extensions(motion=a.Motion(90)), "motion.speed_knots"),
             (
@@ -242,12 +239,17 @@ class PlaceTests(unittest.TestCase):
                     findings(a.Position(1, 2, SYMBOL, extensions=extensions)),
                     {f"$.payload.extensions.{path}"},
                 )
-        # Measurements are quantized like coordinates; codes must be exact.
+        # Values between codes round to the nearest code, like coordinates.
         rounded = a.Position(
             1, 2, SYMBOL, extensions=a.Extensions(motion=a.Motion(88.4, 36.2))
         )
         self.assertEqual(findings(rounded), set())
         self.assertTrue(a.serialize_payload(rounded).endswith(b"-088/036"))
+        # 30 W -> 25 W, 75 ft -> 80 ft (log scale), 3.4 dBi -> 3, 10 deg -> north.
+        phg = a.PHG(30, 75, 3.4, directivity_deg=10)
+        between = a.Position(1, 2, SYMBOL, extensions=a.Extensions(phg=phg))
+        self.assertEqual(findings(between), set())
+        self.assertTrue(a.serialize_payload(between).endswith(b"PHG5338"))
 
     def test_motion_encoding_preserves_known_values_and_zero_meaning(self) -> None:
         for motion, symbol in (
@@ -283,42 +285,30 @@ class PlaceTests(unittest.TestCase):
             )
             self.assertEqual(a.parse_payload(a.serialize_payload(value)), value)
 
-    def test_unencoded_extension_fields_are_explicitly_unsupported(self) -> None:
-        for extensions, symbol in (
+    def test_fields_without_a_wire_field_are_findings(self) -> None:
+        # These values exist in the model but APRS has nowhere to send them, so
+        # check_packet reports them and sending refuses with the same finding.
+        for extensions, symbol, path in (
             (
                 a.Extensions(
-                    altitude=a.Altitude(
-                        a.Measurement(100, "feet"), "feet_extension", reference="MSL"
-                    )
+                    altitude=a.Altitude(a.Measurement(100, "feet"), reference="MSL")
                 ),
                 SYMBOL,
-            ),
-            (
-                a.Extensions(
-                    motion=a.Motion(90, 10),
-                    bearing=a.Bearing(270, 7, 4, 9, usable=False),
-                ),
-                a.Symbol("/", "\\"),
-            ),
-            (
-                a.Extensions(
-                    motion=a.Motion(90, 10),
-                    bearing=a.Bearing(270, 7, 4, 9, accuracy_less_than_deg=10),
-                ),
-                a.Symbol("/", "\\"),
+                "$.payload.extensions.altitude.reference",
             ),
         ):
             with self.subTest(extensions=extensions):
                 value = a.Position(1, 2, symbol, extensions=extensions)
                 self.assertEqual(a.from_json(a.to_json(value)), value)
-                with self.assertRaises(a.CodecNotImplementedError):
+                self.assertEqual(findings(value), {path})
+                with self.assertRaises(a.ConformanceError):
                     a.serialize_payload(value)
-                with self.assertRaises(a.CodecNotImplementedError):
+                with self.assertRaises(a.ConformanceError):
                     a.serialize_packet(a.Packet(HEADER, value), policy=a.RF())
 
     def test_extension_symbols_and_slots(self) -> None:
         storm = a.Storm(
-            "HC",
+            "hurricane",
             predicted=False,
             sustained_wind_knots=80,
             peak_gust_knots=100,
@@ -352,7 +342,12 @@ class PlaceTests(unittest.TestCase):
         self.assertEqual(
             findings(
                 a.Position(
-                    1, 2, df, extensions=a.Extensions(bearing=a.Bearing(90, 1, 16, 7))
+                    1,
+                    2,
+                    df,
+                    extensions=a.Extensions(
+                        bearing=a.Bearing(90, 16, 4, hit_ratio=1 / 8)
+                    ),
                 )
             ),
             {"$.payload.extensions.bearing"},
@@ -385,7 +380,7 @@ class PlaceTests(unittest.TestCase):
             ),
             {"$.payload.compression"},
         )
-        gga = a.Compression(fix="old", nmea_source="GGA", origin_code=0)
+        gga = a.Compression(fix="old", nmea_source="GGA", origin="compressed")
         self.assertIn(
             "$.payload.compression", findings(a.Position(1, 2, SYMBOL, compression=gga))
         )

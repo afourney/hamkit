@@ -52,8 +52,8 @@ class PositionInvariantTests(unittest.TestCase):
     def test_dao_absent_and_present_precision(self) -> None:
         for value in (
             a.DAO("W"),
-            a.DAO("W", encoding="decimal"),
-            a.DAO("W", encoding="base91"),
+            a.DAO("W", precision="high"),
+            a.DAO("W", precision="highest"),
         ):
             self.assertEqual(a.from_json(a.to_json(value)), value)
         for datum in ("w", "WW", "1", "é"):
@@ -65,22 +65,23 @@ class PositionInvariantTests(unittest.TestCase):
                 "datum_byte": "w",
                 "latitude_precision": 1,
                 "longitude_precision": 2,
-                "encoding": "decimal",
+                "precision": "high",
             }
         )
 
     def test_compression_metadata(self) -> None:
         for value in (
-            a.Compression(fix="current", nmea_source="RMC", origin_code=2),
+            a.Compression(fix="current", nmea_source="RMC", origin="software"),
             a.Compression(ignored=True),
+            a.Compression(),  # Missing type fields are chosen when sending.
         ):
             self.assertEqual(a.from_json(a.to_json(value)), value)
         with self.assertRaises(a.ModelError):
-            a.Compression(fix="current", nmea_source="GGA", origin_code=8)
+            a.Compression(fix="current", nmea_source="GGA", origin="nonsense")
         with self.assertRaises(a.ModelError):
-            a.Compression(fix="old", nmea_source="other", origin_code=0, ignored=True)
-        with self.assertRaises(a.ModelError):
-            a.Compression()
+            a.Compression(
+                fix="old", nmea_source="other", origin="compressed", ignored=True
+            )
         self.reject_json({"type": "compression", "type_value": 58})
 
     def test_radio_fields(self) -> None:
@@ -97,17 +98,27 @@ class PositionInvariantTests(unittest.TestCase):
         with self.assertRaises(a.ModelError):
             a.Signal(1, -5, 3)
         with self.assertRaises(a.ModelError):
-            a.Bearing(90, 10, 16, 7)
+            a.Bearing(90, 16, 4, hit_ratio=1.25)
         with self.assertRaises(a.ModelError):
-            a.Bearing(90, 9, 16, 7, accuracy_less_than_deg=-1)
+            a.Bearing(90, 16, -1, manual=True)
         with self.assertRaises(a.ModelError):
-            a.Area(0, 3, 100 / 1500, 100 / 1500, corridor_half_width_miles=1)
-        self.assertEqual(
             a.Area(
-                1, 3, 100 / 1500, 100 / 1500, corridor_half_width_miles=1
-            ).shape_code,
-            1,
+                "open_circle",
+                "cyan",
+                100 / 1500,
+                100 / 1500,
+                corridor_half_width_miles=1,
+            )
+        line = a.Area(
+            "line_down_right",
+            "cyan",
+            100 / 1500,
+            100 / 1500,
+            corridor_half_width_miles=1,
         )
+        self.assertEqual((line.shape_code, line.color_code), (1, 3))
+        low = a.Area("filled_box", "gray", 0, 0, intensity="low")
+        self.assertEqual((low.shape_code, low.color_code), (9, 15))
         self.reject_json({"type": "grid", "locator": "AA00", "center": None})
 
     def test_unrepresentable_layouts(self) -> None:

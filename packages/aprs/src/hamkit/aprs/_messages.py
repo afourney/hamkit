@@ -9,7 +9,7 @@ from typing import Any, cast
 
 from . import _data as d
 from . import _models as m
-from ._errors import APRSError, FieldError
+from ._errors import APRSError, FieldError, Unrepresentable
 from ._fields import decode_timestamp, encode_timestamp
 from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 from ._text import free_text, token
@@ -277,14 +277,13 @@ def write(payload):
             )
         raw += p.text.encode()
         if p.beam:
+            # Heading and ERP both round to the nearest code (10 × n² watts).
             h = round(p.beam.heading_deg / 10) % 36
             power = round((p.beam.erp_w / 10) ** 0.5)
-            if (
-                not 0 <= h <= 35
-                or not 0 <= power <= 27
-                or abs(power**2 * 10 - p.beam.erp_w) > 1e-6
-            ):
-                raise FieldError("beam/ERP not representable")
+            if not 0 <= power <= 27:
+                raise Unrepresentable(
+                    "$.beam.erp_w", "beyond the largest ERP code (7290 watts)"
+                )
             raw += (
                 b"^"
                 + b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"[h : h + 1]

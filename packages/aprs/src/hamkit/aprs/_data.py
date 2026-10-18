@@ -12,9 +12,10 @@ that follow from other fields (grid bounds, PHG range, csT bits) are properties.
 
 from __future__ import annotations
 
+import datetime
 import math
 from dataclasses import dataclass, field
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, get_args
 
 from ._validation import FREE_TEXT, Validated, evidence
 
@@ -81,6 +82,30 @@ class Timestamp(Validated):
     def mdhm(cls, month: int, day: int, hour: int, minute: int) -> Timestamp:
         """Month/day/hour/minute UTC, as used by positionless weather."""
         return cls("mdhm_utc", hour, minute, day=day, month=month)
+
+    @classmethod
+    def from_datetime(
+        cls, moment: datetime.datetime, kind: TimestampKind = "dhm_utc"
+    ) -> Timestamp:
+        """The given moment in one of the APRS time formats.
+
+        UTC formats need an aware datetime, which is converted to UTC; a naive
+        one is refused because its offset is unknown. dhm_local uses the wall
+        clock time as given. Formats without seconds drop them.
+        """
+        if not isinstance(moment, datetime.datetime):
+            raise TypeError("from_datetime requires a datetime.datetime")
+        if kind != "dhm_local":
+            if moment.tzinfo is None or moment.utcoffset() is None:
+                raise ValueError("a UTC timestamp needs an aware datetime")
+            moment = moment.astimezone(datetime.UTC)
+        if kind == "hms_utc":
+            return cls.hms(moment.hour, moment.minute, moment.second)
+        if kind == "mdhm_utc":
+            return cls.mdhm(moment.month, moment.day, moment.hour, moment.minute)
+        return cls.dhm(
+            moment.day, moment.hour, moment.minute, local=kind == "dhm_local"
+        )
 
 
 @dataclass(frozen=True)
@@ -215,37 +240,101 @@ class Signal(Validated):
 
 @dataclass(frozen=True)
 class Bearing(Validated):
-    """DF bearing with range in miles; hits/quality retain protocol categories."""
+    """A DF bearing; the library writes the APRS101 p30 NRQ digits.
+
+    hit_ratio is the share of samples that got a hit (sent as N in eighths);
+    manual=True marks a manual report (N=9) instead. range_miles is sent as
+    2^R miles. accuracy_deg is the bearing error bound from APRS101's Q table
+    (under 240° down to under 1°); None means a useless bearing (Q=0). With
+    none of these set, the NRQ is meaningless (000).
+    """
 
     bearing_deg: float
-    hits_code: int
-    range_miles: float
-    quality_code: int
-    usable: bool | None = field(default=None, kw_only=True)
-    accuracy_less_than_deg: float | None = field(default=None, kw_only=True)
+    range_miles: float | None = None
+    accuracy_deg: float | None = None
+    hit_ratio: float | None = field(default=None, kw_only=True)
+    manual: bool = field(default=False, kw_only=True)
     raw: bytes | None = evidence()
 
     @property
-    def manual(self) -> bool:
-        """Hits code 9 marks a manual report."""
-        return self.hits_code == 9
+    def nrq_meaningful(self) -> bool:
+        return self.manual or self.hit_ratio is not None
+
+    @property
+    def usable(self) -> bool:
+        return self.nrq_meaningful and self.accuracy_deg is not None
+
+    @property
+    def hits_code(self) -> int:
+        """N: 0 meaningless, 1-8 eighths of samples with a hit, 9 manual."""
+        if self.manual:
+            return 9
+        if self.hit_ratio is None:
+            return 0
+        return min(8, max(1, round(self.hit_ratio * 8)))
 
     @property
     def range_code(self) -> int:
-        """Nearest power-of-two range exponent (ties to even)."""
+        """R: nearest power-of-two range exponent (ties to even)."""
+        if self.range_miles is None:
+            return 0
         return round(math.log2(self.range_miles))
+
+    @property
+    def quality_code(self) -> int:
+        """Q: the tightest APRS101 accuracy bound the bearing meets; 0 if useless.
+
+        A decoded bearing stores the bound itself, so a value equal to a bound
+        meets it and re-encodes to the same Q.
+        """
+        if self.accuracy_deg is None:
+            return 0
+        meets = [
+            q
+            for q, bound in enumerate(DF_ACCURACY)
+            if bound is not None and self.accuracy_deg <= bound
+        ]
+        return max(meets, default=0)
+
+
+# APRS101 p30 DF quality: Q -> bearing accuracy bound in degrees (0 is useless).
+DF_ACCURACY: tuple[float | None, ...] = (None, 240, 120, 64, 32, 16, 8, 4, 2, 1)
+
+
+# APRS101 p39 compression origin (bits 0-2 of the csT type byte), in code order.
+CompressionOrigin: TypeAlias = Literal[
+    "compressed",
+    "tnc_btext",
+    "software",
+    "unassigned",
+    "kpc3",
+    "pico",
+    "other_tracker",
+    "digipeater_conversion",
+]
+COMPRESSION_ORIGINS: tuple[CompressionOrigin, ...] = get_args(CompressionOrigin)
 
 
 @dataclass(frozen=True)
 class Compression(Validated):
-    """csT semantics. ignored=True means c=space: the remaining bytes carry nothing."""
+    """Send this position compressed; the fields describe the csT type byte.
 
-    fix: Literal["old", "current"] | None = field(default=None, kw_only=True)
-    nmea_source: Literal["other", "GLL", "GGA", "RMC"] | None = field(
-        default=None, kw_only=True
+    Compression() is enough: when sending, the library uses the csT bytes if
+    the position has motion, range or weather wind for them, and fills missing
+    type fields with a current fix, the "other" source and "software" origin.
+    A GGA source carries the altitude in csT. ignored=True means c=space: the
+    remaining bytes carry nothing. Received values are kept; like other wire
+    details, these fields are ignored by equality.
+    """
+
+    fix: Literal["old", "current"] | None = field(
+        default=None, kw_only=True, compare=False
     )
-    origin_code: int | None = field(default=None, kw_only=True)
-    ignored: bool = field(default=False, kw_only=True)
+    nmea_source: Literal["other", "GLL", "GGA", "RMC"] | None = field(
+        default=None, kw_only=True, compare=False
+    )
+    origin: CompressionOrigin | None = field(default=None, kw_only=True, compare=False)
+    ignored: bool = field(default=False, kw_only=True, compare=False)
     raw: bytes | None = evidence()
 
     @property
@@ -254,27 +343,65 @@ class Compression(Validated):
         if self.ignored or self.fix is None or self.nmea_source is None:
             return None
         source = {"other": 0, "GLL": 8, "GGA": 16, "RMC": 24}[self.nmea_source]
-        return (32 if self.fix == "current" else 0) + source + (self.origin_code or 0)
+        origin = COMPRESSION_ORIGINS.index(self.origin) if self.origin else 0
+        return (32 if self.fix == "current" else 0) + source + origin
 
 
 @dataclass(frozen=True)
 class DAO(Validated):
-    """Datum identifier and precision selection; codes are derived from coordinates."""
+    """Datum identifier and added precision; codes are derived from coordinates.
+
+    precision=None sends the datum only. "high" adds one decimal digit of
+    minutes (about 1.85 m); "highest" uses the base-91 form (about 0.2 m).
+    """
 
     datum: str = "W"
-    encoding: Literal["decimal", "base91"] | None = field(default=None, kw_only=True)
+    precision: Literal["high", "highest"] | None = field(default=None, kw_only=True)
     raw: bytes | None = evidence()
+
+
+# APRS101 pp60-61 area object type (t) and color (c) tables, in code order.
+AreaShape: TypeAlias = Literal[
+    "open_circle",
+    "line_down_right",
+    "open_ellipse",
+    "open_triangle",
+    "open_box",
+    "filled_circle",
+    "line_down_left",
+    "filled_ellipse",
+    "filled_triangle",
+    "filled_box",
+]
+AreaColor: TypeAlias = Literal[
+    "black", "blue", "green", "cyan", "red", "violet", "yellow", "gray"
+]
+AREA_SHAPES: tuple[AreaShape, ...] = get_args(AreaShape)
+AREA_COLORS: tuple[AreaColor, ...] = get_args(AreaColor)
 
 
 @dataclass(frozen=True)
 class Area(Validated):
-    """Angular dimensions in degrees, quantized by APRS 1.1 square-root codes."""
+    """A shape, color and size in degrees; the wire codes are derived.
 
-    shape_code: int
-    color_code: int
+    Offsets are quantized by the APRS 1.1 square-root codes. Colors 8-15 on the
+    wire are the low-intensity versions of colors 0-7.
+    """
+
+    shape: AreaShape
+    color: AreaColor
     latitude_offset_deg: float
     longitude_offset_deg: float
+    intensity: Literal["high", "low"] = field(default="high", kw_only=True)
     corridor_half_width_miles: float | None = field(default=None, kw_only=True)
+
+    @property
+    def shape_code(self) -> int:
+        return AREA_SHAPES.index(self.shape)
+
+    @property
+    def color_code(self) -> int:
+        return AREA_COLORS.index(self.color) + (8 if self.intensity == "low" else 0)
 
     @property
     def latitude_offset_code(self) -> int:
@@ -287,7 +414,8 @@ class Area(Validated):
 
     @property
     def transmitted_anchor(self) -> Literal["lower_reference", "circle_center"]:
-        return "circle_center" if self.shape_code in (0, 5) else "lower_reference"
+        circle = self.shape in ("open_circle", "filled_circle")
+        return "circle_center" if circle else "lower_reference"
 
 
 @dataclass(frozen=True)
@@ -327,9 +455,18 @@ class Weather(Validated):
     raw: bytes | None = evidence()
 
 
+StormKind: TypeAlias = Literal["hurricane", "tropical_storm", "tropical_depression"]
+# APRS101 p66 storm type codes.
+STORM_CODES: dict[StormKind, str] = {
+    "hurricane": "HC",
+    "tropical_storm": "TS",
+    "tropical_depression": "TD",
+}
+
+
 @dataclass(frozen=True)
 class Storm(Validated):
-    kind: Literal["HC", "TS", "TD"]
+    kind: StormKind
     predicted: bool = field(kw_only=True)
     sustained_wind_knots: float = field(kw_only=True)
     peak_gust_knots: float = field(kw_only=True)

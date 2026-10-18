@@ -14,7 +14,7 @@ from decimal import Decimal
 from typing import Any, Literal
 
 from ._data import Measurement, WaterHeight, Weather
-from ._errors import FieldError
+from ._errors import FieldError, Unrepresentable
 from ._fields import decode_timestamp, encode_timestamp
 from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 from ._text import free_text
@@ -187,13 +187,15 @@ def _value(m: Measurement, unit: str) -> float | None:
     raise FieldError("weather measurement unit cannot be encoded in this field")
 
 
-def _number(value: float | None, width: int, scale: float = 1) -> bytes:
+def _number(
+    value: float | None, width: int, scale: float = 1, path: str = "$"
+) -> bytes:
     if value is None:
         return b"." * width
     number = round(value / scale)
     raw = f"{number:0{width}d}".encode()
     if len(raw) != width:
-        raise FieldError("weather value exceeds field width")
+        raise Unrepresentable(path, f"exceeds the {width}-character weather field")
     return raw
 
 
@@ -207,7 +209,9 @@ def write(
     positioned=False,
     compressed=False,
     policy: EnvelopePolicy = _DEFAULT_POLICY,
+    path: str = "$",
 ) -> bytes:
+    """Encode a report; error paths are relative to path (the Weather node)."""
     raw = b""
     if not positioned:
         if w.timestamp is None:
@@ -222,7 +226,11 @@ def write(
             if speed.unit == "disputed_knots_or_mph"
             else _value(speed, "mph")
         )
-        raw += _number(w.wind_direction.value, 3) + b"/" + _number(value, 3)
+        raw += (
+            _number(w.wind_direction.value, 3, path=f"{path}.wind_direction.value")
+            + b"/"
+            + _number(value, 3, path=f"{path}.wind_speed.value")
+        )
     for tag, (name, unit, width, scale) in _FIELDS.items():
         if tag == "l" or positioned and tag in "cs":
             continue
@@ -235,19 +243,24 @@ def write(
         if tag == "L" and v is not None and v >= 1000:
             tag = "l"
             v -= 1000
-        raw += tag.encode() + _number(v, width, scale)
+        raw += tag.encode() + _number(v, width, scale, f"{path}.{name}.value")
     if w.snow_24h:
         v = _value(w.snow_24h, "inches")
         if v is not None and v != int(v):
             field = f"{v:.1f}".encode()
             if len(field) != 3:
-                raise FieldError("snow value exceeds field width")
+                raise Unrepresentable(
+                    f"{path}.snow_24h.value", "exceeds the 3-character weather field"
+                )
         else:
-            field = _number(v, 3)
+            field = _number(v, 3, path=f"{path}.snow_24h.value")
         raw += b"s" + field
     if w.water_height:
         if w.water_height.reference_datum is not None:
-            raise FieldError("water-height datum has no wire field")
+            raise Unrepresentable(
+                f"{path}.water_height.reference_datum",
+                "the water height has no reference datum field",
+            )
         m = w.water_height.measurement
         if m.value is None:
             if m.unit != "feet":
@@ -268,7 +281,9 @@ def write(
     if w.radiation:
         raw += b"X" + radiation_code(w.radiation.value)
     if w.battery_voltage:
-        raw += b"V" + _number(w.battery_voltage.value, 3, 0.1)
+        raw += b"V" + _number(
+            w.battery_voltage.value, 3, 0.1, f"{path}.battery_voltage.value"
+        )
     raw += (
         (w.software_code or "").encode()
         + (w.device_code or "").encode()

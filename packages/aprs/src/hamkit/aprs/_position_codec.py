@@ -8,7 +8,16 @@ import math
 from dataclasses import replace
 
 from ._ambiguity import center, center_wire
-from ._data import Altitude, Compression, Extensions, Measurement, Motion, Range, Symbol
+from ._data import (
+    COMPRESSION_ORIGINS,
+    Altitude,
+    Compression,
+    Extensions,
+    Measurement,
+    Motion,
+    Range,
+    Symbol,
+)
 from ._errors import FieldError
 from ._fields.position import CoordinateAxis, decode_coordinate, encode_coordinate
 
@@ -77,7 +86,7 @@ def compressed(
         compression = Compression(
             fix="current" if t & 32 else "old",
             nmea_source=("other", "GLL", "GGA", "RMC")[(t >> 3) & 3],
-            origin_code=t & 7,
+            origin=COMPRESSION_ORIGINS[t & 7],
             raw=cs,
         )
         if t & 24 == 16:
@@ -157,12 +166,12 @@ def compressed_bytes(p) -> tuple[bytes, Extensions]:
 
 def dao_offset(value: float, dao, axis: str) -> float:
     # Receive-only: decode precision from the received extension evidence.
-    if dao is None or dao.encoding is None:
+    if dao is None or dao.precision is None:
         return value
     if dao.raw is None:
         raise FieldError("received DAO precision bytes are missing")
     code = dao.raw[2 if axis == "latitude" else 3]
     increment = (
-        (code - 48) / 60000 if dao.encoding == "decimal" else (code - 33) / (91 * 6000)
+        (code - 48) / 60000 if dao.precision == "high" else (code - 33) / (91 * 6000)
     )
     return math.copysign(abs(value) + increment, value)

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable, Iterator
+from dataclasses import replace
 from typing import Any
 
 from . import _extensions
@@ -202,10 +203,21 @@ def _packet(v: Packet, policy: EnvelopePolicy | None) -> Iterator[Finding]:
         except FieldError as exc:
             yield "$.header.destination", str(exc)
     if isinstance(payload, NMEA) and payload.symbol is not None:
-        from ._nmea_codec import header_symbol
+        from ._nmea_codec import destination_for, header_symbol
 
-        if payload.symbol != header_symbol(v.header):
-            yield "$.payload.symbol", "NMEA symbol does not match the packet header"
+        if v.header.destination is None:
+            generated = replace(v.header, destination=destination_for(payload.symbol))
+            for path, message in _header(generated, policy):
+                if path == "$.destination":
+                    yield "$.header" + path[1:], message
+        elif payload.symbol != header_symbol(v.header):
+            yield (
+                "$.payload.symbol",
+                (
+                    "NMEA symbol does not match the packet header;"
+                    " leave the destination out to have it generated"
+                ),
+            )
 
 
 # Status and messages -------------------------------------------------------
@@ -379,9 +391,9 @@ def _nmea(v: NMEA, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     sentence = v.sentence
     if isinstance(sentence, (n.GGA, n.GLL, n.RMC)):
         active = (
-            sentence.fix_quality > 0
+            sentence.fix_quality != "invalid"
             if isinstance(sentence, n.GGA)
-            else sentence.fix_status == "A"
+            else sentence.fix_status == "active"
         )
         if active and sentence.time_utc is None:
             yield "$.sentence.time_utc", "an active fix requires UTC time"
@@ -603,7 +615,9 @@ def _mic_e_status(v: MicE, policy: EnvelopePolicy) -> Iterator[Finding]:
             _mic_e.write_status(v, policy), v.symbol, policy
         )
     except APRSError as error:
-        yield "$.device_code", str(error)
+        yield getattr(error, "path", "$.device_code"), getattr(
+            error, "message", str(error)
+        )
         return
     from dataclasses import fields
 

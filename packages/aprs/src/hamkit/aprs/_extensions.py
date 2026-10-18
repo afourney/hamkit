@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import replace
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from . import _data as d
 from ._data import (
@@ -26,7 +26,7 @@ from ._data import (
     Signal,
     Symbol,
 )
-from ._errors import CodecNotImplementedError, FieldError
+from ._errors import CodecNotImplementedError, FieldError, Unrepresentable
 from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 from ._text import token
 
@@ -42,15 +42,6 @@ _DAO = re.compile(rb"![A-Za-z][\x21-\x7b]{2}!")
 _BASE91_TELEMETRY = re.compile(rb"\|(?:[\x21-\x7b]{2}){2,7}\|")
 # Text that looks like an extension but was not decoded, so it holds bad values.
 _LOOKALIKE_PREFIX = re.compile(rb"[0-9. ]{3}/[0-9. ]{3}|PHG|RNG|DFS")
-
-
-class Unrepresentable(FieldError):
-    """A structured value has no exact form in the uncompressed extension grammar."""
-
-    def __init__(self, path: str, message: str):
-        self.path = path
-        self.message = message
-        super().__init__(f"{path}: {message}")
 
 
 def _is_df(symbol: Symbol) -> bool:
@@ -112,11 +103,13 @@ def read(
     elif (symbol.table_id, symbol.code) == ("\\", "l") and (
         match := re.match(rb"(\d)(\d{2})(/[0-9]|1[0-5])(\d{2})(?:\{([0-9.]+)\})?", tail)
     ):
+        color = int(match[3].lstrip(b"/"))
         found["area"] = d.Area(
-            int(match[1]),
-            int(match[3].lstrip(b"/")),
+            d.AREA_SHAPES[int(match[1])],
+            d.AREA_COLORS[color % 8],
             int(match[2]) ** 2 / 1500,
             int(match[4]) ** 2 / 1500,
+            intensity="low" if color >= 8 else "high",
             corridor_half_width_miles=float(match[5]) if match[5] else None,
         )
         tail = tail[match.end() :]
@@ -126,11 +119,14 @@ def read(
             tail = tail[7:]
             bearing = _BEARING.match(tail) if _is_df(symbol) else None
             if bearing and int(bearing[1]) <= 360:
+                hits, range_code, quality = (int(bearing[i]) for i in (2, 3, 4))
+                meaningful = hits != 0
                 found["bearing"] = Bearing(
                     int(bearing[1]),
-                    int(bearing[2]),
-                    float(2 ** int(bearing[3])),
-                    int(bearing[4]),
+                    float(2**range_code) if meaningful else None,
+                    d.DF_ACCURACY[quality] if meaningful else None,
+                    hit_ratio=hits / 8 if 1 <= hits <= 8 else None,
+                    manual=hits == 9,
                     raw=bearing[0],
                 )
                 tail = tail[8:]
@@ -176,7 +172,7 @@ def read(
         )
     ):
         found["storm"] = d.Storm(
-            cast(Literal["HC", "TS", "TD"], match[1].decode()),
+            next(k for k, code in d.STORM_CODES.items() if code == match[1].decode()),
             predicted=symbol.table_id == "/",
             sustained_wind_knots=int(match[2]),
             peak_gust_knots=int(match[3]),
@@ -221,13 +217,13 @@ def read(
         elif datum.isupper() and pair.isdigit():
             dao = d.DAO(
                 datum.upper(),
-                encoding="decimal",
+                precision="high",
                 raw=match[0],
             )
         elif datum.islower() and all(33 <= c <= 123 for c in pair):
             dao = d.DAO(
                 datum.upper(),
-                encoding="base91",
+                precision="highest",
                 raw=match[0],
             )
         else:
@@ -270,13 +266,6 @@ def lookalikes(
     return findings
 
 
-def _code(path: str, value: float | None, low: int, high: int) -> int:
-    """An exact code-table value, such as a PHG gain digit."""
-    if value is None or value != int(value) or not low <= value <= high:
-        raise Unrepresentable(path, f"requires a whole number in {low}..{high}")
-    return int(value)
-
-
 def _rounded(path: str, value: float | None, low: int, high: int) -> int:
     """A measurement quantized to the wire's whole units, like coordinates."""
     number = None if value is None else round(value)
@@ -285,19 +274,34 @@ def _rounded(path: str, value: float | None, low: int, high: int) -> int:
     return number
 
 
+# Coded quantities round to the nearest value the wire carries, like
+# coordinates; only a value outside the code range after rounding is refused.
+
+
+def _power_code(path: str, watts: float) -> int:
+    """PHG power n² watts."""
+    n = round(math.sqrt(watts)) if watts >= 0 else -1
+    if not 0 <= n <= 9:
+        raise Unrepresentable(path, "beyond the largest PHG power code (81 watts)")
+    return n
+
+
 def _height_code(path: str, feet: float) -> bytes:
-    exponent = math.log2(feet / 10) if feet >= 10 else -1
-    if exponent != int(exponent) or not 0 <= exponent <= 11:
-        raise Unrepresentable(path, "requires 10 × 2ⁿ feet for n in 0..11")
-    return bytes([ord("0") + int(exponent)])
+    """10 × 2ⁿ feet, rounded on the logarithmic scale."""
+    exponent = round(math.log2(feet / 10)) if feet > 0 else -1
+    if not 0 <= exponent <= 11:
+        raise Unrepresentable(path, "outside the height codes (10 to 20480 feet)")
+    return bytes([ord("0") + exponent])
 
 
 def _directivity_code(path: str, degrees: float | None) -> bytes:
+    """None is omnidirectional; a direction rounds to the nearest 45 degrees."""
     if degrees is None:
         return b"0"
-    if degrees % 45 or not 45 <= degrees <= 360:
-        raise Unrepresentable(path, "requires a multiple of 45 in 45..360, or None")
-    return str(int(degrees // 45)).encode()
+    if not 0 <= degrees <= 360:
+        raise Unrepresentable(path, "requires 0..360 degrees, or None")
+    octant = round(degrees / 45) % 8
+    return str(octant or 8).encode()  # North is 8 (360); 0 means omni.
 
 
 def _motion_bytes(m: Motion) -> bytes:
@@ -330,11 +334,9 @@ def _write_primary(
     if e.altitude is not None and e.altitude.encoding != "feet_extension":
         raise CodecNotImplementedError(f"{e.altitude.encoding} altitude encoding")
     if e.altitude is not None and e.altitude.reference != "unspecified":
-        raise CodecNotImplementedError("altitude reference cannot be encoded in /A=")
-    if e.bearing is not None and (
-        e.bearing.usable is not None or e.bearing.accuracy_less_than_deg is not None
-    ):
-        raise CodecNotImplementedError("DF bearing annotations have no wire encoding")
+        raise Unrepresentable(
+            "$.extensions.altitude.reference", "the /A= altitude has no reference field"
+        )
     raw = b""
     if e.motion is not None:
         raw += _motion_bytes(e.motion)
@@ -366,15 +368,11 @@ def _write_primary(
             )
     elif e.phg is not None:
         p = e.phg
-        power = math.isqrt(int(p.power_w)) if p.power_w == int(p.power_w) else -1
-        if power * power != p.power_w or power > 9:
-            raise Unrepresentable(
-                "$.extensions.phg.power_w", "requires n² watts, n 0..9"
-            )
+        power = _power_code("$.extensions.phg.power_w", p.power_w)
         raw += b"PHG%d" % power + _height_code(
             "$.extensions.phg.height_haat_ft", p.height_haat_ft
         )
-        raw += b"%d" % _code("$.extensions.phg.gain_dbi", p.gain_dbi, 0, 9)
+        raw += b"%d" % _rounded("$.extensions.phg.gain_dbi", p.gain_dbi, 0, 9)
         raw += _directivity_code("$.extensions.phg.directivity_deg", p.directivity_deg)
         if p.rate_per_hour is not None:
             if not 0 <= p.rate_per_hour < len(_PHGR_RATES):
@@ -396,7 +394,7 @@ def _write_primary(
         raw += b"DFS%d" % s.s_units + _height_code(
             "$.extensions.signal.height_haat_ft", s.height_haat_ft
         )
-        raw += b"%d" % _code("$.extensions.signal.gain_db", s.gain_db, 0, 9)
+        raw += b"%d" % _rounded("$.extensions.signal.gain_db", s.gain_db, 0, 9)
         raw += _directivity_code(
             "$.extensions.signal.directivity_deg", s.directivity_deg
         )
@@ -443,6 +441,7 @@ def write(
             compressed=e.weather.wind_direction is None
             and e.weather.wind_speed is None,
             policy=policy,
+            path="$.extensions.weather",
         )
     if e.area:
         a = e.area
@@ -457,7 +456,7 @@ def write(
         s = e.storm
         extra += (
             b"/"
-            + s.kind.encode()
+            + d.STORM_CODES[s.kind].encode()
             + b"/%03d^%03d/%04d>%03d&%03d"
             % (
                 _rounded(

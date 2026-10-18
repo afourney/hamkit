@@ -110,7 +110,9 @@ def test_weather_metric_units_are_converted_before_compression():
         49,
         -72,
         a.Symbol("/", "_"),
-        compression=a.Compression(fix="current", nmea_source="RMC", origin_code=0),
+        compression=a.Compression(
+            fix="current", nmea_source="RMC", origin="compressed"
+        ),
         extensions=a.Extensions(weather=weather),
     )
     decoded = a.parse_payload(a.serialize_payload(p))
@@ -123,7 +125,7 @@ def test_weather_metric_units_are_converted_before_compression():
 
 def test_unrepresentable_annotations_and_field_overflow_are_not_dropped():
     storm = a.Storm(
-        "HC",
+        "hurricane",
         predicted=False,
         sustained_wind_knots=1000,
         peak_gust_knots=100,
@@ -144,7 +146,7 @@ def test_unrepresentable_annotations_and_field_overflow_are_not_dropped():
     with pytest.raises(a.FieldError, match="query response"):
         a.serialize_payload(a.Message("W1AW", "Directs= N0CALL"))
     report = a.NMEA(
-        a.GLL(a.Coordinates(49, -72), a.UTCTime(12, 0, 0), "A"),
+        a.GLL(a.Coordinates(49, -72), a.UTCTime(12, 0, 0), "active"),
         a.NMEAMetadata("GP"),
         symbol=a.Symbol("/", "-"),
     )
@@ -756,7 +758,7 @@ def test_position_altitude_form_follows_the_container():
         b"/A=000328"
     )
     # A GGA-sourced compressed position carries its altitude in csT.
-    gga = a.Compression(fix="current", nmea_source="GGA", origin_code=2)
+    gga = a.Compression(fix="current", nmea_source="GGA", origin="software")
     compressed = dataclasses.replace(
         plain,
         compression=gga,
@@ -766,3 +768,268 @@ def test_position_altitude_form_follows_the_container():
     assert b"/A=" not in sent
     height = packet(sent).payload.extensions.altitude.measurement
     assert height.value == pytest.approx(10004, rel=0.003)
+
+
+def _weather_report(**changes):
+    report = packet(b"N0CALL>APRS:_12032359c000s000g000t033").payload
+    return dataclasses.replace(report, **changes)
+
+
+def _mic_e(**extensions):
+    return a.MicE(
+        33.4277,
+        -112.12,
+        a.Symbol("/", ">"),
+        message="off_duty",
+        extensions=a.Extensions(**extensions),
+    )
+
+
+APRS = a.Header("N0CALL", "APRS")
+NO_DESTINATION = a.Header("N0CALL", None)
+SEND_REFUSALS = [
+    (APRS, a.Status("x", beam=a.Beam(123, 9000)), "$.payload.beam.erp_w"),
+    (
+        NO_DESTINATION,
+        _mic_e(motion=a.Motion(90, 900)),
+        "$.payload.extensions.motion.speed_knots",
+    ),
+    (
+        NO_DESTINATION,
+        _mic_e(
+            motion=a.Motion(90, 10),
+            altitude=a.Altitude(a.Measurement(10, "meters"), reference="ellipsoid"),
+        ),
+        "$.payload.extensions.altitude.reference",
+    ),
+    (
+        APRS,
+        a.Position(
+            49,
+            -72,
+            a.Symbol("/", "-"),
+            extensions=a.Extensions(
+                altitude=a.Altitude(a.Measurement(10, "meters"), reference="MSL")
+            ),
+        ),
+        "$.payload.extensions.altitude.reference",
+    ),
+    (
+        APRS,
+        _weather_report(temperature=a.Measurement(1000, "fahrenheit")),
+        "$.payload.temperature.value",
+    ),
+    (
+        APRS,
+        _weather_report(pressure=a.Measurement(200000, "hPa")),
+        "$.payload.pressure.value",
+    ),
+    (
+        APRS,
+        _weather_report(
+            water_height=a.WaterHeight(
+                a.Measurement(1, "feet"), reference_datum="NAVD88"
+            )
+        ),
+        "$.payload.water_height.reference_datum",
+    ),
+    (APRS, a.Message("W1AW", "Directs= W1AW"), "$.payload.text"),
+]
+
+
+@pytest.mark.parametrize(("header", "payload", "path"), SEND_REFUSALS)
+def test_check_packet_predicts_every_send_refusal(header, payload, path):
+    composed = a.Packet(header, payload)
+    findings = a.check_packet(composed)
+    assert [d.path for d in findings] == [path]
+    with pytest.raises(a.ConformanceError) as caught:
+        a.serialize_packet(composed)
+    assert caught.value.diagnostics == findings
+
+
+@pytest.mark.parametrize(
+    ("extensions", "tail"),
+    [
+        (a.Extensions(motion=a.Motion(88, 10)), None),  # csT carries motion
+        (a.Extensions(range=a.Range(20)), None),  # csT carries range
+        (a.Extensions(), b"   "),  # nothing for csT: c=space
+        (
+            a.Extensions(altitude=a.Altitude(a.Measurement(500, "feet"))),
+            b"   /A=000500",
+        ),
+    ],
+)
+def test_compression_needs_no_wire_fields(extensions, tail):
+    position = a.Position(
+        49, -72, a.Symbol("/", ">"), compression=a.Compression(), extensions=extensions
+    )
+    composed = a.Packet(APRS, position)
+    assert a.check_packet(composed) == ()
+    sent = a.serialize_packet(composed)
+    body = sent.partition(b":")[2]
+    assert body[:2] == b"!/"
+    if tail is not None:
+        assert body.endswith(tail)
+    else:
+        assert body[-3:-1] != b"  "
+    # The type byte is wire metadata: equality ignores it.
+    assert packet(sent).payload.compression == a.Compression()
+
+
+def test_gga_compression_keeps_altitude_in_cst():
+    gga = a.Compression(nmea_source="GGA")
+    height = a.Altitude(a.Measurement(10004, "feet"))
+    position = a.Position(
+        49,
+        -72,
+        a.Symbol("/", ">"),
+        compression=gga,
+        extensions=a.Extensions(altitude=height),
+    )
+    sent = a.serialize_packet(a.Packet(APRS, position))
+    assert b"/A=" not in sent
+    received = packet(sent).payload
+    assert received.compression.nmea_source == "GGA"
+    assert received.extensions.altitude.measurement.value == pytest.approx(
+        10004, rel=0.003
+    )
+
+
+@pytest.mark.parametrize(
+    ("destination", "symbol"),
+    # aprs.org/symbols/symbolsX.txt GPSxyz table, one row from each subgroup.
+    [
+        ("GPSBB", ("/", "!")),
+        ("GPSOB", ("\\", "!")),
+        ("GPSP0", ("/", "0")),
+        ("GPSA9", ("\\", "9")),
+        ("GPSMV", ("/", ">")),
+        ("GPSNV3", ("3", ">")),
+        ("GPSPC", ("/", "C")),
+        ("GPSAC", ("\\", "C")),
+        ("GPSHS", ("/", "[")),
+        ("GPSDX", ("\\", "`")),
+        ("GPSLC", ("/", "c")),
+        ("GPSSC", ("\\", "c")),
+        ("GPSJ1", ("/", "{")),
+        ("GPSQ4", ("\\", "~")),
+        ("GPSC30", ("/", ">")),
+        ("GPSE12", ("\\", ",")),
+    ],
+)
+def test_nmea_destination_symbols_follow_the_published_table(destination, symbol):
+    raw = f"N0CALL>{destination}:$GPGLL,4916.45,N,12311.12,W,225444,A".encode()
+    assert packet(raw).payload.symbol == a.Symbol(*symbol)
+
+
+@pytest.mark.parametrize(
+    "symbol", [a.Symbol("/", "C"), a.Symbol("\\", "["), a.Symbol("3", ">")]
+)
+def test_nmea_destination_is_generated_from_the_symbol(symbol):
+    received = packet(b"N0CALL>APRS:$GPGLL,4916.45,N,12311.12,W,225444,A").payload
+    nmea = dataclasses.replace(received, symbol=symbol)
+    composed = a.Packet(NO_DESTINATION, nmea)
+    assert a.check_packet(composed) == ()
+    sent = a.serialize_packet(composed)
+    assert sent.split(b":")[0].split(b">")[1].startswith(b"GPS")
+    assert packet(sent).payload.symbol == symbol
+    stale = a.Packet(APRS, nmea)
+    assert [d.path for d in a.check_packet(stale)] == ["$.payload.symbol"]
+    with pytest.raises(a.ModelError):
+        a.Packet(NO_DESTINATION, received)  # Without a symbol, nothing to derive.
+
+
+def test_coded_fields_take_names():
+    offset = 12**2 / 1500  # an exact square-root code
+    area = a.Area("filled_box", "gray", offset, offset, intensity="low")
+    position = a.Position(1, 2, a.Symbol("\\", "l"), extensions=a.Extensions(area=area))
+    sent = a.serialize_packet(a.Packet(APRS, position))
+    assert b"l9" in sent and b"15" in sent  # filled box (9), low-intensity gray (15)
+    assert packet(sent).payload.extensions.area == area
+    storm = a.Storm(
+        "tropical_storm",
+        predicted=False,
+        sustained_wind_knots=60,
+        peak_gust_knots=80,
+        central_pressure_hpa=990,
+        hurricane_radius_nm=0,
+        tropical_storm_radius_nm=30,
+    )
+    stormy = a.Position(
+        1,
+        2,
+        a.Symbol("\\", "@"),
+        extensions=a.Extensions(motion=a.Motion(90, 10), storm=storm),
+    )
+    sent = a.serialize_packet(a.Packet(APRS, stormy))
+    assert b"/TS/" in sent
+    assert packet(sent).payload.extensions.storm.kind == "tropical_storm"
+    csT = a.Compression(fix="current", nmea_source="other", origin="kpc3")
+    assert csT.type_value == 32 + 0 + 4  # current fix, other source, KPC3 origin
+    rmc = packet(
+        b"N0CALL>APRS:$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W"
+    ).payload.sentence
+    assert (rmc.fix_status, rmc.magnetic_variation_deg) == ("active", -3.1)
+    gga = packet(
+        b"N0CALL>APRS:$GPGGA,123519,4807.038,N,01131.000,E,2,08,0.9,545.4,M,46.9,M,,"
+    ).payload.sentence
+    assert gga.fix_quality == "dgps"
+
+
+def test_timestamp_from_datetime():
+    import datetime as dt
+
+    moment = dt.datetime(
+        2026, 10, 17, 23, 45, 30, tzinfo=dt.timezone(dt.timedelta(hours=-4))
+    )
+    assert a.Timestamp.from_datetime(moment) == a.Timestamp.dhm(18, 3, 45)
+    assert a.Timestamp.from_datetime(moment, "hms_utc") == a.Timestamp.hms(3, 45, 30)
+    assert a.Timestamp.from_datetime(moment, "mdhm_utc") == a.Timestamp.mdhm(
+        10, 18, 3, 45
+    )
+    local = a.Timestamp.from_datetime(moment, "dhm_local")
+    assert local == a.Timestamp.dhm(17, 23, 45, local=True)
+    with pytest.raises(ValueError):
+        a.Timestamp.from_datetime(dt.datetime(2026, 1, 1))  # offset unknown
+
+
+def test_edited_mic_e_destination_error_says_how_to_fix_it():
+    received = packet(b"N0CALL>S32UVT:`(_f\x1e\x1eOj/")
+    moved = dataclasses.replace(
+        received, payload=dataclasses.replace(received.payload, latitude_deg=40.0)
+    )
+    (finding,) = a.check_packet(moved)
+    assert "leave header.destination out" in finding.message
+    regenerated = dataclasses.replace(
+        moved, header=dataclasses.replace(moved.header, destination=None)
+    )
+    assert a.check_packet(regenerated) == ()
+
+
+@pytest.mark.parametrize(
+    ("bearing", "nrq"),
+    [
+        # 60% hits -> N=5; 20 mi -> R=4 (16 mi); 10 deg -> Q=5 ("under 16 deg").
+        (a.Bearing(270, 20, 10, hit_ratio=0.6), b"545"),
+        (a.Bearing(270, 4, None, hit_ratio=1), b"820"),  # useless bearing: Q=0
+        (a.Bearing(270, 16, 1, manual=True), b"949"),
+        (a.Bearing(270), b"000"),  # nothing reported: NRQ is meaningless
+    ],
+)
+def test_df_bearing_takes_plain_values(bearing, nrq):
+    # APRS101 p30 (WB2OSZ APRS 1.2 reference): N, R and the Q accuracy table.
+    position = a.Position(
+        49,
+        -72,
+        a.Symbol("/", "\\"),
+        extensions=a.Extensions(motion=a.Motion(90, 10), bearing=bearing),
+    )
+    sent = a.serialize_packet(a.Packet(APRS, position))
+    assert sent.endswith(b"/270/" + nrq)
+    received = packet(sent).payload.extensions.bearing
+    assert (received.hits_code, received.range_code, received.quality_code) == tuple(
+        int(c) for c in nrq.decode()
+    )
+    assert received.usable == (nrq[2:] != b"0" and nrq != b"000")
+    with pytest.raises(a.ModelError):
+        a.Bearing(270, 16, 1, hit_ratio=0.5, manual=True)

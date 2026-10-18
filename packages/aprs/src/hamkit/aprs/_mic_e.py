@@ -23,7 +23,7 @@ from typing import cast
 
 from ._ambiguity import center, center_wire
 from ._data import Altitude, Extensions, Measurement, Motion, Symbol, Telemetry
-from ._errors import FieldError
+from ._errors import FieldError, Unrepresentable
 from ._models import Header, MicE
 from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 from ._position_codec import base91, dao_offset, pack91
@@ -241,7 +241,9 @@ def position_bytes(p: MicE, header: Header | None) -> bytes:
         or west != (math.copysign(1, p.longitude_deg) < 0)
     ):
         raise FieldError(
-            "Mic-E destination does not match latitude, ambiguity, message, or longitude hemisphere"
+            "Mic-E destination does not match latitude, ambiguity, message, or"
+            " longitude hemisphere; leave header.destination out (None) to have"
+            " it generated from the payload"
         )
     units = round(abs(center(p.longitude_deg, p.ambiguity)) * 6000)
     degrees, minutes = divmod(units, 6000)
@@ -258,8 +260,14 @@ def write(
     if m is None or m.course_deg is None or m.speed_knots is None:
         raise FieldError("Mic-E requires course and speed")
     speed, course = round(m.speed_knots), round(m.course_deg)
-    if not 0 <= speed <= 799 or not 0 <= course <= 360:
-        raise FieldError("Mic-E motion outside wire range")
+    if not 0 <= speed <= 799:
+        raise Unrepresentable(
+            "$.extensions.motion.speed_knots", "Mic-E carries 0..799 knots"
+        )
+    if not 0 <= course <= 360:
+        raise Unrepresentable(
+            "$.extensions.motion.course_deg", "Mic-E carries 0..360 degrees"
+        )
     body = (
         position
         + bytes(
@@ -404,8 +412,9 @@ def write_status(p: MicE, policy: EnvelopePolicy = _DEFAULT_POLICY) -> bytes:
         first = head[:1].encode()
     if e.altitude and e.altitude.encoding == "mic_e":
         if e.altitude.reference != "unspecified":
-            raise FieldError(
-                "Mic-E altitude reference is not an independent wire field"
+            raise Unrepresentable(
+                "$.extensions.altitude.reference",
+                "the Mic-E altitude has no reference field",
             )
         from ._units import height
 

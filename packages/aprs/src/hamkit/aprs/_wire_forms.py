@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any, TypeVar
 
-from ._data import Altitude, Telemetry
+from ._data import Altitude, Compression, Telemetry
 from ._errors import APRSError
 from ._models import Item, LegacyPosition, MicE, Object, Packet, Position, ThirdParty
 from ._policy import EnvelopePolicy
@@ -33,15 +33,23 @@ def resolve(value: T, policy: EnvelopePolicy) -> T:
         return _with(value, encoding="classic")  # A telemetry report is classic.
     if not isinstance(value, (Position, Object, Item, MicE)):
         return value
-    e = value.extensions
+    located: Any = value
+    if not isinstance(located, MicE) and located.compression is not None:
+        # The altitude form below depends on the chosen compression source.
+        located = replace(located, compression=_compression(located))
+    e = located.extensions
     altitude, telemetry = e.altitude, e.telemetry
     if altitude is not None:
-        altitude = _with(altitude, encoding=_altitude_form(value, altitude))
+        altitude = _with(altitude, encoding=_altitude_form(located, altitude))
     if telemetry is not None:
-        telemetry = _with(telemetry, encoding=_telemetry_form(value, telemetry, policy))
+        telemetry = _with(
+            telemetry, encoding=_telemetry_form(located, telemetry, policy)
+        )
     if altitude is None and telemetry is None:
-        return value
-    return replace(value, extensions=replace(e, altitude=altitude, telemetry=telemetry))  # type: ignore[return-value]
+        return located  # type: ignore[no-any-return]
+    return replace(  # type: ignore[no-any-return]
+        located, extensions=replace(e, altitude=altitude, telemetry=telemetry)
+    )
 
 
 def _with(node: Any, **changes: Any) -> Any:
@@ -56,8 +64,32 @@ def _with(node: Any, **changes: Any) -> Any:
         return node
 
 
+def _compression(container: Any) -> Compression:
+    c = container.compression
+    if c.ignored or None not in (c.fix, c.nmea_source, c.origin):
+        return c
+    e = container.extensions
+    weather_wind = e.weather is not None and (
+        e.weather.wind_direction is not None or e.weather.wind_speed is not None
+    )
+    motion = e.motion is not None and None not in (
+        e.motion.course_deg,
+        e.motion.speed_knots,
+    )
+    if not (motion or e.range is not None or weather_wind or c.nmea_source == "GGA"):
+        return Compression(ignored=True)  # Nothing for csT to carry.
+    return replace(
+        c,
+        fix=c.fix or "current",
+        nmea_source=c.nmea_source or "other",
+        origin=c.origin or "software",  # APRS101: DOS/Mac/Win/+SA software
+    )
+
+
 def _altitude_form(container: Any, altitude: Altitude) -> str:
     if isinstance(container, MicE):
+        if altitude.reference == "ellipsoid":
+            return "feet_extension"  # The model forbids it in the Mic-E field.
         if altitude.encoding in ("mic_e", "feet_extension"):
             return altitude.encoding
         # The compact Mic-E field holds whole meters; /A= holds whole feet.

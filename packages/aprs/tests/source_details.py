@@ -118,46 +118,29 @@ def core(packet, raw, profile):
             r["df_bearing"] = {
                 "manual": v.manual,
                 "range_miles": v.range_miles,
-                "usable": v.quality_code > 0,
-                "accuracy_less_than_deg": (None, 240, 120, 64, 32, 16, 8, 4, 2, 1)[
-                    v.quality_code
-                ],
+                "usable": v.usable,
+                "accuracy_less_than_deg": v.accuracy_deg,
+                "hits_code": v.hits_code,
+                "range_code": v.range_code,
+                "quality_code": v.quality_code,
                 "nrq_raw": f"{v.hits_code}{v.range_code}{v.quality_code}",
-                "nrq_meaningful": bool(v.hits_code or v.range_code or v.quality_code),
+                "nrq_meaningful": v.nrq_meaningful,
             }
         if e.area:
             v = e.area
             r["area"] = {
-                "shape": (
-                    "open-circle",
-                    "line-down-right",
-                    "open-ellipse",
-                    "open-triangle",
-                    "open-box",
-                    "filled-circle",
-                    "line-down-left",
-                    "filled-ellipse",
-                    "filled-triangle",
-                    "filled-box",
-                )[v.shape_code],
-                "color": (
-                    "black",
-                    "blue",
-                    "green",
-                    "cyan",
-                    "red",
-                    "violet",
-                    "yellow",
-                    "gray",
-                )[v.color_code % 8],
-                "intensity": "low" if v.color_code >= 8 else "high",
+                "shape_code": v.shape_code,
+                "color_code": v.color_code,
+                "shape": v.shape.replace("_", "-"),
+                "color": v.color,
+                "intensity": v.intensity,
                 "latitude_offset_deg": v.latitude_offset_deg,
                 "longitude_offset_deg": v.longitude_offset_deg,
                 "transmitted_anchor": (
                     "center"
                     if v.transmitted_anchor == "circle_center"
                     else "lower-left"
-                    if v.shape_code == 6
+                    if v.shape == "line_down_left"
                     else "lower-right"
                 ),
             }
@@ -438,10 +421,6 @@ def check_rejection(row):
     if "kind" in source:
         expected = translate(source)
         semantic_fields(expected)
-        # Empty NMEA optional variation direction has the existing None form.
-        n = expected.get("payload", {}).get("sentence", {})
-        if n.get("magnetic_variation_direction") == "":
-            n["magnetic_variation_direction"] = None
         errors.extend(differences(a.to_json_dict(p, include_defaults=True), expected))
     if "partial" in source:
         assert isinstance(p, a.Malformed)

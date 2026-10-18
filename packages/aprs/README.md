@@ -239,11 +239,13 @@ telemetry, weather, storm, area and signpost extensions also have structured
 decoders and encoders.
 
 When sending, measurements such as course, speed and altitude are rounded to
-whole units, like coordinates. Values with no exact wire form (PHG power must
-be n² watts) and values that would read back with a different meaning (a known
-speed of zero with no course) raise `ConformanceError`. Modeled fields the wire
-format cannot carry, such as an independent altitude reference, raise
-a representability error instead of being dropped.
+whole units, like coordinates, and coded values round to the nearest code: PHG
+power to n² watts (30 W is sent as 25 W), heights to 10 × 2ⁿ feet,
+directivity to 45° steps and beam ERP to 10 × n² watts. Values outside a
+field's range, values that would read back with a different meaning (a known
+speed of zero with no course), and modeled fields the wire format cannot carry
+(such as an independent altitude reference) raise `ConformanceError` instead of
+being dropped; `check_packet` reports the same findings.
 
 Build with Python:
 
@@ -1600,7 +1602,7 @@ from hamkit import aprs
 packet = aprs.Packet(
     aprs.Header("N0CALL", "APRS"),
     aprs.NMEA(
-        aprs.GLL(aprs.Coordinates(49, -72), aprs.UTCTime(12, 30, 0), "A"), aprs.NMEAMetadata("GP"), comment="hello"
+        aprs.GLL(aprs.Coordinates(49, -72), aprs.UTCTime(12, 30, 0), "active"), aprs.NMEAMetadata("GP"), comment="hello"
     ),
 )
 print(aprs.serialize_packet(packet).decode())
@@ -1638,7 +1640,7 @@ packet = aprs.from_json(
         "minute": 30,
         "second": 0
       },
-      "fix_status": "A"
+      "fix_status": "active"
     },
     "metadata": {
       "talker": "GP"
@@ -1659,7 +1661,7 @@ N0CALL>APRS:$GPGLL,4900,N,07200,W,123000,A*30hello
 
 #### Area dimensions in degrees
 
-Area offsets are nonnegative angular sizes, in degrees, using the corrected APRS 1.1 formula. Values from 0 through 6.534 degrees are converted to the nearest square-root code (ties to even). Classification and color remain protocol codes; no anchor or geographic transformation is inferred.
+Area offsets are nonnegative angular sizes, in degrees, using the corrected APRS 1.1 formula. Values from 0 through 6.534 degrees are converted to the nearest square-root code (ties to even). Shape and color are named (`"open_circle"`, `"blue"`, with `intensity="low"` for the dimmer colors); the library writes their APRS101 codes. No anchor or geographic transformation is inferred.
 
 Build with Python:
 
@@ -1671,7 +1673,7 @@ packet = aprs.Packet(
     aprs.Position(
         49, -72, aprs.Symbol("\\", "l"),
         extensions=aprs.Extensions(area=aprs.Area(
-            0, 1, latitude_offset_deg=0.096, longitude_offset_deg=0.096
+            "open_circle", "blue", latitude_offset_deg=0.096, longitude_offset_deg=0.096
         )),
     ),
 )
@@ -1707,8 +1709,8 @@ packet = aprs.from_json(
     },
     "extensions": {
       "area": {
-        "shape_code": 0,
-        "color_code": 1,
+        "shape": "open_circle",
+        "color": "blue",
         "latitude_offset_deg": 0.096,
         "longitude_offset_deg": 0.096
       }
@@ -1728,7 +1730,7 @@ N0CALL>APRS:!4900.00N\07200.00Wl012/112
 
 #### Direction-finding range in miles
 
-`Bearing.range_miles` accepts 1–512 miles and is quantized to the nearest power-of-two exponent (ties to even). Hits and quality remain classification codes; the disputed quality-to-accuracy mapping is not inferred. `range_code` is a derived read-only property.
+`Bearing` takes the share of samples that got a hit (`hit_ratio`, sent in eighths) or `manual=True`, a range of 1–512 miles (quantized to the nearest power of two, ties to even) and `accuracy_deg`, the bearing error bound from APRS101's quality table: 10° is sent as Q=5 ("under 16°"), and `None` marks a useless bearing. The NRQ digits are derived read-only properties (`hits_code`, `range_code`, `quality_code`).
 
 Build with Python:
 
@@ -1741,7 +1743,7 @@ packet = aprs.Packet(
         49, -72, aprs.Symbol("/", "\\"),
         extensions=aprs.Extensions(
             motion=aprs.Motion(90, 10),
-            bearing=aprs.Bearing(270, hits_code=7, range_miles=16, quality_code=9),
+            bearing=aprs.Bearing(270, range_miles=16, accuracy_deg=1, hit_ratio=7 / 8),
         ),
     ),
 )
@@ -1782,9 +1784,9 @@ packet = aprs.from_json(
       },
       "bearing": {
         "bearing_deg": 270,
-        "hits_code": 7,
         "range_miles": 16,
-        "quality_code": 9
+        "accuracy_deg": 1,
+        "hit_ratio": 0.875
       }
     }
   }
@@ -1872,7 +1874,7 @@ b'N0CALL>TYPP0P:`dX\x1c\x1d\x1cv>/PHG5130'
 
 #### DAO precision from coordinates
 
-Choose `DAO(encoding="decimal")` for thousandths of a minute or `"base91"` for 1/91 of a hundredth-minute. `datum="W"` is WGS84; letter case is packed automatically. `encoding=None` sends datum only. Parsed coordinates already include supported DAO precision. Editing those coordinates recomputes the codes, without using the received `raw` evidence. Added precision with ambiguity or compressed positions is refused; received combinations retain their baseline coordinates and DAO evidence with diagnostics.
+Choose `DAO(precision="high")` for thousandths of a minute or `"base91"` for 1/91 of a hundredth-minute. `datum="W"` is WGS84; letter case is packed automatically. `precision=None` sends the datum only. Parsed coordinates already include supported DAO precision. Editing those coordinates recomputes the codes, without using the received `raw` evidence. Added precision with ambiguity or compressed positions is refused; received combinations retain their baseline coordinates and DAO evidence with diagnostics.
 
 Build with Python:
 
@@ -1883,7 +1885,7 @@ packet = aprs.Packet(
     aprs.Header("N0CALL", "APRS"),
     aprs.Position(
         49.05837, -72.029215, aprs.Symbol("/", ">"),
-        extensions=aprs.Extensions(dao=aprs.DAO(encoding="decimal")),
+        extensions=aprs.Extensions(dao=aprs.DAO(precision="high")),
     ),
 )
 print(aprs.serialize_packet(packet).decode())
@@ -1918,7 +1920,7 @@ packet = aprs.from_json(
     },
     "extensions": {
       "dao": {
-        "encoding": "decimal"
+        "precision": "high"
       }
     }
   }
@@ -2017,7 +2019,7 @@ packet = aprs.Packet(
     aprs.NMEA(
         aprs.RMC(
             aprs.UTCTime(12, 35, 19.25), aprs.NMEADate(23, 3, 94),
-            "A", aprs.Coordinates(49, -72),
+            "active", aprs.Coordinates(49, -72),
         ),
         aprs.NMEAMetadata("GP"),
     ),
@@ -2058,7 +2060,7 @@ packet = aprs.from_json(
         "month": 3,
         "year_mod_100": 94
       },
-      "fix_status": "A",
+      "fix_status": "active",
       "coordinates": {
         "latitude_deg": 49,
         "longitude_deg": -72

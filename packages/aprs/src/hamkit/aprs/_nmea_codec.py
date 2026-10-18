@@ -8,11 +8,11 @@ import functools
 import math
 import operator
 import re
-from typing import Literal, cast
+from typing import Any, cast
 
 from . import _nmea as n
 from ._data import Coordinates, Measurement, Symbol
-from ._errors import CodecNotImplementedError, FieldError
+from ._errors import CodecNotImplementedError, FieldError, Unrepresentable
 from ._models import NMEA, Diagnostic, Header
 from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 from ._text import free_text, token
@@ -41,6 +41,28 @@ def _coordinates(fields: list[str]) -> Coordinates | None:
     )
 
 
+# GPSxyz/SPCxyz/SYMxyz destinations (aprs.org/symbols/symbolsX.txt): x names
+# a subgroup of one table, y the symbol within it, and z an optional overlay.
+# Each row: first symbol, primary x, alternate x, and the y characters.
+_XY_ROWS = (
+    ("!", "B", "O", "BCDEFGHIJKLMNOP"),
+    ("0", "P", "A", "0123456789"),
+    (":", "M", "N", "RSTUVWX"),
+    ("A", "P", "A", "ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+    ("[", "H", "D", "STUVWX"),
+    ("a", "L", "S", "ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+    ("{", "J", "Q", "1234"),
+)
+_XY_SYMBOL: dict[str, tuple[str, str]] = {}
+_SYMBOL_XY: dict[tuple[str, str], str] = {}
+for _first, _primary, _alternate, _ys in _XY_ROWS:
+    for _i, _y in enumerate(_ys):
+        for _x, _table in ((_primary, "/"), (_alternate, "\\")):
+            _code = chr(ord(_first) + _i)
+            _XY_SYMBOL[_x + _y] = (_table, _code)
+            _SYMBOL_XY[(_table, _code)] = _x + _y
+
+
 def header_symbol(header: Header | None) -> Symbol | None:
     if header is None or header.destination is None:
         return None
@@ -48,30 +70,24 @@ def header_symbol(header: Header | None) -> Symbol | None:
     match = re.fullmatch(r"(?:GPS|SPC|SYM)([CE])(\d{2})", dest)
     if match and 1 <= int(match[2]) <= 94:
         return Symbol("/" if match[1] == "C" else "\\", chr(32 + int(match[2])))
-    # APRS symbol XY codes: B/P are punctuation; M/N are vehicles and
-    # the remaining primary/alternate groups follow the APRS symbol table.
-    match = re.fullmatch(r"(?:GPS|SPC|SYM)([BPMNOAHS DQJL])([A-Z])([0-9A-Z]?)", dest)
-    if match:
-        group, letter, overlay = match.groups()
-        groups = {
-            "B": (32, "/"),
-            "P": (32, "\\"),
-            "M": (41, "/"),
-            "N": (41, "\\"),
-            "O": (64, "/"),
-            "A": (64, "\\"),
-            "H": (96, "/"),
-            "D": (96, "\\"),
-        }
-        if group in groups:
-            offset, table = groups[group]
-            code = chr(offset + ord(letter) - 65)
-            if 33 <= ord(code) <= 126:
-                return Symbol(overlay or table, code)
+    match = re.fullmatch(r"(?:GPS|SPC|SYM)([A-Z][0-9A-Z])([0-9A-Z]?)", dest)
+    if match and match[1] in _XY_SYMBOL:
+        table, code = _XY_SYMBOL[match[1]]
+        return Symbol(match[2] or table, code)
     suffix = header.source.rpartition("-")[2]
     if dest in ("GPS", "APRS") and suffix.isdigit() and 1 <= int(suffix) <= 15:
         return Symbol("/", "aUfbYX's><OjRkv"[int(suffix) - 1])
     return None
+
+
+def destination_for(symbol: Symbol) -> str:
+    """The GPSxyz destination that carries symbol; an overlay uses the alternate table."""
+    table = "/" if symbol.table_id == "/" else "\\"
+    xy = _SYMBOL_XY.get((table, symbol.code))
+    if xy is None:
+        raise Unrepresentable("$.symbol", "no GPSxyz destination encodes this symbol")
+    overlay = "" if symbol.table_id in ("/", "\\") else symbol.table_id
+    return "GPS" + xy + overlay
 
 
 def read(
@@ -109,7 +125,7 @@ def read(
             s = n.GGA(
                 read_time(f[0]),
                 _coordinates(f[1:5]),
-                int(f[5]),
+                _fix_quality(f[5]),
                 satellites=int(f[6]) if f[6] else None,
                 hdop=number(7),
                 altitude_msl=Measurement(number(8), "meters") if f[8] else None,
@@ -117,30 +133,25 @@ def read(
                 dgps_age=f[12] or None,
                 dgps_station=f[13] or None,
             )
-            usable = s.fix_quality > 0
+            usable = s.fix_quality != "invalid"
         elif kind == "GLL":
             if len(f) < 6:
                 raise FieldError("GLL requires six fields")
-            s = n.GLL(
-                _coordinates(f[:4]), read_time(f[4]), cast(Literal["A", "V"], f[5])
-            )
-            usable = s.fix_status == "A"
+            s = n.GLL(_coordinates(f[:4]), read_time(f[4]), _fix_status(f[5]))
+            usable = s.fix_status == "active"
         elif kind == "RMC":
             if len(f) < 11:
                 raise FieldError("RMC requires eleven fields")
             s = n.RMC(
                 read_time(f[0]),
                 read_date(f[8]),
-                cast(Literal["A", "V"], f[1]),
+                _fix_status(f[1]),
                 _coordinates(f[2:6]),
                 speed_knots=number(6),
                 course_deg=number(7),
-                magnetic_variation=number(9),
-                magnetic_variation_direction=cast(
-                    Literal["E", "W"] | None, f[10] or None
-                ),
+                magnetic_variation_deg=_variation(number(9), f[10]),
             )
-            usable = s.fix_status == "A"
+            usable = s.fix_status == "active"
         elif kind == "VTG":
             if len(f) < 8 or [f[i] for i in (1, 3, 5, 7)] != ["T", "M", "N", "K"]:
                 raise FieldError("invalid VTG fields or units")
@@ -207,6 +218,37 @@ def _coord_fields(c: Coordinates | None) -> list[str]:
     return result
 
 
+_STATUS_LETTERS = {"active": "A", "void": "V"}
+
+
+def _fix_status(letter: str) -> n.FixStatus:
+    for status, code in _STATUS_LETTERS.items():
+        if letter == code:
+            return cast(n.FixStatus, status)
+    raise FieldError("NMEA fix status must be A or V")
+
+
+def _fix_quality(field: str) -> n.GGAFixQuality:
+    if not field.isdigit() or int(field) >= len(n.GGA_FIX_QUALITIES):
+        raise FieldError("GGA fix quality must be 0..8")
+    return n.GGA_FIX_QUALITIES[int(field)]
+
+
+def _variation(value: float | None, direction: str) -> float | None:
+    """Signed degrees, east positive; a value and its direction occur together."""
+    if value is None and not direction:
+        return None
+    if value is None or direction not in ("E", "W"):
+        raise FieldError("magnetic variation needs a value and an E or W direction")
+    return -value if direction == "W" else value
+
+
+def _variation_fields(value: float | None, num: Any) -> list[str]:
+    if value is None:
+        return ["", ""]
+    return [num(abs(value)), "W" if math.copysign(1, value) < 0 else "E"]
+
+
 def write(p: NMEA) -> bytes:
     s = p.sentence
     num = lambda v: "" if v is None else f"{v:.12g}"
@@ -214,7 +256,7 @@ def write(p: NMEA) -> bytes:
         f = [
             write_time(s.time_utc),
             *_coord_fields(s.coordinates),
-            str(s.fix_quality),
+            str(n.GGA_FIX_QUALITIES.index(s.fix_quality)),
             num(s.satellites),
             num(s.hdop),
             height_field(s.altitude_msl),
@@ -225,17 +267,20 @@ def write(p: NMEA) -> bytes:
             s.dgps_station or "",
         ]
     elif isinstance(s, n.GLL):
-        f = [*_coord_fields(s.coordinates), write_time(s.time_utc), s.fix_status]
+        f = [
+            *_coord_fields(s.coordinates),
+            write_time(s.time_utc),
+            _STATUS_LETTERS[s.fix_status],
+        ]
     elif isinstance(s, n.RMC):
         f = [
             write_time(s.time_utc),
-            s.fix_status,
+            _STATUS_LETTERS[s.fix_status],
             *_coord_fields(s.coordinates),
             num(s.speed_knots),
             num(s.course_deg),
             write_date(s.date),
-            num(s.magnetic_variation),
-            s.magnetic_variation_direction or "",
+            *_variation_fields(s.magnetic_variation_deg, num),
         ]
     elif isinstance(s, n.VTG):
         f = [

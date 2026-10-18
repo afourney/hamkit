@@ -24,6 +24,7 @@ from ._errors import (
     FieldError,
     ModelError,
     ResourceLimitError,
+    Unrepresentable,
 )
 from ._fields import (
     decode_coordinate,
@@ -609,6 +610,14 @@ def _encode_payload(
     if isinstance(payload, m.NMEA):
         from . import _nmea_codec
 
+        if (
+            header is not None
+            and header.destination is None
+            and payload.symbol is not None
+        ):
+            header = replace(
+                header, destination=_nmea_codec.destination_for(payload.symbol)
+            )
         if payload.symbol is not None and payload.symbol != _nmea_codec.header_symbol(
             header
         ):
@@ -697,8 +706,8 @@ def _encode_payload(
             payload.message_id is None
             and _messages.response(payload.addressee, body) is not None
         ):
-            raise FieldError(
-                "message text would be interpreted as a query response; use Response"
+            raise Unrepresentable(
+                "$.text", "would be read back as a query response; use Response"
             )
         if _special_message(payload.addressee, body):
             raise CodecNotImplementedError("specialized message")
@@ -715,6 +724,16 @@ def _wire_header(packet: Packet) -> Header:
         from ._mic_e import resolve_header
 
         return resolve_header(packet.header, packet.payload)
+    if (
+        isinstance(packet.payload, m.NMEA)
+        and packet.header.destination is None
+        and packet.payload.symbol is not None
+    ):
+        from ._nmea_codec import destination_for
+
+        return replace(
+            packet.header, destination=destination_for(packet.payload.symbol)
+        )
     return packet.header
 
 
@@ -771,19 +790,33 @@ def _envelope_sizes(
 def _findings(
     value: Packet | Payload, policy: EnvelopePolicy, max_depth: int
 ) -> tuple[Diagnostic, ...]:
-    """Conformance findings, including the encoded outer envelope size."""
+    """Conformance findings, including the encoded outer envelope size.
+
+    The payload is also encoded. When no rule has fired, any field the encoder
+    still cannot represent becomes a finding, so check_packet predicts every
+    refusal serialize_packet would make (except a missing codec or context).
+    """
     findings = check(value, policy)
-    if isinstance(value, Packet) and (
-        policy.max_information_bytes is not None
-        or policy.max_tnc2_line_bytes is not None
-    ):
-        try:
-            header = _wire_header(value)
-            information = _encode_payload(
-                value.payload, value.header, max_depth, 0, policy
-            )
-        except (CodecNotImplementedError, ContextRequiredError, FieldError):
-            return findings  # Reported elsewhere; there are no bytes to measure.
+    packet = value if isinstance(value, Packet) else None
+    payload = value.payload if isinstance(value, Packet) else value
+    try:
+        header = _wire_header(packet) if packet else None
+        information = _encode_payload(
+            payload, packet.header if packet else None, max_depth, 0, policy
+        )
+    except (CodecNotImplementedError, ContextRequiredError, ResourceLimitError):
+        return findings  # There are no bytes to measure.
+    except ConformanceError as exc:
+        return findings or exc.diagnostics
+    except FieldError as exc:
+        if findings:
+            return findings  # Already refused; avoid restating a consequence.
+        path = getattr(exc, "path", "$")
+        message = getattr(exc, "message", str(exc))
+        if packet is not None:
+            path = "$.payload" + path[1:]
+        return (Diagnostic("nonconforming", message, path),)
+    if packet is not None and header is not None:
         line_bytes = len(str(header).encode("ascii")) + 1 + len(information) + 2
         findings = (*findings, *_envelope_sizes(policy, len(information), line_bytes))
     return findings

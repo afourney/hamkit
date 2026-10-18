@@ -29,9 +29,11 @@ def checked(payload, policy, destination="APRS"):
 @pytest.mark.parametrize(
     "sentence",
     [
-        a.GLL(a.Coordinates(49, -72), a.UTCTime(12, 0, 0), "A"),
-        a.GGA(a.UTCTime(12, 0, 0), a.Coordinates(49, -72), 1),
-        a.RMC(a.UTCTime(12, 0, 0), a.NMEADate(1, 1, 26), "A", a.Coordinates(49, -72)),
+        a.GLL(a.Coordinates(49, -72), a.UTCTime(12, 0, 0), "active"),
+        a.GGA(a.UTCTime(12, 0, 0), a.Coordinates(49, -72), "gps"),
+        a.RMC(
+            a.UTCTime(12, 0, 0), a.NMEADate(1, 1, 26), "active", a.Coordinates(49, -72)
+        ),
         a.WPL(a.Coordinates(49, -72), "HOME"),
         a.VTG(course_true_deg=90, speed_knots=10),
     ],
@@ -101,14 +103,14 @@ def test_mice_df_bearing_survives_parse_encode_and_edit(policy):
     wire = b"N0CALL>TYPP0P:`dX\x1c\x1d\x1cv\\/090/010/270/729"
     parsed = a.parse_packet(wire, policy=policy)
     assert isinstance(parsed, a.Packet)
-    assert parsed.payload.extensions.bearing == a.Bearing(270, 7, 4, 9)
+    assert parsed.payload.extensions.bearing == a.Bearing(270, 4, 1, hit_ratio=7 / 8)
     assert not a.check_packet(parsed, policy=policy)
     assert a.serialize_packet(parsed, policy=policy) == wire
     edited = replace(
         parsed.payload,
         extensions=replace(
             parsed.payload.extensions,
-            bearing=a.Bearing(180, hits_code=7, range_miles=16, quality_code=9),
+            bearing=a.Bearing(180, range_miles=16, accuracy_deg=1, hit_ratio=7 / 8),
         ),
     )
     encoded, back = checked(edited, policy, destination=None)
@@ -174,7 +176,9 @@ def test_maidenhead_bracket_and_comment_are_distinct(policy, grid, comment):
 
 @pytest.mark.parametrize("policy", POLICIES)
 def test_semantic_area_offsets_and_df_range_python_json(policy):
-    area = a.Area(0, 1, latitude_offset_deg=0.096, longitude_offset_deg=0.096)
+    area = a.Area(
+        "open_circle", "blue", latitude_offset_deg=0.096, longitude_offset_deg=0.096
+    )
     wire, back = checked(
         a.Position(49, -72, a.Symbol("\\", "l"), extensions=a.Extensions(area=area)),
         policy,
@@ -187,7 +191,7 @@ def test_semantic_area_offsets_and_df_range_python_json(policy):
         extensions=a.Extensions(area=replace(area, latitude_offset_deg=0.15)),
     )
     assert checked(edited, policy)[0].endswith(b"l015/112")
-    bearing = a.Bearing(270, hits_code=7, range_miles=16, quality_code=9)
+    bearing = a.Bearing(270, range_miles=16, accuracy_deg=1, hit_ratio=7 / 8)
     wire, back = checked(
         a.Position(
             49,
@@ -208,14 +212,14 @@ def test_semantic_area_offsets_and_df_range_python_json(policy):
 
 @pytest.mark.parametrize("code", range(100))
 def test_every_area_code_is_stable_from_semantic_degrees(code):
-    area = a.Area(0, 1, code**2 / 1500, code**2 / 1500)
+    area = a.Area("open_circle", "blue", code**2 / 1500, code**2 / 1500)
     assert area.latitude_offset_code == code
     assert area.longitude_offset_code == code
 
 
 @pytest.mark.parametrize("code", range(10))
 def test_every_df_range_code_is_stable_from_miles(code):
-    assert a.Bearing(270, 7, 2**code, 9).range_code == code
+    assert a.Bearing(270, 2**code, 1, hit_ratio=7 / 8).range_code == code
 
 
 @pytest.mark.parametrize(
@@ -224,8 +228,8 @@ def test_every_df_range_code_is_stable_from_miles(code):
         (
             a.Area,
             {
-                "shape_code": 0,
-                "color_code": 1,
+                "shape": "open_circle",
+                "color": "blue",
                 "latitude_offset_deg": -0.001,
                 "longitude_offset_deg": 0,
             },
@@ -233,19 +237,29 @@ def test_every_df_range_code_is_stable_from_miles(code):
         (
             a.Area,
             {
-                "shape_code": 0,
-                "color_code": 1,
+                "shape": "open_circle",
+                "color": "blue",
                 "latitude_offset_deg": 6.535,
                 "longitude_offset_deg": 0,
             },
         ),
         (
             a.Bearing,
-            {"bearing_deg": 270, "hits_code": 7, "range_miles": 0, "quality_code": 9},
+            {
+                "bearing_deg": 270,
+                "hit_ratio": 0.875,
+                "range_miles": 0,
+                "accuracy_deg": 1,
+            },
         ),
         (
             a.Bearing,
-            {"bearing_deg": 270, "hits_code": 7, "range_miles": 513, "quality_code": 9},
+            {
+                "bearing_deg": 270,
+                "hit_ratio": 0.875,
+                "range_miles": 513,
+                "accuracy_deg": 1,
+            },
         ),
     ],
 )
@@ -297,7 +311,7 @@ def test_size_and_range_quantize_without_stale_codes(policy):
         49,
         -72,
         a.Symbol("\\", "l"),
-        extensions=a.Extensions(area=a.Area(0, 1, 0.1, 0.1)),
+        extensions=a.Extensions(area=a.Area("open_circle", "blue", 0.1, 0.1)),
     )
     wire, parsed = checked(p, policy)
     assert wire.endswith(b"l012/112")
@@ -307,7 +321,7 @@ def test_size_and_range_quantize_without_stale_codes(policy):
         -72,
         a.Symbol("/", "\\"),
         extensions=a.Extensions(
-            motion=a.Motion(90, 10), bearing=a.Bearing(270, 7, 20, 9)
+            motion=a.Motion(90, 10), bearing=a.Bearing(270, 20, 1, hit_ratio=7 / 8)
         ),
     )
     wire, parsed = checked(df, policy)

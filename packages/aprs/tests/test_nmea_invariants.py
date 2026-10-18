@@ -34,7 +34,7 @@ class NMEAInvariantTests(unittest.TestCase):
             a.NMEAMetadata(**missing_talker)
         with self.assertRaises(a.JSONModelError):
             a.from_json('{"type": "nmea_metadata"}')
-        sentence = a.GLL(None, a.UTCTime(12, 0, 0), "V")
+        sentence = a.GLL(None, a.UTCTime(12, 0, 0), "void")
         missing_metadata: dict[str, Any] = {"sentence": sentence}
         with self.assertRaises(TypeError):
             a.NMEA(**missing_metadata)
@@ -57,7 +57,7 @@ class NMEAInvariantTests(unittest.TestCase):
         base = {
             "time_utc": a.UTCTime(12, 0, 0),
             "date": a.NMEADate(1, 1, 24),
-            "fix_status": "V",
+            "fix_status": "void",
             "coordinates": None,
         }
         for date in ("310224", "290223", "310424"):
@@ -71,38 +71,39 @@ class NMEAInvariantTests(unittest.TestCase):
                 "nmea_date",
             )
         for extra in (
-            {"magnetic_variation": -1, "magnetic_variation_direction": "E"},
-            {"magnetic_variation": 181, "magnetic_variation_direction": "W"},
-            {"magnetic_variation": 1},
-            {"magnetic_variation_direction": "E"},
+            {"magnetic_variation_deg": -181},
+            {"magnetic_variation_deg": 181},
         ):
             self.reject_both(a.RMC, {**base, **extra}, "rmc")
         for date in ("290224", "290200", "280223"):
             sentence = a.RMC(
                 a.UTCTime(12, 0, 0),
                 a.NMEADate(int(date[:2]), int(date[2:4]), int(date[4:])),
-                "V",
+                "void",
                 None,
             )
             self.assertEqual(a.from_json(a.to_json(sentence)), sentence)
         variation = a.RMC(
             a.UTCTime(12, 0, 0),
             a.NMEADate(1, 1, 24),
-            "V",
+            "void",
             None,
-            magnetic_variation=0,
-            magnetic_variation_direction="E",
+            magnetic_variation_deg=-13.6,
         )
         self.assertEqual(a.from_json(a.to_json(variation)), variation)
 
     def test_differential_fields_and_waypoint_delimiters(self) -> None:
-        base = {"time_utc": a.UTCTime(12, 0, 0), "coordinates": None, "fix_quality": 0}
+        base = {
+            "time_utc": a.UTCTime(12, 0, 0),
+            "coordinates": None,
+            "fix_quality": "invalid",
+        }
         for age in ("", "-1", "NaN", "1e3", "1,2", " 1"):
             self.reject_both(a.GGA, {**base, "dgps_age": age}, "gga")
         for station in ("A,B", "A*B", "$GP"):
             self.reject_both(a.GGA, {**base, "dgps_station": station}, "gga")
         sentence = a.GGA(
-            a.UTCTime(12, 0, 0), None, 0, dgps_age="0.25", dgps_station="TSTR"
+            a.UTCTime(12, 0, 0), None, "invalid", dgps_age="0.25", dgps_station="TSTR"
         )
         self.assertEqual(a.from_json(a.to_json(sentence)), sentence)
         for name in ("A,B", "A*B", "$GP"):
@@ -121,10 +122,12 @@ class NMEAInvariantTests(unittest.TestCase):
 
     def test_usability_cannot_contradict_sentence(self) -> None:
         sentences = (
-            a.GLL(None, a.UTCTime(12, 0, 0), "V"),
-            a.GLL(a.Coordinates(1, 2), a.UTCTime(12, 0, 0), "V"),
-            a.GGA(a.UTCTime(12, 0, 0), a.Coordinates(1, 2), 0),
-            a.RMC(a.UTCTime(12, 0, 0), a.NMEADate(1, 1, 24), "V", a.Coordinates(1, 2)),
+            a.GLL(None, a.UTCTime(12, 0, 0), "void"),
+            a.GLL(a.Coordinates(1, 2), a.UTCTime(12, 0, 0), "void"),
+            a.GGA(a.UTCTime(12, 0, 0), a.Coordinates(1, 2), "invalid"),
+            a.RMC(
+                a.UTCTime(12, 0, 0), a.NMEADate(1, 1, 24), "void", a.Coordinates(1, 2)
+            ),
             a.VTG(),
         )
         for sentence in sentences:
@@ -136,7 +139,7 @@ class NMEAInvariantTests(unittest.TestCase):
                 obj["position_usable"] = True
                 with self.assertRaises(a.JSONModelError):
                     a.from_json_dict(obj)
-        valid = a.GLL(a.Coordinates(1, 2), a.UTCTime(12, 0, 0), "A")
+        valid = a.GLL(a.Coordinates(1, 2), a.UTCTime(12, 0, 0), "active")
         with self.assertRaises(a.ModelError):
             a.NMEA(
                 valid,
@@ -152,5 +155,5 @@ class NMEAInvariantTests(unittest.TestCase):
         # No received precision is available to establish a speed tolerance.
         a.VTG(speed_knots=1, speed_kmh_reported=1.9)
         # Missing observations are not replaced with a fabricated clock/date.
-        a.GLL(None, None, "V")
-        a.RMC(a.UTCTime(12, 0, 0), None, "V", None)
+        a.GLL(None, None, "void")
+        a.RMC(a.UTCTime(12, 0, 0), None, "void", None)

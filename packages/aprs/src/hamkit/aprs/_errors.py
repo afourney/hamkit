@@ -32,6 +32,15 @@ class ModelError(FieldError):
         super().__init__(f"{path}: {message}")
 
 
+class Unrepresentable(FieldError):
+    """A value with no exact wire form; path is relative to the encoded payload."""
+
+    def __init__(self, path: str, message: str):
+        self.path = path
+        self.message = message
+        super().__init__(f"{path}: {message}")
+
+
 class ConformanceError(FieldError):
     """A packet is representable but breaks APRS rules; it must not be sent."""
 

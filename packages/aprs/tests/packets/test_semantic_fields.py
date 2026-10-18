@@ -31,8 +31,8 @@ def send(payload):
 @pytest.mark.parametrize(
     "encoding,pair,lat_extra,lon_extra",
     [
-        ("decimal", b"!W23!", 0.002, 0.003),
-        ("base91", b"!wAb!", 32 / 9100, 65 / 9100),
+        ("high", b"!W23!", 0.002, 0.003),
+        ("highest", b"!wAb!", 32 / 9100, 65 / 9100),
     ],
 )
 @pytest.mark.parametrize("sign", [-1, 1])
@@ -41,22 +41,22 @@ def test_dao_spec_anchors_and_edit(encoding, pair, lat_extra, lon_extra, sign):
         sign * (49 + (3.5 + lat_extra) / 60),
         -sign * (72 + (1.75 + lon_extra) / 60),
         SYMBOL,
-        extensions=a.Extensions(dao=a.DAO(encoding=encoding)),
+        extensions=a.Extensions(dao=a.DAO(precision=encoding)),
     )
     wire, decoded = send(p)
     assert pair in wire
     assert decoded.latitude_deg == pytest.approx(p.latitude_deg, abs=1e-10)
     assert decoded.longitude_deg == pytest.approx(p.longitude_deg, abs=1e-10)
-    assert decoded.extensions.dao.encoding == encoding
+    assert decoded.extensions.dao.precision == encoding
     # Parsed extension evidence cannot override edited semantic coordinates.
     changed = replace(decoded, latitude_deg=50, longitude_deg=-73)
     rewritten, result = send(changed)
-    assert (b"!W00!" if encoding == "decimal" else b"!w!!!") in rewritten
+    assert (b"!W00!" if encoding == "high" else b"!w!!!") in rewritten
     assert (result.latitude_deg, result.longitude_deg) == (50, -73)
 
 
 @pytest.mark.parametrize("kind", [a.Position, a.MicE])
-@pytest.mark.parametrize("encoding", ["decimal", "base91"])
+@pytest.mark.parametrize("encoding", ["high", "highest"])
 @pytest.mark.parametrize(
     "latitude,longitude",
     [
@@ -75,10 +75,10 @@ def test_dao_rounding_carries_and_semantic_roundtrip(
         longitude,
         SYMBOL,
         **({"message": "off_duty"} if kind is a.MicE else {}),
-        extensions=a.Extensions(dao=a.DAO(encoding=encoding), **extra),
+        extensions=a.Extensions(dao=a.DAO(precision=encoding), **extra),
     )
     _, decoded = send(p)
-    tolerance = 1 / (120000 if encoding == "decimal" else 1092000)
+    tolerance = 1 / (120000 if encoding == "high" else 1092000)
     assert abs(decoded.latitude_deg - latitude) <= tolerance + 1e-12
     assert abs(decoded.longitude_deg - longitude) <= tolerance + 1e-12
     assert math.copysign(1, decoded.longitude_deg) == math.copysign(1, longitude)
@@ -90,7 +90,7 @@ def test_dao_datum_only_policy_and_privacy():
         49, -72, SYMBOL, ambiguity=2, extensions=a.Extensions(dao=a.DAO("N"))
     )
     assert b"!N  !" in send(p)[0]
-    refined = replace(p, extensions=a.Extensions(dao=a.DAO(encoding="decimal")))
+    refined = replace(p, extensions=a.Extensions(dao=a.DAO(precision="high")))
     for v in (
         refined,
         replace(refined, ambiguity=0, compression=a.Compression(ignored=True)),
@@ -125,7 +125,7 @@ def test_altitude_equivalent_units(encoding):
                 a.GGA(
                     a.UTCTime(12, 30, 0),
                     a.Coordinates(49, -72),
-                    1,
+                    "gps",
                     altitude_msl=reading,
                     geoid_separation=a.Measurement(-10, "feet"),
                 ),
@@ -145,7 +145,9 @@ def test_altitude_equivalent_units(encoding):
             -72,
             SYMBOL,
             extensions=e,
-            compression=a.Compression(fix="current", nmea_source="GGA", origin_code=0)
+            compression=a.Compression(
+                fix="current", nmea_source="GGA", origin="compressed"
+            )
             if encoding == "compressed"
             else None,
         )
@@ -195,7 +197,9 @@ def test_altitude_range_checks_use_converted_units(encoding, value):
             -72,
             SYMBOL,
             extensions=e,
-            compression=a.Compression(fix="current", nmea_source="GGA", origin_code=0)
+            compression=a.Compression(
+                fix="current", nmea_source="GGA", origin="compressed"
+            )
             if encoding == "compressed"
             else None,
         )
@@ -221,7 +225,10 @@ def test_altitude_range_checks_use_converted_units(encoding, value):
 def test_nmea_century_is_never_invented(year):
     p = a.NMEA(
         a.RMC(
-            a.UTCTime(1, 2, 3.125), a.NMEADate(28, 2, year), "A", a.Coordinates(49, -72)
+            a.UTCTime(1, 2, 3.125),
+            a.NMEADate(28, 2, year),
+            "active",
+            a.Coordinates(49, -72),
         ),
         a.NMEAMetadata("GP", checksum_supplied="00"),
     )
@@ -245,7 +252,7 @@ def test_nmea_century_is_never_invented(year):
 
 
 def test_nmea_missing_and_partial_values_are_preserved():
-    missing = a.NMEA(a.RMC(None, None, "V", None), a.NMEAMetadata("GP"))
+    missing = a.NMEA(a.RMC(None, None, "void", None), a.NMEAMetadata("GP"))
     assert send(missing)[0] == b"N0CALL>APRS:$GPRMC,,V,,,,,,,,,"
     partial = a.parse_packet(b"N0CALL>APRS:$GPRMC,1234,V,,,,,,,2303,,")
     assert isinstance(partial, a.Packet)
@@ -266,7 +273,7 @@ def test_nmea_missing_and_partial_values_are_preserved():
 def test_nmea_fractional_seconds_do_not_gain_exponents(second):
     wire, decoded = send(
         a.NMEA(
-            a.GLL(a.Coordinates(0, 0), a.UTCTime(1, 2, second), "A"),
+            a.GLL(a.Coordinates(0, 0), a.UTCTime(1, 2, second), "active"),
             a.NMEAMetadata("GP"),
         )
     )
@@ -288,7 +295,7 @@ def test_conversion_overflow_is_a_finding_and_gga_uses_decimal_numbers():
         a.serialize_packet(packet(p))
     for value in (1e-8, -1e-8, 1e20):
         nmea = a.NMEA(
-            a.GGA(None, None, 0, altitude_msl=a.Measurement(value, "meters")),
+            a.GGA(None, None, "invalid", altitude_msl=a.Measurement(value, "meters")),
             a.NMEAMetadata("GP"),
         )
         wire, decoded = send(nmea)

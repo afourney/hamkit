@@ -143,6 +143,32 @@ def weather(data: JSON) -> JSON:
     return result
 
 
+def df_bearing(b: JSON) -> JSON:
+    """APRS101 p30 NRQ assertions as the semantic Bearing fields."""
+    result: JSON = {"bearing_deg": b["bearing_deg"]}
+    nrq = b.get("nrq_raw")
+    hits = b["hits_code"] if "hits_code" in b else int(nrq[0]) if nrq else None
+    if hits is None:
+        return result
+    if hits == 0:
+        # NRQ is meaningless: no hit ratio, range or accuracy is reported.
+        result.update(hit_ratio=None, manual=False, range_miles=None, accuracy_deg=None)
+        return result
+    result.update(
+        hit_ratio=hits / 8 if hits <= 8 else None,
+        manual=hits == 9,
+        range_miles=b["range_miles"]
+        if "range_miles" in b
+        else float(2 ** b.get("range_code", int(nrq[1]) if nrq else 0)),
+    )
+    if "accuracy_less_than_deg" in b:
+        result["accuracy_deg"] = b["accuracy_less_than_deg"]
+    elif "quality_code" in b or nrq:
+        q = b["quality_code"] if "quality_code" in b else int(nrq[2])
+        result["accuracy_deg"] = (None, 240, 120, 64, 32, 16, 8, 4, 2, 1)[q]
+    return result
+
+
 def translate(e: JSON) -> JSON:
     """A subset in to_json_dict(include_defaults=True) shape; no model/parser calls."""
     result: JSON = {"type": "packet"}
@@ -183,7 +209,18 @@ def translate(e: JSON) -> JSON:
         p["timestamp"] = stamp(e["timestamp"])
     if "compression" in e:
         c = e["compression"]
-        p["compression"] = select(c, "fix nmea_source origin_code")
+        p["compression"] = select(c, "fix nmea_source")
+        if "origin_code" in c:
+            p["compression"]["origin"] = (
+                "compressed",
+                "tnc_btext",
+                "software",
+                "unassigned",
+                "kpc3",
+                "pico",
+                "other_tracker",
+                "digipeater_conversion",
+            )[c["origin_code"]]
         if "csT_raw" in c:
             p["compression"]["raw"] = c["csT_raw"]
         if "ignored" in c:
@@ -230,20 +267,19 @@ def translate(e: JSON) -> JSON:
         ("radio_range", "range", "miles"),
         ("df_signal", "signal", "s_units height_haat_ft gain_db directivity_deg"),
         (
-            "df_bearing",
-            "bearing",
-            # usable/accuracy derive from a disputed Q mapping; see UNRESOLVED_SPEC.md.
-            "bearing_deg hits_code range_code quality_code",
-        ),
-        (
             "area",
             "area",
-            "shape_code color_code latitude_offset_code longitude_offset_code corridor_half_width_miles",
+            "shape color intensity latitude_offset_code longitude_offset_code corridor_half_width_miles",
         ),
         ("signpost", "signpost", "label"),
     ):
         if old in e:
             ext[new] = select(e[old], fields)
+            if new == "area":
+                # The source names shapes with hyphens; the schema uses underscores.
+                ext[new]["shape"] = ext[new]["shape"].replace("-", "_")
+    if "df_bearing" in e:
+        ext["bearing"] = df_bearing(e["df_bearing"])
     if "altitude" in e and kind != "nmea":
         alt = e["altitude"]
         unit = "feet" if "feet" in alt else "meters"
@@ -354,9 +390,9 @@ def translate(e: JSON) -> JSON:
         p.setdefault("extensions", {})["storm"] = {
             # APRS101 storm codes; unknown source names fail generation.
             "kind": {
-                "hurricane": "HC",
-                "tropical-storm": "TS",
-                "tropical-depression": "TD",
+                "hurricane": "hurricane",
+                "tropical-storm": "tropical_storm",
+                "tropical-depression": "tropical_depression",
             }[storm["type"]],
             **select(
                 storm,
@@ -382,11 +418,30 @@ def translate(e: JSON) -> JSON:
         sentence.update(
             select(
                 n,
-                "fix_quality fix_status satellites hdop geoid_separation_m magnetic_variation_direction",
+                "fix_quality fix_status satellites hdop geoid_separation_m",
             )
         )
+        # Named NMEA values: GGA quality 0-8, GLL/RMC status A/V, signed variation.
+        if "fix_quality" in sentence:
+            sentence["fix_quality"] = (
+                "invalid",
+                "gps",
+                "dgps",
+                "pps",
+                "rtk",
+                "float_rtk",
+                "estimated",
+                "manual",
+                "simulation",
+            )[sentence["fix_quality"]]
+        if "fix_status" in sentence:
+            sentence["fix_status"] = {"A": "active", "V": "void"}[
+                sentence["fix_status"]
+            ]
         if n.get("magnetic_variation_raw"):
-            sentence["magnetic_variation"] = float(n["magnetic_variation_raw"])
+            value = float(n["magnetic_variation_raw"])
+            west = n.get("magnetic_variation_direction") == "W"
+            sentence["magnetic_variation_deg"] = -value if west else value
         if "position" in e:
             sentence["coordinates"] = select(
                 e["position"], "latitude_deg longitude_deg"

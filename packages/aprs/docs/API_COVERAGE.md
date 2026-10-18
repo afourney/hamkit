@@ -122,8 +122,31 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   and GGA. Conversion precedes quantization and range checks. GGA uses
   `altitude_msl` and `geoid_separation`, replacing the `_m` scalar fields. Decoding
   retains each format's native unit; no vertical datum transformation is implied.
+- `compression=Compression()` is enough to send a position compressed. The
+  csT bytes carry motion, range or weather wind when present and are otherwise
+  marked unused (`c` = space); missing type fields default to a current fix,
+  the "other" NMEA source and software origin. A GGA source puts the altitude
+  in csT; otherwise an altitude uses `/A=`. The type fields are kept when
+  received and ignored by equality.
 - Compressed motion, range and altitude use their specified logarithmic codes.
-  Field overflow is rejected. No saturation or text truncation is performed.
+- Coded fields take names, and the library writes their codes: area
+  `shape`/`color`/`intensity` (APRS101 pp60–61), compression `origin`
+  (APRS101 p39, defaulting to `"software"`), storm `kind` (`"hurricane"`,
+  `"tropical_storm"`, `"tropical_depression"`), NMEA `fix_status`
+  (`"active"`/`"void"`), GGA `fix_quality` (`"invalid"` … `"simulation"`, the
+  NMEA 0183 table) and a signed `magnetic_variation_deg` (east positive). DAO
+  `precision` is `"high"` (one more decimal digit of minutes, about 1.85 m) or
+  `"highest"` (base-91, about 0.2 m). A DF `Bearing` takes `hit_ratio` or
+  `manual`, `range_miles` and `accuracy_deg`, using APRS101's quality table
+  (10° is sent as Q=5, "under 16°"). Agrelo quality remains a 0–9 vendor scale
+  because its meaning is unverified (see [UNRESOLVED_SPEC.md](UNRESOLVED_SPEC.md)). `Timestamp.from_datetime`
+  converts an aware `datetime` to any of the APRS time formats.
+- Values between codes round to the nearest code, like coordinates: PHG and
+  DF-signal power (n² watts), height (10 × 2ⁿ feet, on the logarithmic scale),
+  gain (whole dB) and directivity (45° steps, so 10° is sent as north), and
+  status beam heading (10°) and ERP (10 × n² watts). A value outside the code
+  range after rounding is refused. No saturation or text truncation is
+  performed.
   Numeric overlays use table IDs `a`–`j`; sending compressed positions with
   `0`–`9` table IDs is refused as nonconforming.
 - Mic-E generates an omitted destination from latitude, ambiguity, message and
@@ -168,8 +191,12 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   it is reported when parsed and refused when sending, so corrupt data is never
   re-signed implicitly. Repair it explicitly by clearing `checksum_valid` (a fresh
   checksum is computed) or by omitting the checksum.
-  An explicit NMEA symbol must match the packet header; `check_packet` reports
-  conflicts at `$.payload.symbol`. Payload-only encoding with an explicit symbol
+  For an NMEA packet with a symbol, leave `header.destination` out: the library
+  generates the `GPSxyz` destination from the published table
+  (aprs.org/symbols/symbolsX.txt), including overlays. Received `GPSxyz`,
+  `SPCxyz` and `SYMxyz` destinations decode through the same table. An
+  explicit destination must carry the symbol; `check_packet` reports a
+  conflict at `$.payload.symbol`. Payload-only encoding with an explicit symbol
   raises `ContextRequiredError`; use `serialize_packet` to supply the header.
 - Weather encoders convert supported units to wire units, then round to field
   precision. Uncompressed located wind retains the corpus's explicit
@@ -188,12 +215,16 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   (3–5 characters such as `home`).
 - Message text is a query response only when it matches a response grammar
   completely; anything else remains an ordinary `Message`.
-- Explicit altitude datum and DF interpretation annotations with no wire form
-  remain unsendable rather than being silently discarded. Raw vendor weather
+- Explicit altitude references, water-height datums and DF interpretation
+  annotations have no wire field. They are reported as conformance findings at
+  their own paths and remain unsendable rather than being silently discarded. Raw vendor weather
   annotations do not replace authoritative bytes.
 
-Constructors enforce model validity. `check_packet` reports conformance findings;
-`serialize_packet` rejects them and additionally checks representability. Received
+Constructors enforce model validity. `check_packet` reports every finding
+`serialize_packet` would refuse with, including values the encoder cannot
+represent (a field too wide, a speed beyond the Mic-E range, an ERP with no
+code), each at its own path. Only a missing codec or missing header context is
+reported by sending alone. Received
 warnings alone do not prevent encoding: Latin-1 input can become valid UTF-8.
 
 ## Verification

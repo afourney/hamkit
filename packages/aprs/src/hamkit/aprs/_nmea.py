@@ -10,7 +10,7 @@ century or trusted fix is inferred. Other sentences need their own grammar.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, get_args
 
 from ._data import Coordinates, Measurement
 from ._validation import Validated, evidence
@@ -42,11 +42,28 @@ class NMEADate(Validated):
     year_mod_100: int | None = None
 
 
+# NMEA 0183 GGA fix quality indicator, in code order (0-8).
+GGAFixQuality: TypeAlias = Literal[
+    "invalid",
+    "gps",
+    "dgps",
+    "pps",
+    "rtk",
+    "float_rtk",
+    "estimated",
+    "manual",
+    "simulation",
+]
+GGA_FIX_QUALITIES: tuple[GGAFixQuality, ...] = get_args(GGAFixQuality)
+# GLL/RMC status: A (active, valid) or V (void).
+FixStatus: TypeAlias = Literal["active", "void"]
+
+
 @dataclass(frozen=True)
 class GGA(Validated):
     time_utc: UTCTime | None
     coordinates: Coordinates | None
-    fix_quality: int
+    fix_quality: GGAFixQuality
     satellites: int | None = field(default=None, kw_only=True)
     hdop: float | None = field(default=None, kw_only=True)
     altitude_msl: Measurement | None = field(default=None, kw_only=True)
@@ -59,21 +76,19 @@ class GGA(Validated):
 class GLL(Validated):
     coordinates: Coordinates | None
     time_utc: UTCTime | None
-    fix_status: Literal["A", "V"]
+    fix_status: FixStatus
 
 
 @dataclass(frozen=True)
 class RMC(Validated):
     time_utc: UTCTime | None
     date: NMEADate | None
-    fix_status: Literal["A", "V"]
+    fix_status: FixStatus
     coordinates: Coordinates | None
     speed_knots: float | None = field(default=None, kw_only=True)
     course_deg: float | None = field(default=None, kw_only=True)
-    magnetic_variation: float | None = field(default=None, kw_only=True)
-    magnetic_variation_direction: Literal["E", "W"] | None = field(
-        default=None, kw_only=True
-    )
+    # Signed degrees: east is positive, west negative.
+    magnetic_variation_deg: float | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True, kw_only=True)
