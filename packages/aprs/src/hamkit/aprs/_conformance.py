@@ -593,8 +593,8 @@ def _mic_e_status(v: MicE, policy: EnvelopePolicy) -> Iterator[Finding]:
 
     try:
         _mic_e.device_parts(v.device_code, policy)
-    except APRSError:
-        yield "$.device_code", "not a declared Mic-E type code"
+    except APRSError as error:
+        yield "$.device_code", str(error)
         return
     if v.extensions.telemetry and any(_telemetry(v.extensions.telemetry, policy)):
         return  # Channel findings are reported when walking the telemetry model.
@@ -746,8 +746,8 @@ def _telemetry(v: Telemetry, policy: EnvelopePolicy | None) -> Iterator[Finding]
         ):
             yield "$.sequence", "classic telemetry requires 0..999 or MIC"
     elif v.encoding in ("mic_e_hex", "mic_e_binary"):
-        if v.encoding == "mic_e_hex" and "mice_device_ids" in policy.extensions:
-            yield "$.encoding", "hexadecimal telemetry conflicts with mice_device_ids"
+        if v.encoding == "mic_e_hex" and "mice_hex_as_device" in policy.extensions:
+            yield "$.encoding", "hexadecimal telemetry conflicts with mice_hex_as_device"
         counts = (2, 5) if v.encoding == "mic_e_hex" else (5,)
         if len(v.analog) not in counts:
             yield "$.analog", f"{v.encoding} carries {' or '.join(map(str, counts))} channels"

@@ -475,7 +475,8 @@ class WeatherAndTelemetryTests(unittest.TestCase):
             (a.Telemetry((1,) * 5, (True,) * 8, sequence=1000), "$.payload.sequence"),
             (a.Telemetry((1,) * 5, (True,) * 8), "$.payload.sequence"),
             (a.Telemetry((1000,) * 5, (True,) * 8, sequence=1), "$.payload.analog[0]"),
-            (a.Telemetry((1, 2), encoding="mic_e_hex"), "$.payload.encoding"),
+            # A report is always sent as classic telemetry, whatever its form.
+            (a.Telemetry((1, 2), encoding="mic_e_hex"), "$.payload.analog"),
         ):
             with self.subTest(telemetry=telemetry):
                 self.assertIn(path, findings(telemetry))

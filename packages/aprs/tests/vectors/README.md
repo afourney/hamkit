@@ -53,7 +53,7 @@ Source profiles/options and the separate `legacy_positions` field are retained
 as provenance, not runtime selectors. The policy itself contains the legacy
 setting. Extension selection is derived from source expectations and relevant
 wire syntax without calling a decoder. Legacy Mic-E hex expectations exclude
-`mice_device_ids`; modern device-code expectations select it. Expanded telemetry
+`mice_hex_as_device`; modern device-code expectations select `mice_device_ids`. Expanded telemetry
 is not silently enabled for source cases that require the original 0–255 limit.
 
 Fixed-width `Fnnnn`/`F-nnn` and unavailable `F....` source spellings opt into

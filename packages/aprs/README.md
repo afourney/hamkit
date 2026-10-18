@@ -18,6 +18,28 @@ the block immediately above it, as does the repair example. Each block prints
 one result, followed by its exact output; the examples are checked by tests.
 Nothing here sends packets over a network or radio.
 
+## Design rules
+
+**Rule 1: Strict APRS 1.1 by default, with optional proposals.**
+
+- With nothing turned on, the library follows APRS 1.1 exactly.
+- Each APRS 1.2 proposal can be switched on or off in the policy.
+- On by default: proposals that add things. That includes finding structure
+  inside comment text: in 1.1 the text is just comment, and with the proposal
+  some of it becomes fields.
+- Off by default: proposals that change what an existing field means, so the
+  same bytes in a field would decode to a different value.
+- The same switches apply to reading packets and to building or sending them.
+
+**Rule 2: The developer never does the encoding.**
+
+- The developer gives plain values in normal units, like degrees, knots, feet
+  or watts, or a named choice.
+- The library turns those into whatever the wire format needs: codes, packed
+  destinations, unit conversions.
+- The developer never has to work out a wire code or choose how something is
+  encoded.
+
 ## Find an example
 
 - [Parse a packet](#parse-a-packet)
@@ -1914,7 +1936,7 @@ N0CALL>APRS:!4903.50N/07201.75W>!W23!
 
 #### Altitude in feet or meters
 
-Every supported altitude encoder accepts `Measurement(value, "feet")` or `Measurement(value, "meters")`. Conversion precedes wire rounding: `/A=` and compressed altitude use feet, Mic-E uses meters, and GGA uses meters. GGA exposes `altitude_msl` and `geoid_separation` as separate measurements; conversion never changes their reference datum.
+Give an altitude as `Measurement(value, "feet")` or `Measurement(value, "meters")`; the library chooses the wire form. A position uses `/A=` (whole feet), or the compressed csT field when its compression source is GGA. Mic-E uses its compact field (whole meters) for a value in meters and `/A=` for a value in feet, so the precision you gave is kept. `Altitude.encoding` only records how a received altitude was sent. Conversion precedes wire rounding, and GGA uses meters. GGA exposes `altitude_msl` and `geoid_separation` as separate measurements; conversion never changes their reference datum.
 
 Build with Python:
 
@@ -1926,7 +1948,7 @@ packet = aprs.Packet(
     aprs.Position(
         49, -72, aprs.Symbol("/", ">"),
         extensions=aprs.Extensions(
-            altitude=aprs.Altitude(aprs.Measurement(100, "meters"), "feet_extension")
+            altitude=aprs.Altitude(aprs.Measurement(100, "meters"))
         ),
     ),
 )
@@ -1965,8 +1987,7 @@ packet = aprs.from_json(
         "measurement": {
           "value": 100,
           "unit": "meters"
-        },
-        "encoding": "feet_extension"
+        }
       }
     }
   }

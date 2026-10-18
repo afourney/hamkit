@@ -2,10 +2,16 @@
 # SPDX-License-Identifier: MIT
 """Mic-E joint destination/information codec (APRS101 chapter 10).
 
-With mice_device_ids, status text follows the APRS 1.2 type conventions
-(aprs.org/aprs12/mic-e-types.txt). Without it, apostrophe/backtick selectors
-retain their APRS101 hex-telemetry meaning. Policy selects interpretation;
-there is no general wire version flag and no content heuristic chooses it.
+Status text follows the APRS 1.2 type conventions
+(aprs.org/aprs12/mic-e-types.txt) under two policy switches:
+
+- mice_device_ids reads an apostrophe/backtick type byte where APRS101 hex
+  telemetry is not present, and breaks declared version suffixes out of the
+  comment for every type byte. APRS 1.1 accepted neither as a field.
+- mice_hex_as_device also reads complete hex telemetry as device text, which
+  changes the meaning of a field APRS 1.1 accepted.
+
+Without either, the selectors keep their APRS101 hex-telemetry meaning.
 """
 
 from __future__ import annotations
@@ -275,12 +281,16 @@ def device_parts(
     """Split a device code into what precedes and what ends the status text."""
     if not code:
         return "", ""
-    if "mice_device_ids" not in policy.extensions and code not in (">", "]"):
+    if not _device_ids(policy) and code not in (">", "]"):
         raise FieldError("Mic-E device code requires mice_device_ids")
     head, rest = code[:1], code[1:]
     if head[:1] not in TYPE_SUFFIXES or rest and rest not in TYPE_SUFFIXES[code[0]]:
         raise FieldError("unsupported Mic-E type code")
     return head, rest
+
+
+def _device_ids(policy: EnvelopePolicy) -> bool:
+    return bool({"mice_device_ids", "mice_hex_as_device"} & set(policy.extensions))
 
 
 def _suffix(device: str, text: bytes) -> bytes:
@@ -307,10 +317,11 @@ def read_status(
     suffix = b""
     telemetry = None
     altitude = None
-    modern = "mice_device_ids" in policy.extensions
-    legacy_selector = not modern and tail[:1] in (b"`", b"'")
-    width = _legacy_hex(tail) if legacy_selector else 0
-    if legacy_selector and not width:
+    modern = _device_ids(policy)
+    selector = tail[:1] in (b"`", b"'")
+    hex_as_device = "mice_hex_as_device" in policy.extensions
+    width = _legacy_hex(tail) if selector and not hex_as_device else 0
+    if selector and not width and not modern:
         raise FieldError("truncated or invalid legacy Mic-E hexadecimal telemetry")
     if width:
         values: tuple[int | None, ...] = tuple(
@@ -359,8 +370,8 @@ def write_status(p: MicE, policy: EnvelopePolicy = _DEFAULT_POLICY) -> bytes:
         if head:
             raise FieldError("Mic-E telemetry and a type code share the first byte")
         t = e.telemetry
-        if t.encoding == "mic_e_hex" and "mice_device_ids" in policy.extensions:
-            raise FieldError("hexadecimal telemetry conflicts with mice_device_ids")
+        if t.encoding == "mic_e_hex" and "mice_hex_as_device" in policy.extensions:
+            raise FieldError("hexadecimal telemetry conflicts with mice_hex_as_device")
         values = t.analog
         if len(values) == 2 and t.encoding == "mic_e_hex":
             values = (values[0], None, values[1], None, None)

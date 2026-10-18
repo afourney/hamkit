@@ -160,8 +160,12 @@ class Motion(Validated):
 
 @dataclass(frozen=True)
 class Altitude(Validated):
+    """A height; encoding records the received wire form and is chosen when sent."""
+
     measurement: Measurement
-    encoding: Literal["feet_extension", "compressed", "mic_e", "nmea"]
+    encoding: Literal["feet_extension", "compressed", "mic_e", "nmea"] | None = field(
+        default=None, compare=False
+    )
     reference: Literal["unspecified", "MSL", "ellipsoid"] = field(
         default="unspecified", kw_only=True
     )
@@ -350,7 +354,8 @@ class Telemetry(Validated):
     analog: AnalogChannels = ()
     digital: DigitalChannels = ()
     sequence: int | Literal["MIC"] | None = field(default=None, kw_only=True)
-    encoding: TelemetryEncoding = field(default="classic", kw_only=True)
+    # The received wire form; sending chooses the form the container carries.
+    encoding: TelemetryEncoding = field(default="classic", kw_only=True, compare=False)
     comment: str = field(default="", metadata=FREE_TEXT, kw_only=True)
     sequence_raw: bytes | None = evidence()
     raw: bytes | None = evidence()

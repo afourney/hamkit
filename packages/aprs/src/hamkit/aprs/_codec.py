@@ -54,6 +54,7 @@ from ._policy import _DEFAULT_POLICY, EnvelopePolicy
 from ._recovery import payload_data
 from ._text import free_text, token
 from ._validation import validate_tree
+from ._wire_forms import resolve as resolve_wire_forms
 
 _ACK = re.compile(rb"(ack|rej)([A-Za-z0-9]{1,5})(?:\}([A-Za-z0-9]{0,5}))?")
 _SPECIAL_BODIES = (
@@ -825,6 +826,8 @@ def serialize_packet(
     if not isinstance(packet, Packet):
         raise TypeError("serialize_packet requires a Packet; repair a Malformed first")
     options = _options(policy, "raise", "raise", max_third_party_depth)
+    _bound_depth(packet, options.max_depth)
+    packet = resolve_wire_forms(packet, options.policy)
     _ready_to_send(packet, options.policy, options.max_depth)
     return _serialize(packet, options.max_depth, 0, options.policy)
 
@@ -844,6 +847,8 @@ def serialize_payload(
     if isinstance(payload, (Packet, Malformed)):
         raise TypeError("serialize_payload requires a payload model")
     options = _options(policy, "raise", "raise", max_third_party_depth)
+    _bound_depth(payload, options.max_depth)
+    payload = resolve_wire_forms(payload, options.policy)
     _ready_to_send(payload, options.policy, options.max_depth)
     return _encode_payload(payload, None, options.max_depth, 0, options.policy)
 
@@ -863,6 +868,7 @@ def check_packet(
     options = _options(policy, "raise", "raise", max_third_party_depth)
     _bound_depth(packet, options.max_depth)
     validate_tree(packet)
+    packet = resolve_wire_forms(packet, options.policy)
     return _findings(packet, options.policy, options.max_depth)
 
 

@@ -95,6 +95,16 @@ Serialization builds bytes from semantic fields, never `original_wire`, lexical
 NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
 `information`/`data` are their authoritative semantic content.
 
+- The library chooses each wire form; composing never selects an encoding.
+  `Altitude.encoding` and `Telemetry.encoding` record how a value was
+  received, are ignored by equality, and are kept on send only when the
+  enclosing payload and policy can carry them. Otherwise a position's altitude
+  uses `/A=`, or csT when the compression source is GGA. A Mic-E altitude in
+  meters uses the compact field and one in feet uses `/A=`. Position telemetry
+  uses base91. Mic-E telemetry uses APRS101 hex when it fits (no sequence or
+  digital bits, whole values 0–255, two or five channels, no type code), the
+  binary form when `mice_hex_as_device` rules out hex, and base91 otherwise.
+  A telemetry report is always classic. `check_packet` checks the chosen form.
 - Uncompressed coordinates round to hundredths of minutes; ambiguity transmits
   the requested cell, selected before decimal rounding. Derived `ambiguity_extent`
   bounds and encoding share the same cell selector, with no boundary epsilon.
@@ -127,12 +137,14 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   can accompany it; PHGR still requires `phg_rate`. A DF bearing emits its
   required course/speed comment prefix and is retained on decode. Status checks
   also verify that extension presence survives serialization.
-- Mic-E status interpretation is policy-selected. With `mice_device_ids`,
-  apostrophe/backtick selectors introduce device text even if the following text
-  is valid hexadecimal. Declared version suffixes become part of `device_code`.
-  Without it, those selectors introduce APRS101 hexadecimal telemetry and
-  incomplete hex fields are undecodable. Original `>` and `]` device markers
-  remain supported, with suffix text preserved in the comment. There is no
+- Mic-E status interpretation is policy-selected. With `mice_device_ids` (on
+  by default), an apostrophe/backtick not followed by complete APRS101 hex
+  telemetry is a device type byte, and declared version suffixes become part of
+  `device_code` for every type byte. Complete hex stays telemetry unless
+  `mice_hex_as_device` (off by default) is enabled. With both off, those
+  selectors introduce APRS101 hexadecimal telemetry, incomplete hex fields are
+  undecodable, and suffix text stays in the comment; original `>` and `]` device
+  markers remain supported. There is no
   general APRS revision flag proving the sender's intent. Legacy grid/status
   text remains literal comment, separate from the encoded coordinates.
   Sending rejects models incompatible with the selected interpretation and

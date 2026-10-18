@@ -301,26 +301,26 @@ MIC_E = b"N0CALL>S32UVT:`(_f\x1e\x1eOj/"
 
 
 @pytest.mark.parametrize(
-    ("status", "device", "comment", "telemetry"),
+    ("status", "extra", "device", "comment", "telemetry"),
     [
-        (b'`"4T}Hi_%', "`_%", "Hi", None),  # Yaesu FTM-400DR with altitude
-        (b"'Hello|3", "'|3", "Hello", None),  # Byonics TinyTrack3
-        (b"'1020 x", "'", "1020 x", None),  # incomplete hex: a type byte
-        (b"`plain", "`", "plain", None),  # undeclared suffix stays in the comment
-        (b']"3x}=', "]=", "", None),  # Kenwood TM-D710
-        (b">Ready^", ">^", "Ready", None),  # Kenwood TH-D74
-        (b"`1020", None, "", "mic_e_hex"),  # APRS101 two-channel telemetry
-        (b"'102030FFff text", None, " text", "mic_e_hex"),
-        (b"'102030FFff|3", "'|3", "102030FFff", None),  # a declared suffix wins
+        (b'`"4T}Hi_%', (), "`_%", "Hi", None),  # Yaesu FTM-400DR with altitude
+        (b"'Hello|3", (), "'|3", "Hello", None),  # Byonics TinyTrack3
+        (b"'1020 x", (), "'", "1020 x", None),  # incomplete hex: a type byte
+        (b"`plain", (), "`", "plain", None),  # undeclared suffix stays in comment
+        (b']"3x}=', (), "]=", "", None),  # Kenwood TM-D710
+        (b">Ready^", (), ">^", "Ready", None),  # Kenwood TH-D74
+        (b"`1020", (), None, "", "mic_e_hex"),  # APRS101 two-channel telemetry
+        (b"'102030FFff text", (), None, " text", "mic_e_hex"),
+        # Complete hex keeps its APRS 1.1 meaning unless explicitly reinterpreted.
+        (b"'102030FFff|3", (), None, "|3", "mic_e_hex"),
+        (b"'102030FFff|3", ("mice_hex_as_device",), "'|3", "102030FFff", None),
+        (b"`1020", ("mice_hex_as_device",), "`", "1020", None),
     ],
 )
-def test_mic_e_type_codes(status, device, comment, telemetry):
-    # APRS 1.2 (aprs.org/aprs12/mic-e-types.txt) redefines ` and ' as type bytes;
-    # no type byte or suffix can make the packet Malformed.
-    policy = a.APRS_IS(
-        extensions=set(a.APRS_IS().extensions)
-        | ({"mice_device_ids"} if device is not None else set())
-    )
+def test_mic_e_type_codes(status, extra, device, comment, telemetry):
+    # APRS 1.2 (aprs.org/aprs12/mic-e-types.txt) type codes are on by default
+    # where they do not change an APRS 1.1 field; no marker makes it Malformed.
+    policy = a.APRS_IS(extensions={*a.APRS_IS().extensions, *extra})
     decoded = packet(MIC_E + status, policy=policy)
     assert decoded.payload.device_code == device
     assert decoded.payload.comment == comment
@@ -356,15 +356,43 @@ def test_mic_e_type_codes_are_checked_before_sending():
     assert findings(comment="'1020") == [readback]
     assert findings(device_code=">", comment="ok=") == [readback]
     assert findings(device_code="]x") == [
-        ("$.payload.device_code", "not a declared Mic-E type code")
+        ("$.payload.device_code", "unsupported Mic-E type code")
     ]
+    # Complete hex after a type byte is still telemetry without the opt-in.
+    assert findings(device_code="'", comment="102030FFff") == [
+        (
+            "$.payload.extensions.telemetry",
+            "would be lost or introduced by Mic-E status encoding",
+        ),
+        readback,
+    ]
+    # A type code takes the first status byte, so telemetry moves to base91,
+    # which needs its extension and a sequence number.
     telemetry = a.Telemetry((1, 2, 3, 4, 5), encoding="mic_e_hex")
     shared = a.Extensions(motion=a.Motion(90, 10), telemetry=telemetry)
     assert findings(device_code="'", extensions=shared) == [
         (
             "$.payload.extensions.telemetry.encoding",
-            "hexadecimal telemetry conflicts with mice_device_ids",
+            "requires base91_telemetry extension",
+        ),
+        (
+            "$.payload.extensions.telemetry.sequence",
+            "base91 telemetry requires a sequence in 0..8280",
+        ),
+    ]
+    # Under mice_hex_as_device, hex would be read as a type code, so the
+    # library sends the same channels in the APRS101 binary form instead.
+    hex_as_device = a.APRS_IS(extensions={"mice_hex_as_device"})
+    sent = a.serialize_packet(mic_e(extensions=shared), policy=hex_as_device)
+    assert b"/\x1d\x01\x02\x03\x04\x05" in sent
+    off = [
+        (d.path, d.message)
+        for d in a.check_packet(
+            mic_e(device_code="`_%"), policy=a.APRS_IS(extensions=())
         )
+    ]
+    assert off == [
+        ("$.payload.device_code", "Mic-E device code requires mice_device_ids")
     ]
     with pytest.raises(a.ConformanceError):
         a.serialize_packet(mic_e(device_code="`", comment="Hi_%"), policy=policy)
@@ -663,3 +691,78 @@ def test_nmea_symbol_requires_matching_header_context():
     assert packet(
         a.serialize_packet(p).replace(b"N0CALL-11", b"N0CALL-9")
     ).payload.symbol == a.Symbol("/", ">")
+
+
+def _mic_e_packet(**extensions):
+    payload = a.MicE(
+        33.4277,
+        -112.12,
+        a.Symbol("/", ">"),
+        message="off_duty",
+        extensions=a.Extensions(motion=a.Motion(90, 10), **extensions),
+    )
+    return a.Packet(a.Header("N0CALL", None), payload)
+
+
+@pytest.mark.parametrize(
+    ("altitude", "wire"),
+    [
+        # The unit decides: whole meters fit the compact field, feet use /A=.
+        (a.Altitude(a.Measurement(152, "meters")), b'"5T}'),
+        (a.Altitude(a.Measurement(500, "feet")), b"/A=000500"),
+        # A form the container cannot carry is replaced, not refused.
+        (a.Altitude(a.Measurement(500, "feet"), "compressed"), b"/A=000500"),
+    ],
+)
+def test_mic_e_altitude_form_is_chosen_by_the_library(altitude, wire):
+    packet_ = _mic_e_packet(altitude=altitude)
+    assert a.check_packet(packet_) == ()
+    sent = a.serialize_packet(packet_)
+    assert sent.endswith(wire)
+    assert packet(sent).payload.extensions.altitude == altitude
+
+
+@pytest.mark.parametrize(
+    ("telemetry", "extra", "wire"),
+    [
+        (a.Telemetry((1, 2, 3, 4, 5)), (), b"'0102030405"),  # APRS101 hex
+        (a.Telemetry((16, 32)), (), b"`1020"),
+        # Hex would be read as a type code, so the binary form is used.
+        (
+            a.Telemetry((1, 2, 3, 4, 5)),
+            ("mice_hex_as_device",),
+            b"\x1d\x01\x02\x03\x04\x05",
+        ),
+        # A sequence or wider values need base91 comment telemetry.
+        (a.Telemetry((1, 2, 3), sequence=7), (), b'|!(!"!#!$|'),
+    ],
+)
+def test_mic_e_telemetry_form_is_chosen_by_the_library(telemetry, extra, wire):
+    policy = a.APRS_IS(extensions={*a.APRS_IS().extensions, *extra})
+    packet_ = _mic_e_packet(telemetry=telemetry)
+    assert a.check_packet(packet_, policy=policy) == ()
+    sent = a.serialize_packet(packet_, policy=policy)
+    assert wire in sent
+    decoded = packet(sent, policy=policy).payload.extensions.telemetry
+    assert [v for v in decoded.analog if v is not None] == list(telemetry.analog)
+
+
+def test_position_altitude_form_follows_the_container():
+    received = a.Altitude(a.Measurement(100, "meters"), "mic_e")
+    plain = a.Position(
+        49, -72, a.Symbol("/", "-"), extensions=a.Extensions(altitude=received)
+    )
+    assert a.serialize_packet(a.Packet(a.Header("N0CALL", "APRS"), plain)).endswith(
+        b"/A=000328"
+    )
+    # A GGA-sourced compressed position carries its altitude in csT.
+    gga = a.Compression(fix="current", nmea_source="GGA", origin_code=2)
+    compressed = dataclasses.replace(
+        plain,
+        compression=gga,
+        extensions=a.Extensions(altitude=a.Altitude(a.Measurement(10004, "feet"))),
+    )
+    sent = a.serialize_packet(a.Packet(a.Header("N0CALL", "APRS"), compressed))
+    assert b"/A=" not in sent
+    height = packet(sent).payload.extensions.altitude.measurement
+    assert height.value == pytest.approx(10004, rel=0.003)

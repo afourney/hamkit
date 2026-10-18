@@ -35,15 +35,16 @@ extension identifiers. Patterns must compile; limits must be nonnegative integer
 or `None`. Zero is a real limit. Unknown factory overrides raise `TypeError`.
 
 `RF()` and `APRS_IS()` are optional factories returning the **same type**. Both
-default to `utf8_text`, `dao`, `base91_telemetry`, `expanded_telemetry`,
-`phg_rate`, and `weather_extensions`. Neither enables `mice_device_ids` or `water_height_tenths`.
+default to `utf8_text`, `dao`, `base91_telemetry`, `mice_device_ids`,
+`expanded_telemetry`, `phg_rate`, and `weather_extensions`. Neither enables
+`mice_hex_as_device` or `water_height_tenths`.
 The public codec defaults are the resolved result of `APRS_IS()`.
 An explicit extension collection replaces the entire default set:
 
 ```python
 baseline = aprs.RF(extensions=set())
 custom = aprs.APRS_IS(max_tnc2_line_bytes=1024, source_pattern=r"[A-Z0-9]+")
-modern_mice = aprs.RF(extensions={*aprs.RF().extensions, "mice_device_ids"})
+hex_as_device = aprs.RF(extensions={*aprs.RF().extensions, "mice_hex_as_device"})
 ```
 
 | Constraint                     | `RF()`                                                 | `APRS_IS()`                                                                                        |
@@ -68,16 +69,17 @@ complete conformance to every sentence in either specification. The live
 [1.1 addendum](https://www.aprs.org/aprs11.html) links later proposals; those links
 do not silently enable every [1.2 proposal](https://www.aprs.org/aprs12.html).
 
-| Identifier            | Enabled behavior                                                                                              | Empty-set behavior                                                                                                                                  |
-| --------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `utf8_text`           | UTF-8 in message/auto-answer/bulletin text, status text, position/object/item and Mic-E comments              | Those fields require ASCII for conformance; intelligible received Unicode is retained with diagnostics                                              |
-| `dao`                 | Recognize DAO in position comments and apply precision offsets                                                | Preserve the complete matching text in the comment and the baseline coordinates                                                                     |
-| `base91_telemetry`    | Extract supported base91 comment telemetry                                                                    | Preserve the complete matching text in the comment                                                                                                  |
-| `mice_device_ids`     | Read reused Mic-E status selectors as device identifiers and recognize declared manufacturer/version suffixes | Read apostrophe/backtick selectors as legacy hexadecimal telemetry; original `>` and `]` markers remain supported, suffix text stays in the comment |
-| `expanded_telemetry`  | Classic analog integer values 0–999                                                                           | Classic analog integers 0–255; intelligible larger received values carry diagnostics                                                                |
-| `phg_rate`            | PHGR rate and delimiter, optional PHG separator, documented PHG comment whitespace normalization              | Decode baseline PHG; preserve following rate-shaped text, separators and whitespace as comment                                                      |
-| `weather_extensions`  | X radiation and V battery voltage                                                                             | Original weather fields; X/V are not sensor fields                                                                                                  |
-| `water_height_tenths` | Interpret fixed-width F water height in tenths of a foot, including unavailable F....                         | Preserve the older decimal/whole F/f feet/meters interpretation                                                                                     |
+| Identifier            | Enabled behavior                                                                                                                                                          | Empty-set behavior                                                                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `utf8_text`           | UTF-8 in message/auto-answer/bulletin text, status text, position/object/item and Mic-E comments                                                                          | Those fields require ASCII for conformance; intelligible received Unicode is retained with diagnostics                                                                              |
+| `dao`                 | Recognize DAO in position comments and apply precision offsets                                                                                                            | Preserve the complete matching text in the comment and the baseline coordinates                                                                                                     |
+| `base91_telemetry`    | Extract supported base91 comment telemetry                                                                                                                                | Preserve the complete matching text in the comment                                                                                                                                  |
+| `mice_device_ids`     | Read an apostrophe/backtick type byte where complete APRS101 hex telemetry is absent; break declared manufacturer/version suffixes out of the comment for every type byte | Read apostrophe/backtick selectors as legacy hexadecimal telemetry (incomplete hex is undecodable); original `>` and `]` markers remain supported, suffix text stays in the comment |
+| `mice_hex_as_device`  | Also read complete hexadecimal telemetry after an apostrophe/backtick as device text (implies `mice_device_ids`)                                                          | Complete hexadecimal text after a selector is APRS101 telemetry                                                                                                                     |
+| `expanded_telemetry`  | Classic analog integer values 0–999                                                                                                                                       | Classic analog integers 0–255; intelligible larger received values carry diagnostics                                                                                                |
+| `phg_rate`            | PHGR rate and delimiter, optional PHG separator, documented PHG comment whitespace normalization                                                                          | Decode baseline PHG; preserve following rate-shaped text, separators and whitespace as comment                                                                                      |
+| `weather_extensions`  | X radiation and V battery voltage                                                                                                                                         | Original weather fields; X/V are not sensor fields                                                                                                                                  |
+| `water_height_tenths` | Interpret fixed-width F water height in tenths of a foot, including unavailable F....                                                                                     | Preserve the older decimal/whole F/f feet/meters interpretation                                                                                                                     |
 
 The catalog is exported as `SUPPORTED_EXTENSIONS`, with `Extension` and
 `ByteFallback` annotation aliases and typed `PolicyOverrides` factory keywords. Only implemented behavior has an identifier.
@@ -91,10 +93,15 @@ ASCII. DAO, base91 and PHGR recognize structure in what could previously be
 comment text. Disabling them preserves that text rather than discarding it or
 declaring the whole packet family malformed.
 
-Mic-E is a wire-meaning conflict: even complete hexadecimal-looking text after
-an apostrophe/backtick is device text when `mice_device_ids` is enabled. No
-content heuristic overrides the choice. Hex telemetry cannot be sent with that
-extension enabled; modern device identifiers cannot be sent with it disabled.
+Mic-E type codes are split by that rule. Where an apostrophe/backtick is not
+followed by complete APRS101 hex telemetry, APRS 1.1 accepts no field there, so
+`mice_device_ids` reads the type byte and is on by default; this is what
+ordinary Yaesu, Byonics and Anytone packets use. Declared version suffixes, such
+as the Kenwood `]…=`, were comment text in APRS 1.1 and are broken out by the
+same switch. Reading complete hex telemetry as device text changes an accepted
+APRS 1.1 field, so that is the separate opt-in `mice_hex_as_device`. Hex
+telemetry cannot be sent with `mice_hex_as_device` enabled; modern device
+identifiers cannot be sent with both switches disabled.
 Water height is a separate opt-in reinterpretation: `F1234` is 123.4 feet with
 `water_height_tenths`, but 1234 feet under the older whole-number reading. It is
 therefore not accurate to describe every extension as purely additive. Weather
@@ -105,19 +112,20 @@ recovers the same value. Unavailable `F....` requires the extension.
 `ExtensionKind`. Every supported identifier must be classified explicitly.
 Factories enable only `additive` and the approved `comment` category:
 
-| Class            | Current identifiers                                     | Factory default |
-| ---------------- | ------------------------------------------------------- | --------------- |
-| `additive`       | `utf8_text`, `expanded_telemetry`, `weather_extensions` | Enabled         |
-| `comment`        | `dao`, `base91_telemetry`, `phg_rate`                   | Enabled         |
-| `reinterpretive` | `mice_device_ids`, `water_height_tenths`                | Disabled        |
+| Class            | Current identifiers                                      | Factory default |
+| ---------------- | -------------------------------------------------------- | --------------- |
+| `additive`       | `utf8_text`, `expanded_telemetry`, `weather_extensions`  | Enabled         |
+| `comment`        | `dao`, `base91_telemetry`, `mice_device_ids`, `phg_rate` | Enabled         |
+| `reinterpretive` | `mice_hex_as_device`, `water_height_tenths`              | Disabled        |
 
 The consistent rule is that a convention changing the numeric or type meaning
 of an existing encoded field requires explicit opt-in. Recognizing structured
 content inside a previously free-text comment is the separately approved default
 category; DAO can refine coordinates, but it does not redefine the original
 coordinate digits. Expanded telemetry leaves 0–255 values unchanged. Radiation
-and voltage add sensor tags. Modern Mic-E reuses legacy telemetry selectors;
-fixed-width water height rescales an existing F field. Future high-speed
+and voltage add sensor tags. Reading complete Mic-E hex telemetry as device text
+reuses an existing telemetry field; fixed-width water height rescales an
+existing F field. Future high-speed
 reinterpretation must be classified as `reinterpretive` if implemented; it has
 no supported identifier today. Catalog/default tests require deliberate review
 when any identifier is added.

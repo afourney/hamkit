@@ -21,7 +21,7 @@ def packet(raw: bytes, policy: a.EnvelopePolicy) -> a.Packet:
 def test_factory_defaults_and_explicit_empty(factory):
     default = factory()
     assert set(default.extensions) == set(a.SUPPORTED_EXTENSIONS) - {
-        "mice_device_ids",
+        "mice_hex_as_device",
         "water_height_tenths",
     }
     assert factory(extensions=set()).extensions == ()
@@ -165,7 +165,10 @@ def test_mice_reused_selector_is_explicit_even_for_complete_hex():
     old = packet(wire, BASELINE)
     assert isinstance(old.payload, a.MicE)
     assert old.payload.extensions.telemetry.encoding == "mic_e_hex"
-    modern_policy = a.APRS_IS(extensions={"mice_device_ids"})
+    # Device identifiers alone keep complete hex as APRS 1.1 telemetry.
+    ids = packet(wire, a.APRS_IS(extensions={"mice_device_ids"}))
+    assert ids.payload == old.payload
+    modern_policy = a.APRS_IS(extensions={"mice_hex_as_device"})
     modern = packet(wire, modern_policy)
     assert modern.payload.device_code == "`"
     assert modern.payload.comment == "0102"
@@ -231,7 +234,8 @@ CATALOG = [
     ("utf8_text", "additive", True),
     ("dao", "comment", True),
     ("base91_telemetry", "comment", True),
-    ("mice_device_ids", "reinterpretive", False),
+    ("mice_device_ids", "comment", True),
+    ("mice_hex_as_device", "reinterpretive", False),
     ("expanded_telemetry", "additive", True),
     ("phg_rate", "comment", True),
     ("weather_extensions", "additive", True),
