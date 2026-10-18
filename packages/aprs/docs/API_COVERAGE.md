@@ -1,7 +1,7 @@
 # APRS codec coverage
 
-Packet dataclasses and JSON use semantic fields; the alpha API changes described
-below replace DAO codes and NMEA string/unit-specific fields.
+Packet dataclasses and JSON use semantic fields: plain values in stated units
+or named choices, never wire codes.
 Packet and payload entry points accept `policy=EnvelopePolicy(...)`.
 `RF()` and `APRS_IS()` are factories with explicit extension defaults; direct
 construction and fully specified JSON are supported. See
@@ -65,7 +65,7 @@ The runtime weather-unit conversion, wrapper flattening, and NMEA source-schema
 comparison have been removed. Source snapshots and all raw packet bytes remain
 unchanged; inverse-unit and source-value tests check that no information was lost.
 
-Historical and FAP rows parse with `legacy_positions=True`. Fifty-two FAP
+Historical and FAP rows parse with `legacy_positions=True`. Fifty-five FAP
 expectations record where FAP's interpretation differs from the
 specification-following public decoder (`tests/fap_divergences.json`), each
 with its reasons.
@@ -112,7 +112,7 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   extend beyond the axis bounds are refused; requesting `ambiguity_extent` for
   such a cell raises `FieldError` rather than clamping to a neighboring cell.
   Compressed coordinates round to their base91 grid. DAO
-  now stores `datum` and `encoding`, without latitude/longitude codes. The refined
+  stores `datum` and `precision`, without latitude/longitude codes. The refined
   coordinate is rounded once, then split into hundredth-minute and DAO parts,
   including carry across minute/degree boundaries. Parsing applies supported
   offsets once; later edits recompute codes. Added precision with ambiguity or
@@ -120,7 +120,7 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   combinations retain baseline coordinates and DAO evidence with diagnostics.
 - Altitude accepts `Measurement` in feet or meters for `/A=`, compressed, Mic-E
   and GGA. Conversion precedes quantization and range checks. GGA uses
-  `altitude_msl` and `geoid_separation`, replacing the `_m` scalar fields. Decoding
+  `altitude_msl` and `geoid_separation` measurements. Decoding
   retains each format's native unit; no vertical datum transformation is implied.
 - `compression=Compression()` is enough to send a position compressed. The
   csT bytes carry motion, range or weather wind when present and are otherwise
@@ -164,7 +164,7 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   `Motion` on such a position at `$.extensions.motion`; send wind in
   `extensions.weather` instead. More generally, extensions that would read back
   as different kinds are refused.
-  Numeric overlays use table IDs `a`–`j`; sending compressed positions with
+- Numeric overlays use table IDs `a`–`j`; sending compressed positions with
   `0`–`9` table IDs is refused as nonconforming.
 - Mic-E generates an omitted destination from latitude, ambiguity, message and
   longitude flags. `check_packet` reports mismatches at `$.header.destination`,
@@ -184,16 +184,16 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   `mice_hex_as_device` (off by default) is enabled. With both off, those
   selectors introduce APRS101 hexadecimal telemetry. Incomplete hex (such as a
   Yaesu or TinyTrack type code read strictly) keeps the decoded position, leaves
-  the status text as the comment and is reported nonconforming at
-  `$.payload.comment`, so it is not re-sent; suffix text stays in the comment; original `>` and `]` device
-  markers remain supported. There is no
+  the status text (including any suffix) as the comment, and is reported
+  nonconforming at `$.payload.comment`, so it is not re-sent. Original `>` and
+  `]` device markers remain supported. There is no
   general APRS revision flag proving the sender's intent. Legacy grid/status
   text remains literal comment, separate from the encoded coordinates.
   Sending rejects models incompatible with the selected interpretation and
   comments that would read back as different fields. Extended high-speed
   reinterpretation is not implemented.
 - NMEA uses `UTCTime(hour, minute, second)` and
-  `NMEADate(day, month, year_mod_100)` in `RMC.date`, replacing formatted strings.
+  `NMEADate(day, month, year_mod_100)` in `RMC.date`.
   Null means missing; unknown components stay null. A four-digit received clock
   or date retains its known components with a diagnostic, but sending requires
   seconds and a complete DDMMYY date when present. Void fixes may omit these
@@ -240,8 +240,7 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   the comment.
 - Message text is a query response only when it matches a response grammar
   completely; anything else remains an ordinary `Message`.
-- Explicit altitude references, water-height datums and DF interpretation
-  annotations have no wire field. They are reported as conformance findings at
+- Explicit altitude references and water-height datums have no wire field. They are reported as conformance findings at
   their own paths and remain unsendable rather than being silently discarded. Raw vendor weather
   annotations do not replace authoritative bytes.
 
@@ -261,29 +260,29 @@ All original packet bytes, semantic expectations, options and provenance have a
 frozen integrity hash tied to PR #4's head commit.
 
 Every vector also has an encoding test. With an explicit permissive envelope
-policy (the row policy with its envelope patterns and limits relaxed), 1,304 occurrences encode and stabilize
+policy (the row policy with its envelope patterns and limits relaxed), 1,303 occurrences encode and stabilize
 through semantic decode/encode round trips with all raw evidence removed. The
-other 260 have explicit refusal records: 172 malformed public packets and 88
+other 261 have explicit refusal records: 172 malformed public packets and 89
 violations of the existing transmit-conformance rules. Those refusal tests assert
 the reason; they are not broad exception catches or skipped tests. Three NMEA
 sentences with bad checksums are first refused, then encode after an explicit
-repair; they are counted among the 1,304.
+repair; they are counted among the 1,303.
 
-Of those 1,304, 15 have addresses rejected by the `APRS_IS()` envelope constraints,
+Of those 1,303, 15 have addresses rejected by the `APRS_IS()` envelope constraints,
 including two with SSID `-0`; the tests independently require those
-envelope refusals and validate the other 1,289 with the row’s interpretation settings. The permissive policy changes no decoded
+envelope refusals and validate the other 1,288 with the row’s interpretation settings. The permissive policy changes no decoded
 fields, packet bytes or payload conformance checks. Dedicated policy tests cover
 custom patterns, optional and zero limits, boundary sizes including CRLF,
 repeated markers, and consistent outer-envelope handling of third-party packets.
 
 The round-trip runner also checks each row's stored policy separately: 25 of the
-1,304 representable packets have envelope refusals under that policy, and 1,280
+1,303 representable packets have envelope refusals under that policy, and 1,278
 validate. The additional 10 refusals exercise RF address/path constraints.
 
 PHG/PHGR vectors exercise the public API directly. The PHGR rate character and required slash, ordinary PHG separators,
 and PHG comment whitespace are handled by the shared public decoder/encoder.
 
-## Specification boundaries and migration
+## Specification boundaries
 
 The [DAO proposal](https://www.aprs.org/datum.txt) defines decimal and base-91
 refinements of hundredth-minute coordinates, and datum-only spaces. Its base-91
@@ -305,26 +304,24 @@ this grammar. The four formerly malformed partial/missing NMEA corpus cases
 (FAP-384, 386, 393 and 395) now retain structured data with send-conformance
 findings. Other raw packet and source/provenance assertions are unchanged.
 
-Alpha callers must replace `DAO.datum_byte` and precision codes with an uppercase
-`datum` identifier plus `encoding`; replace NMEA time/date strings with the new
-component objects; and wrap GGA heights in `Measurement`. JSON uses the same
+DAO uses an uppercase `datum` identifier and a named `precision`; NMEA times and
+dates are component objects; GGA heights are `Measurement`s. JSON uses the same
 fields, with standalone tags `utc_time` and `nmea_date`. Original DAO bytes and
 NMEA `fields_raw` remain optional evidence, never a serialization source.
 
-## Review corrections: geometry and bracketed grids
+## Geometry and bracketed grids
 
-`Area.latitude_offset_deg` and `longitude_offset_deg` replace caller-supplied
-wire codes. Offsets range from 0 through 6.534 degrees, and encode as
+`Area.latitude_offset_deg` and `longitude_offset_deg` are in degrees. Offsets range from 0 through 6.534 degrees, and encode as
 `round(sqrt(offset_deg * 1500))`; decoding uses `code**2 / 1500`, following the
 [APRS 1.1 correction](https://www.aprs.org/aprs11/areaobjects.txt).
-`Bearing.range_miles` replaces `range_code`, accepts 1 through 512 miles, and
-encodes as `round(log2(range_miles))`. Its read-only `range_code` and the area
-code properties expose the resulting codes without duplicating mutable facts.
-Rounding ties go to even. Size/range edits recompute codes; finite values outside
-the wire domain are rejected. Shape, color, hits and quality remain classification
-codes; no disputed DF quality interpretation is added. Python and JSON use the
-same semantic fields. This is an alpha API migration: the positional arguments
-formerly carrying codes now carry degrees or miles.
+`Bearing.range_miles` accepts 1 through 512 miles and encodes as
+`round(log2(range_miles))`. Read-only properties (`Bearing.range_code`,
+`hits_code`, `quality_code`, `Area.shape_code`, `color_code` and the offset
+codes) expose the resulting codes without duplicating mutable facts. Rounding
+ties go to even. Edits recompute codes; finite values outside the wire domain
+are rejected. Area shape, color and intensity, and DF hit ratio and accuracy,
+are named or plain values (see Composition and precision). Python and JSON use
+the same semantic fields.
 
 The bracketed Maidenhead grammar is `[Grid Locator]Comment` (APRS101 p33).
 Both brackets are required, and a supplied symbol is refused because this form

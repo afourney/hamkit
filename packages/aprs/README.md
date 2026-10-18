@@ -5,11 +5,11 @@ them to and from JSON. Pure Python · MIT license · Python 3.11+ · no runtime
 dependencies.
 
 This is an **alpha API** with decoding and encoding for the packet families in
-our [compliance corpus](docs/APRS_COMPLIANCE_VECTORS.md): positions (including
+our [compliance corpus](https://github.com/afourney/hamkit/blob/main/packages/aprs/docs/APRS_COMPLIANCE_VECTORS.md): positions (including
 compressed, ambiguous and Mic-E), objects/items, weather, telemetry, messages,
 queries/responses, status, NMEA and historical formats. Unknown or explicitly
 raw formats preserve their bytes.
-See [codec coverage and compatibility policies](docs/API_COVERAGE.md) for limits.
+See [codec coverage and compatibility policies](https://github.com/afourney/hamkit/blob/main/packages/aprs/docs/API_COVERAGE.md) for limits.
 
 Install from a repository checkout with `python -m pip install -e packages/aprs`.
 Construction examples run independently, including those that embed JSON
@@ -164,7 +164,7 @@ N0CALL>APRS:>Ready
 ## Working wire examples
 
 Each example uses the supported subset of its family. More elaborate fields can
-use their own wire layout; see the [coverage notes](docs/API_COVERAGE.md).
+use their own wire layout; see the [coverage notes](https://github.com/afourney/hamkit/blob/main/packages/aprs/docs/API_COVERAGE.md).
 Serialization returns bytes. Optional fields are keyword-only.
 
 ### Position
@@ -2499,7 +2499,7 @@ explicit empty collection are different choices. Policies store all resolved
 values in JSON, with no preset label. UTF-8 applies only to designated free-text
 fields; protocol tokens stay ASCII. Byte fallback and legacy-position search
 are separate settings. Disabled comment extensions preserve matching text.
-See [packet policies](docs/ENVELOPE_POLICIES.md) for the catalog, defaults,
+See [packet policies](https://github.com/afourney/hamkit/blob/main/packages/aprs/docs/ENVELOPE_POLICIES.md) for the catalog, defaults,
 Mic-E conflicts, weather interpretation and third-party handling.
 
 Positionless weather decodes into measurements with explicit units and a timestamp:
@@ -2745,17 +2745,17 @@ Output:
   whitespace, key order, or whether an optional null was originally omitted.
   `serialize_packet` encodes the model; it does not replay `original_wire`.
 
-See [unresolved specification questions](docs/UNRESOLVED_SPEC.md) for NMEA
+See [unresolved specification questions](https://github.com/afourney/hamkit/blob/main/packages/aprs/docs/UNRESOLVED_SPEC.md) for NMEA
 profile limits, conflicting extension descriptions and future encoding
 decisions.
 
 ## Full reference
 
-- [Illustrated JSON reference](docs/JSON_FORMAT.md): every model, expanded
+- [Illustrated JSON reference](https://github.com/afourney/hamkit/blob/main/packages/aprs/docs/JSON_FORMAT.md): every model, expanded
   nested objects, every union variant, fields, defaults, tags, units and enums.
-- [Wire support by family](docs/API_COVERAGE.md): implemented subsets and gaps.
-- [Naming guide](docs/NAMING.md): public names and why some qualifiers remain.
-- [Compliance vectors](docs/APRS_COMPLIANCE_VECTORS.md): specification references
+- [Wire support by family](https://github.com/afourney/hamkit/blob/main/packages/aprs/docs/API_COVERAGE.md): implemented subsets and gaps.
+- [Naming guide](https://github.com/afourney/hamkit/blob/main/packages/aprs/docs/NAMING.md): public names and why some qualifiers remain.
+- [Compliance vectors](https://github.com/afourney/hamkit/blob/main/packages/aprs/docs/APRS_COMPLIANCE_VECTORS.md): specification references
   and the complete packet/field test corpus. Every row is tested, including
   the individual packets from archived application sequences. Accumulated
   receiver-state assertions remain provenance only, outside this stateless codec.

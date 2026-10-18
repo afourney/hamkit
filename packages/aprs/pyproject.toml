@@ -5,17 +5,35 @@ build-backend = "hatchling.build"
 [project]
 name = "hamkit-aprs"
 dynamic = ["version"]
-description = 'Typed APRS packet parsing and composition foundation.'
+description = 'Typed parsing, validation and composition of APRS (Automatic Packet Reporting System) packets.'
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-keywords = []
+keywords = [
+  "aprs",
+  "aprs-is",
+  "ax25",
+  "ham-radio",
+  "amateur-radio",
+  "packet-radio",
+  "mic-e",
+  "nmea",
+  "parser",
+]
 authors = [
   { name = "Adam Fourney", email = "adam.fourney@gmail.com" },
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Topic :: Communications :: Ham Radio",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
   "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -29,7 +47,7 @@ dependencies = []
 [project.urls]
 Documentation = "https://github.com/afourney/hamkit/blob/main/packages/aprs/README.md"
 Issues = "https://github.com/afourney/hamkit/issues"
-Source = "https://github.com/afourney/hamkit/blob/main/packages/aprs/README.md"
+Source = "https://github.com/afourney/hamkit/tree/main/packages/aprs"
 
 [tool.hatch.version]
 path = "src/hamkit/aprs/__about__.py"
