@@ -23,6 +23,12 @@ server; the **filter**, not the server's location, selects traffic.
 
 Collection stops at **10,000 packet lines or five minutes**, whichever comes
 first. The duration starts after login and is enforced even if the feed is idle.
+The terminal shows the output directory, connection and login stages, the first
+packet, and packet/byte counts every five seconds (including while idle).
+Progress goes to stderr. An `unverified` login is expected with `pass -1`.
+`server.log` is flushed on every server message; `packets.tnc2` is flushed on the
+first packet, each progress update and at exit, so you can also watch these files
+with `tail -f`. Metadata is written when collection stops.
 Ctrl-C preserves completed lines and metadata. Use a unique login to avoid
 colliding with another APRS client using your callsign/SSID.
 

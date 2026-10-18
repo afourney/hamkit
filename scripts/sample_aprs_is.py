@@ -19,6 +19,11 @@ from pathlib import Path
 DEFAULT_HOST = "noam.aprs2.net"
 PNW_FILTER = "a/51/-130/41/-116"
 MAX_LINE_BYTES = 65536
+PROGRESS_INTERVAL = 5.0
+
+
+def status(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
 
 
 def utc_now() -> str:
@@ -174,15 +179,19 @@ def capture(args: argparse.Namespace) -> dict:
 
         def server_line(line: bytes) -> None:
             server.write(line)
+            server.flush()
             summary["server_line_count"] += 1
 
         try:
+            status(f"Output: {output.resolve()}")
+            status(f"Connecting to {args.host}:{args.port} ...")
             with socket.create_connection(
                 (args.host, args.port), timeout=args.timeout
             ) as connection:
                 summary["peer"] = list(connection.getpeername())
                 reader = Lines(connection)
                 summary["stage"] = "greeting"
+                status("Connected; waiting for the server greeting ...")
                 greeting = reader.read(time.monotonic() + args.timeout)
                 if not greeting.startswith(b"#"):
                     raise ValueError(
@@ -191,6 +200,7 @@ def capture(args: argparse.Namespace) -> dict:
                 server_line(greeting)
                 connection.settimeout(args.timeout)
                 summary["stage"] = "login"
+                status(f"Logging in as {args.callsign} (receive-only) ...")
                 # This is the only write to the network: no packets are transmitted.
                 connection.sendall(login)
                 deadline = time.monotonic() + args.timeout
@@ -212,16 +222,37 @@ def capture(args: argparse.Namespace) -> dict:
                                 "server rejected or did not recognize the requested login"
                             )
                         summary["login_response"] = line.decode("latin1").rstrip("\r\n")
+                        status(
+                            f"Login acknowledged: {match[2].decode('ascii').lower()} (expected for pass -1: unverified)."
+                        )
                         break
                 summary["capture_started_utc"] = utc_now()
                 summary["stage"] = "capture"
-                deadline = time.monotonic() + args.seconds
+                started = time.monotonic()
+                deadline = started + args.seconds
+                next_progress = started + PROGRESS_INTERVAL
+                status(
+                    f"Capturing with filter {args.filter!r}; up to {args.count} packets or {args.seconds:g} seconds."
+                )
+
+                def progress() -> None:
+                    packets.flush()
+                    elapsed = time.monotonic() - started
+                    status(
+                        f"{elapsed:.1f}s: {summary['packet_count']} packets, {summary['packet_bytes']} bytes saved; {summary['server_line_count']} server lines."
+                    )
+
                 while summary["packet_count"] < args.count:
+                    if time.monotonic() >= next_progress:
+                        progress()
+                        next_progress = time.monotonic() + PROGRESS_INTERVAL
                     try:
-                        line = reader.read(deadline)
+                        line = reader.read(min(deadline, next_progress))
                     except TimeoutError:
-                        summary["stop_reason"] = "duration_limit"
-                        break
+                        if time.monotonic() >= deadline:
+                            summary["stop_reason"] = "duration_limit"
+                            break
+                        continue
                     if line.startswith(b"#"):
                         server_line(line)
                         continue
@@ -231,6 +262,8 @@ def capture(args: argparse.Namespace) -> dict:
                     digest.update(line)
                     summary["packet_count"] += 1
                     summary["packet_bytes"] += len(line)
+                    if summary["packet_count"] == 1:
+                        progress()
                 else:
                     summary["stop_reason"] = "packet_limit"
         except KeyboardInterrupt:

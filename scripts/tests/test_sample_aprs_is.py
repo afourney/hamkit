@@ -136,6 +136,48 @@ class SamplerTests(unittest.TestCase):
         self.assertEqual(result["packet_count"], 1)
         self.assertLess(time.monotonic() - before, 2)
 
+    def test_progress_reports_connection_login_and_idle_counts(self):
+        def handle(connection):
+            handshake(connection)
+            connection.sendall(b"# logresp N0CALL-CS unverified, server TEST\r\n")
+            self.assertEqual(connection.recv(1), b"")
+
+        output = io.StringIO()
+        with (
+            server(handle) as port,
+            mock.patch.object(sample, "PROGRESS_INTERVAL", 0.02),
+            contextlib.redirect_stderr(output),
+        ):
+            result = sample.capture(self.args(port, "--seconds", "0.08"))
+        messages = output.getvalue()
+        self.assertIn("Connecting to", messages)
+        self.assertIn("Login acknowledged: unverified", messages)
+        self.assertIn("Capturing with filter", messages)
+        self.assertGreaterEqual(messages.count("0 packets, 0 bytes saved"), 2)
+        self.assertEqual(result["stop_reason"], "duration_limit")
+
+    def test_first_packet_is_visible_before_capture_finishes(self):
+        line = b"N0CALL>APRS:>Ready\r\n"
+
+        def handle(connection):
+            handshake(connection)
+            connection.sendall(
+                b"# logresp N0CALL-CS unverified, server TEST\r\n" + line
+            )
+
+        observed = []
+
+        def inspect(message):
+            if "1 packets," in message:
+                observed.append((self.output / "packets.tnc2").read_bytes())
+                self.assertFalse((self.output / "metadata.json").exists())
+                self.assertIn(b"logresp", (self.output / "server.log").read_bytes())
+
+        with server(handle) as port, mock.patch.object(sample, "status", inspect):
+            result = sample.capture(self.args(port, "--count", "1"))
+        self.assertEqual(observed, [line])
+        self.assertEqual(result["stop_reason"], "packet_limit")
+
     def test_login_timeout_does_not_count_prelogin_comments(self):
         def handle(connection):
             handshake(connection)
