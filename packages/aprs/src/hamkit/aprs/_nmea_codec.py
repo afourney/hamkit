@@ -251,7 +251,7 @@ def write(p: NMEA) -> bytes:
     else:
         f = [*_coord_fields(s.coordinates), s.name]
     raw = (p.metadata.talker + type(s).__name__ + "," + ",".join(f)).encode()
-    if p.metadata.checksum_supplied is not None:
+    if p.metadata.checksum_supplied is not None or p.comment:
         raw += b"*" + f"{functools.reduce(operator.xor,raw,0):02X}".encode()
     return b"$" + raw + p.comment.encode()
 

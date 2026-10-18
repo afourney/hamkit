@@ -1568,6 +1568,8 @@ Capabilities
 
 **Wire encoding available.** A GLL navigation sentence. GGA, RMC, VTG and WPL are also modeled.
 
+A comment requires a checksum delimiter; serialization generates it automatically when needed, without changing the metadata.
+
 Build with Python:
 
 ```python
@@ -1576,16 +1578,16 @@ from hamkit import aprs
 packet = aprs.Packet(
     aprs.Header("N0CALL", "APRS"),
     aprs.NMEA(
-        aprs.GLL(aprs.Coordinates(49, -72), aprs.UTCTime(12, 30, 0), "A"), aprs.NMEAMetadata("GP")
+        aprs.GLL(aprs.Coordinates(49, -72), aprs.UTCTime(12, 30, 0), "A"), aprs.NMEAMetadata("GP"), comment="hello"
     ),
 )
-print(type(packet.payload).__name__)
+print(aprs.serialize_packet(packet).decode())
 ```
 
 Output:
 
 ```text
-NMEA
+N0CALL>APRS:$GPGLL,4900,N,07200,W,123000,A*30hello
 ```
 
 Build the same packet from JSON:
@@ -1618,18 +1620,232 @@ packet = aprs.from_json(
     },
     "metadata": {
       "talker": "GP"
-    }
+    },
+    "comment": "hello"
   }
 }
 """
 )
-print(type(packet.payload).__name__)
+print(aprs.serialize_packet(packet).decode())
 ```
 
 Output:
 
 ```text
-NMEA
+N0CALL>APRS:$GPGLL,4900,N,07200,W,123000,A*30hello
+```
+
+#### Area dimensions in degrees
+
+Area offsets are nonnegative angular sizes, in degrees, using the corrected APRS 1.1 formula. Values from 0 through 6.534 degrees are converted to the nearest square-root code (ties to even). Classification and color remain protocol codes; no anchor or geographic transformation is inferred.
+
+Build with Python:
+
+```python
+from hamkit import aprs
+
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.Position(
+        49, -72, aprs.Symbol("\\", "l"),
+        extensions=aprs.Extensions(area=aprs.Area(
+            0, 1, latitude_offset_deg=0.096, longitude_offset_deg=0.096
+        )),
+    ),
+)
+print(aprs.serialize_packet(packet).decode())
+```
+
+Output:
+
+```text
+N0CALL>APRS:!4900.00N\07200.00Wl012/112
+```
+
+Build the same packet from JSON:
+
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    r"""
+{
+  "type": "packet",
+  "header": {
+    "source": "N0CALL",
+    "destination": "APRS"
+  },
+  "payload": {
+    "type": "position",
+    "latitude_deg": 49,
+    "longitude_deg": -72,
+    "symbol": {
+      "table_id": "\\",
+      "code": "l"
+    },
+    "extensions": {
+      "area": {
+        "shape_code": 0,
+        "color_code": 1,
+        "latitude_offset_deg": 0.096,
+        "longitude_offset_deg": 0.096
+      }
+    }
+  }
+}
+"""
+)
+print(aprs.serialize_packet(packet).decode())
+```
+
+Output:
+
+```text
+N0CALL>APRS:!4900.00N\07200.00Wl012/112
+```
+
+#### Direction-finding range in miles
+
+`Bearing.range_miles` accepts 1–512 miles and is quantized to the nearest power-of-two exponent (ties to even). Hits and quality remain classification codes; the disputed quality-to-accuracy mapping is not inferred. `range_code` is a derived read-only property.
+
+Build with Python:
+
+```python
+from hamkit import aprs
+
+packet = aprs.Packet(
+    aprs.Header("N0CALL", "APRS"),
+    aprs.Position(
+        49, -72, aprs.Symbol("/", "\\"),
+        extensions=aprs.Extensions(
+            motion=aprs.Motion(90, 10),
+            bearing=aprs.Bearing(270, hits_code=7, range_miles=16, quality_code=9),
+        ),
+    ),
+)
+print(aprs.serialize_packet(packet).decode())
+```
+
+Output:
+
+```text
+N0CALL>APRS:!4900.00N/07200.00W\090/010/270/749
+```
+
+Build the same packet from JSON:
+
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    r"""
+{
+  "type": "packet",
+  "header": {
+    "source": "N0CALL",
+    "destination": "APRS"
+  },
+  "payload": {
+    "type": "position",
+    "latitude_deg": 49,
+    "longitude_deg": -72,
+    "symbol": {
+      "table_id": "/",
+      "code": "\\"
+    },
+    "extensions": {
+      "motion": {
+        "course_deg": 90,
+        "speed_knots": 10
+      },
+      "bearing": {
+        "bearing_deg": 270,
+        "hits_code": 7,
+        "range_miles": 16,
+        "quality_code": 9
+      }
+    }
+  }
+}
+"""
+)
+print(aprs.serialize_packet(packet).decode())
+```
+
+Output:
+
+```text
+N0CALL>APRS:!4900.00N/07200.00W\090/010/270/749
+```
+
+#### Mic-E with PHG
+
+Mic-E course and speed occupy the fixed body; PHG uses the comment extension slot. PHG rates still require `phg_rate`. A Mic-E DF bearing uses a course/speed prefix in the comment and cannot share that slot with PHG.
+
+Build with Python:
+
+```python
+from hamkit import aprs
+
+packet = aprs.Packet(
+    aprs.Header("N0CALL"),
+    aprs.MicE(
+        49, -72, aprs.Symbol("/", ">"), message="off_duty",
+        extensions=aprs.Extensions(motion=aprs.Motion(90, 10), phg=aprs.PHG(25, 20, 3)),
+    ),
+)
+print(aprs.serialize_packet(packet))
+```
+
+Output:
+
+```text
+b'N0CALL>TYPP0P:`dX\x1c\x1d\x1cv>/PHG5130'
+```
+
+Build the same packet from JSON:
+
+```python
+from hamkit import aprs
+
+packet = aprs.from_json(
+    r"""
+{
+  "type": "packet",
+  "header": {
+    "source": "N0CALL"
+  },
+  "payload": {
+    "type": "mic_e",
+    "latitude_deg": 49,
+    "longitude_deg": -72,
+    "symbol": {
+      "table_id": "/",
+      "code": ">"
+    },
+    "message": "off_duty",
+    "extensions": {
+      "motion": {
+        "course_deg": 90,
+        "speed_knots": 10
+      },
+      "phg": {
+        "power_w": 25,
+        "height_haat_ft": 20,
+        "gain_dbi": 3
+      }
+    }
+  }
+}
+"""
+)
+print(aprs.serialize_packet(packet))
+```
+
+Output:
+
+```text
+b'N0CALL>TYPP0P:`dX\x1c\x1d\x1cv>/PHG5130'
 ```
 
 #### DAO precision from coordinates
@@ -1945,7 +2161,7 @@ Agrelo
 
 #### Maidenhead beacon
 
-**Wire encoding available.** The historical bracket-style grid beacon. `Grid.bounds` and `Grid.center` are computed from the locator.
+**Wire encoding available.** The historical `[Grid Locator]Comment` beacon includes both brackets. It has no separate symbol field. `Grid.bounds` and `Grid.center` are computed from the locator.
 
 Build with Python:
 
@@ -1955,13 +2171,13 @@ from hamkit import aprs
 packet = aprs.Packet(
     aprs.Header("N0CALL", "APRS"), aprs.Maidenhead(aprs.Grid("IO91SX"))
 )
-print(type(packet.payload).__name__)
+print(aprs.serialize_packet(packet).decode())
 ```
 
 Output:
 
 ```text
-Maidenhead
+N0CALL>APRS:[IO91SX]
 ```
 
 Build the same packet from JSON:
@@ -1986,13 +2202,13 @@ packet = aprs.from_json(
 }
 """
 )
-print(type(packet.payload).__name__)
+print(aprs.serialize_packet(packet).decode())
 ```
 
 Output:
 
 ```text
-Maidenhead
+N0CALL>APRS:[IO91SX]
 ```
 
 #### Legacy position

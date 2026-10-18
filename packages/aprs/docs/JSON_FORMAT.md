@@ -431,12 +431,14 @@ Standalone tag: `signal`. [Back to type map](#type-map-and-object-catalog).
 
 Standalone tag: `bearing`. [Back to type map](#type-map-and-object-catalog).
 
+Range is in miles, 1..512. Encoding rounds log2(miles) to a code 0..9. Hits and quality remain classification codes, without an inferred quality/accuracy mapping.
+
 ```json
 {
   "type": "bearing",
   "bearing_deg": 120,
   "hits_code": 3,
-  "range_code": 2,
+  "range_miles": 4,
   "quality_code": 7,
   "usable": null,
   "accuracy_less_than_deg": null,
@@ -449,7 +451,7 @@ Standalone tag: `bearing`. [Back to type map](#type-map-and-object-catalog).
 | `type`                   | `"bearing"`                 | see [Tags](#tags)        |
 | `bearing_deg`            | finite number               | **required**             |
 | `hits_code`              | integer                     | **required**             |
-| `range_code`             | integer                     | **required**             |
+| `range_miles`            | finite number               | **required**             |
 | `quality_code`           | integer                     | **required**             |
 | `usable`                 | boolean or null             | optional; default `null` |
 | `accuracy_less_than_deg` | finite number or null       | optional; default `null` |
@@ -505,13 +507,15 @@ DAO precision codes are derived from the enclosing semantic coordinates; datum i
 
 Standalone tag: `area`. [Back to type map](#type-map-and-object-catalog).
 
+Offsets are angular sizes in degrees, 0..6.534. Encoding rounds sqrt(degrees × 1500) to a code 0..99; classification and color remain protocol codes.
+
 ```json
 {
   "type": "area",
   "shape_code": 0,
   "color_code": 3,
-  "latitude_offset_code": 10,
-  "longitude_offset_code": 10,
+  "latitude_offset_deg": 0.06666666666666667,
+  "longitude_offset_deg": 0.06666666666666667,
   "corridor_half_width_miles": null
 }
 ```
@@ -521,8 +525,8 @@ Standalone tag: `area`. [Back to type map](#type-map-and-object-catalog).
 | `type`                      | `"area"`                    | see [Tags](#tags)        |
 | `shape_code`                | integer                     | **required**             |
 | `color_code`                | integer                     | **required**             |
-| `latitude_offset_code`      | integer                     | **required**             |
-| `longitude_offset_code`     | integer                     | **required**             |
+| `latitude_offset_deg`       | finite number               | **required**             |
+| `longitude_offset_deg`      | finite number               | **required**             |
 | `corridor_half_width_miles` | finite number or null       | optional; default `null` |
 
 ### Signpost

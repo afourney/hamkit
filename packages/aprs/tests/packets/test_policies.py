@@ -19,7 +19,7 @@ class PolicyTests(unittest.TestCase):
             (b"$ULTW0000", a.RawWeather),
             (b"!!0000", a.RawWeather),
             (b"%123/4", a.Agrelo),
-            (b"[IO91SX", a.Maidenhead),
+            (b"[IO91SX]", a.Maidenhead),
         ):
             with self.subTest(information=information):
                 self.assertIsInstance(

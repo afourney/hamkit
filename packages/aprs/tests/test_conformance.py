@@ -296,14 +296,14 @@ class PlaceTests(unittest.TestCase):
             (
                 a.Extensions(
                     motion=a.Motion(90, 10),
-                    bearing=a.Bearing(270, 7, 2, 9, usable=False),
+                    bearing=a.Bearing(270, 7, 4, 9, usable=False),
                 ),
                 a.Symbol("/", "\\"),
             ),
             (
                 a.Extensions(
                     motion=a.Motion(90, 10),
-                    bearing=a.Bearing(270, 7, 2, 9, accuracy_less_than_deg=10),
+                    bearing=a.Bearing(270, 7, 4, 9, accuracy_less_than_deg=10),
                 ),
                 a.Symbol("/", "\\"),
             ),
@@ -352,7 +352,7 @@ class PlaceTests(unittest.TestCase):
         self.assertEqual(
             findings(
                 a.Position(
-                    1, 2, df, extensions=a.Extensions(bearing=a.Bearing(90, 1, 4, 7))
+                    1, 2, df, extensions=a.Extensions(bearing=a.Bearing(90, 1, 16, 7))
                 )
             ),
             {"$.payload.extensions.bearing"},

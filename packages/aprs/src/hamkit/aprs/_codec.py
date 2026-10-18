@@ -237,7 +237,7 @@ def _decode_payload(
 
         return _nmea_codec.read(information, header, diagnostics, policy)
     if dti == b"[":
-        match = re.match(rb"([A-Ra-r]{2}\d{2}(?:[A-Xa-x]{2})?)(.*)", body, re.DOTALL)
+        match = re.match(rb"([A-Ra-r]{2}\d{2}(?:[A-Xa-x]{2})?)\](.*)", body, re.DOTALL)
         if not match:
             raise FieldError("invalid Maidenhead locator")
         return m.Maidenhead(
@@ -618,16 +618,9 @@ def _encode_payload(
     if isinstance(payload, m.Agrelo):
         return b"%%%03d/%d" % (round(payload.bearing_deg), payload.quality_code)
     if isinstance(payload, m.Maidenhead):
-        return (
-            b"["
-            + payload.grid.locator.encode()
-            + (
-                payload.symbol.table_id.encode() + payload.symbol.code.encode()
-                if payload.symbol
-                else b""
-            )
-            + payload.comment.encode()
-        )
+        if payload.symbol is not None:
+            raise FieldError("bracketed Maidenhead beacons have no symbol field")
+        return b"[" + payload.grid.locator.encode() + b"]" + payload.comment.encode()
     if isinstance(payload, m.Beacon):
         return payload.text.encode()
     if isinstance(payload, m.LegacyPosition):

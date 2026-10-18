@@ -889,6 +889,12 @@ def semantic_fields(value: Any) -> None:
             value[new] = (
                 {"value": number, "unit": "meters"} if number is not None else None
             )
+    if "range_code" in value:
+        value["range_miles"] = float(2 ** value.pop("range_code"))
+    for axis in ("latitude", "longitude"):
+        key = axis + "_offset_code"
+        if key in value:
+            value[axis + "_offset_deg"] = value.pop(key) ** 2 / 1500
     if "datum_byte" in value:
         value["datum"] = value.pop("datum_byte").upper()
         value.pop("latitude_precision", None)
@@ -981,6 +987,9 @@ def records() -> list[JSON]:
             # JSON array is the persisted spelling of the immutable tuple.
             row["policy"]["extensions"] = list(row["policy"]["extensions"])
             semantic_fields(row["expected"])
+            if row["id"] in ("OTH-012", "OTH-013"):
+                # APRS101 p33: the closing bracket is a delimiter, not comment.
+                row["expected"]["payload"].update(comment="", symbol=None)
             result.append(row)
     assert set(divergences["rows"]) <= {row["id"] for row in result}
     assert set(sequence_packets) == {row["id"] for row in result if "sequence" in row}

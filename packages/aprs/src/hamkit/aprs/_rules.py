@@ -230,8 +230,9 @@ def _antenna(v: Any) -> None:
 
 @invariant(Bearing)
 def _bearing(v: Bearing) -> None:
+    _bounds(v, "range_miles", 1, 512)
     _bounds(v, "bearing_deg", 0, 360)
-    for name in ("hits_code", "range_code", "quality_code"):
+    for name in ("hits_code", "quality_code"):
         _bounds(v, name, 0, 9)
     if v.accuracy_less_than_deg is not None and v.accuracy_less_than_deg <= 0:
         fail("accuracy_less_than_deg", "an angular accuracy bound must be positive")
@@ -269,8 +270,8 @@ def _dao(v: DAO) -> None:
 def _area(v: Area) -> None:
     _bounds(v, "shape_code", 0, 9)
     _bounds(v, "color_code", 0, 15)
-    _bounds(v, "latitude_offset_code", 0, 99)
-    _bounds(v, "longitude_offset_code", 0, 99)
+    _bounds(v, "latitude_offset_deg", 0, 99**2 / 1500)
+    _bounds(v, "longitude_offset_deg", 0, 99**2 / 1500)
     if v.corridor_half_width_miles is not None:
         if v.shape_code not in (1, 6):
             fail("corridor_half_width_miles", "corridors apply only to line shapes")

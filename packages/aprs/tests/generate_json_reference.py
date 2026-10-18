@@ -217,6 +217,10 @@ their own fully expanded examples in the field table.
     for schema, value in zip(_SCHEMAS, samples):
         name = schema.model.__name__
         doc += f"\n### {name}\n\nStandalone tag: `{schema.tag}`. [Back to type map](#type-map-and-object-catalog).\n\n"
+        if schema.model is a.Area:
+            doc += "Offsets are angular sizes in degrees, 0..6.534. Encoding rounds sqrt(degrees × 1500) to a code 0..99; classification and color remain protocol codes.\n\n"
+        if schema.model is a.Bearing:
+            doc += "Range is in miles, 1..512. Encoding rounds log2(miles) to a code 0..9. Hits and quality remain classification codes, without an inferred quality/accuracy mapping.\n\n"
         if schema.model is a.DAO:
             doc += "DAO precision codes are derived from the enclosing semantic coordinates; datum is an uppercase identifier and encoding chooses decimal, base91 or datum-only (null). Raw bytes are receive evidence only.\n\n"
         if schema.model is a.UTCTime:

@@ -97,13 +97,16 @@ class PositionInvariantTests(unittest.TestCase):
         with self.assertRaises(a.ModelError):
             a.Signal(1, -5, 3)
         with self.assertRaises(a.ModelError):
-            a.Bearing(90, 10, 4, 7)
+            a.Bearing(90, 10, 16, 7)
         with self.assertRaises(a.ModelError):
-            a.Bearing(90, 9, 4, 7, accuracy_less_than_deg=-1)
+            a.Bearing(90, 9, 16, 7, accuracy_less_than_deg=-1)
         with self.assertRaises(a.ModelError):
-            a.Area(0, 3, 10, 10, corridor_half_width_miles=1)
+            a.Area(0, 3, 100 / 1500, 100 / 1500, corridor_half_width_miles=1)
         self.assertEqual(
-            a.Area(1, 3, 10, 10, corridor_half_width_miles=1).shape_code, 1
+            a.Area(
+                1, 3, 100 / 1500, 100 / 1500, corridor_half_width_miles=1
+            ).shape_code,
+            1,
         )
         self.reject_json({"type": "grid", "locator": "AA00", "center": None})
 

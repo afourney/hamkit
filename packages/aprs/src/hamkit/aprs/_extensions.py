@@ -115,8 +115,8 @@ def read(
         found["area"] = d.Area(
             int(match[1]),
             int(match[3].lstrip(b"/")),
-            int(match[2]),
-            int(match[4]),
+            int(match[2]) ** 2 / 1500,
+            int(match[4]) ** 2 / 1500,
             corridor_half_width_miles=float(match[5]) if match[5] else None,
         )
         tail = tail[match.end() :]
@@ -129,7 +129,7 @@ def read(
                 found["bearing"] = Bearing(
                     int(bearing[1]),
                     int(bearing[2]),
-                    int(bearing[3]),
+                    float(2 ** int(bearing[3])),
                     int(bearing[4]),
                     raw=bearing[0],
                 )

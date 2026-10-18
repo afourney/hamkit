@@ -19,7 +19,7 @@ from ._data import Altitude, Extensions, Measurement, Motion, Symbol, Telemetry
 from ._errors import FieldError
 from ._models import Header, MicE
 from ._policy import _DEFAULT_POLICY, EnvelopePolicy
-from ._position_codec import base91, center, dao_offset, pack91
+from ._position_codec import base91, center, center_wire, dao_offset, pack91
 from ._text import free_text
 
 # Declared version suffixes. The manufacturer/version pair after ` or ' does
@@ -70,7 +70,7 @@ def destination(raw: str):
     d = digits.replace(" ", "0")
     if int(d[2:4]) >= 60:
         raise FieldError("invalid Mic-E latitude minutes")
-    lat = center(int(d[:2]) + int(d[2:]) / 6000, n)
+    lat = center_wire(int(d[:2]) + int(d[2:]) / 6000, n)
     if raw[3] < "P":
         lat = -lat
     bits = sum(
@@ -113,7 +113,7 @@ def read(
     hundredths = b[2] - 28
     if minutes >= 60 or hundredths > 99:
         raise FieldError("invalid Mic-E longitude minutes")
-    lon = center(degrees + (minutes + hundredths / 100) / 60, n)
+    lon = center_wire(degrees + (minutes + hundredths / 100) / 60, n)
     if west:
         lon = -lon
     speed = (b[3] - 28) * 10 + (b[4] - 28) // 10
@@ -346,7 +346,9 @@ def write_status(p: MicE, policy: EnvelopePolicy = _DEFAULT_POLICY) -> bytes:
     """Encode the status text after the symbol; the inverse of read_status."""
     _base_coordinates(p)
     head, suffix = device_parts(p.device_code, policy)
-    e = replace(p.extensions, motion=None)
+    e = replace(
+        p.extensions, motion=p.extensions.motion if p.extensions.bearing else None
+    )
     first = b""
     if e.telemetry and e.telemetry.encoding in ("mic_e_hex", "mic_e_binary"):
         if head:

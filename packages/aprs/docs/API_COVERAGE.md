@@ -96,7 +96,9 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
 `information`/`data` are their authoritative semantic content.
 
 - Uncompressed coordinates round to hundredths of minutes; ambiguity transmits
-  the requested cell. Compressed coordinates round to their base91 grid. DAO
+  the requested cell, selected before decimal rounding. Both coordinates use the
+  same ambiguity level. Exact pole/antimeridian coordinates whose cell would
+  extend beyond the axis bounds are refused. Compressed coordinates round to their base91 grid. DAO
   now stores `datum` and `encoding`, without latitude/longitude codes. The refined
   coordinate is rounded once, then split into hundredth-minute and DAO parts,
   including carry across minute/degree boundaries. Parsing applies supported
@@ -118,6 +120,10 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   automatic templates and are recomputed without mutation. Payload-only Mic-E
   decoding requires its received header; encoding derives the needed bits. Longitude degrees
   use APRS101's table, so 100–109° are sent as `l`–`u`, never as control bytes.
+- Mic-E fixed-body motion does not occupy the comment data-extension slot. PHG
+  can accompany it; PHGR still requires `phg_rate`. A DF bearing emits its
+  required course/speed comment prefix and is retained on decode. Status checks
+  also verify that extension presence survives serialization.
 - Mic-E status interpretation is policy-selected. With `mice_device_ids`,
   apostrophe/backtick selectors introduce device text even if the following text
   is valid hexadecimal. Declared version suffixes become part of `device_code`.
@@ -139,7 +145,9 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   its unresolved century might be a leap century; leap seconds are accepted only
   at 23:59, without inventing a leap-second calendar. Fractional seconds use a
   numeric value; lexical trailing zeros are not preserved.
-- NMEA recomputes a supplied checksum. Checksum
+- NMEA recomputes a supplied checksum and automatically supplies one when a
+  nonempty comment needs a separator. This prevents comment text from becoming
+  the sentence's last field; metadata is not mutated. Checksum
   characters can change when equivalent numeric spellings change. A sentence
   received with a bad checksum (`checksum_valid=False`) is a conformance finding:
   it is reported when parsed and refused when sending, so corrupt data is never
@@ -231,3 +239,30 @@ Alpha callers must replace `DAO.datum_byte` and precision codes with an uppercas
 component objects; and wrap GGA heights in `Measurement`. JSON uses the same
 fields, with standalone tags `utc_time` and `nmea_date`. Original DAO bytes and
 NMEA `fields_raw` remain optional evidence, never a serialization source.
+
+## Review corrections: geometry and bracketed grids
+
+`Area.latitude_offset_deg` and `longitude_offset_deg` replace caller-supplied
+wire codes. Offsets range from 0 through 6.534 degrees, and encode as
+`round(sqrt(offset_deg * 1500))`; decoding uses `code**2 / 1500`, following the
+[APRS 1.1 correction](https://www.aprs.org/aprs11/areaobjects.txt).
+`Bearing.range_miles` replaces `range_code`, accepts 1 through 512 miles, and
+encodes as `round(log2(range_miles))`. Its read-only `range_code` and the area
+code properties expose the resulting codes without duplicating mutable facts.
+Rounding ties go to even. Size/range edits recompute codes; finite values outside
+the wire domain are rejected. Shape, color, hits and quality remain classification
+codes; no disputed DF quality interpretation is added. Python and JSON use the
+same semantic fields. This is an alpha API migration: the positional arguments
+formerly carrying codes now carry degrees or miles.
+
+The bracketed Maidenhead grammar is `[Grid Locator]Comment` (APRS101 p33).
+Both brackets are required, and a supplied symbol is refused because this form
+has no symbol slot. Symbol-bearing grid status reports remain separate. OTH-012
+and OTH-013 now independently assert an empty comment and absent symbol, so the
+closing bracket cannot again be mistaken for comment data. All source packet
+bytes and provenance remain unchanged.
+
+Mic-E PHG follows the [APRS 1.2 proposal](https://www.aprs.org/aprs12.html);
+ordinary PHG has no extra interpretation flag, while its optional rate keeps the
+existing `phg_rate` gate. Body motion and comment extension slots are validated
+separately. No high-speed interpretation or other proposal is enabled here.

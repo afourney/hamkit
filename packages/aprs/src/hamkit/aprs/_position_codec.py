@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
+from decimal import Decimal
 
 from ._data import Altitude, Compression, Extensions, Measurement, Motion, Range, Symbol
 from ._errors import FieldError
@@ -44,8 +45,18 @@ def center(value: float, n: int) -> float:
         return value
     cell = (0.1, 1, 10, 60)[n - 1]
     return math.copysign(
-        (math.floor(abs(value) * 60 / cell + 1e-9) + 0.5) * cell / 60, value
+        (int(Decimal(str(abs(value))) * 60 // Decimal(str(cell))) + 0.5) * cell / 60,
+        value,
     )
+
+
+def center_wire(value: float, n: int) -> float:
+    """Center a decoded hundredth-minute value without float boundary drift."""
+    if not n:
+        return value
+    cell_units = (10, 100, 1000, 6000)[n - 1]
+    units = round(abs(value) * 6000)
+    return math.copysign((units // cell_units + 0.5) * cell_units / 6000, value)
 
 
 def coordinates(lat: bytes, lon: bytes) -> tuple[float, float, int]:
@@ -53,14 +64,14 @@ def coordinates(lat: bytes, lon: bytes) -> tuple[float, float, int]:
     if m > n:
         raise FieldError("longitude cannot be more ambiguous than latitude")
     return (
-        center(decode_coordinate(lat.replace(b" ", b"0"), "latitude"), n),
-        center(decode_coordinate(lon.replace(b" ", b"0"), "longitude"), n),
+        center_wire(decode_coordinate(lat.replace(b" ", b"0"), "latitude"), n),
+        center_wire(decode_coordinate(lon.replace(b" ", b"0"), "longitude"), n),
         n,
     )
 
 
 def coordinate_bytes(value: float, axis: CoordinateAxis, n: int) -> bytes:
-    raw = bytearray(encode_coordinate(value, axis))
+    raw = bytearray(encode_coordinate(center(value, n), axis))
     for i in (len(raw) - 2, len(raw) - 3, len(raw) - 5, len(raw) - 6)[:n]:
         raw[i] = 32
     return bytes(raw)

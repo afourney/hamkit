@@ -46,6 +46,7 @@ from ._models import (
     HeardStation,
     Item,
     LegacyPosition,
+    Maidenhead,
     Message,
     MicE,
     NWSBulletin,
@@ -475,7 +476,12 @@ def _position(v: Position, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     try:
         from ._dao import base_coordinates
 
-        base_coordinates(v)
+        latitude, longitude = base_coordinates(v)
+        if v.compression is None:
+            from ._position_codec import coordinate_bytes
+
+            coordinate_bytes(latitude, "latitude", v.ambiguity)
+            coordinate_bytes(longitude, "longitude", v.ambiguity)
         extensions = v.extensions
         if v.compression is not None:
             from ._position_codec import compressed_bytes
@@ -537,7 +543,10 @@ def _located(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
         name
         for name in ("motion", "phg", "range", "signal", "area")
         if getattr(e, name) is not None
+        and not (isinstance(v, MicE) and name == "motion")
     ]
+    if isinstance(v, MicE) and e.bearing is not None:
+        primary.insert(0, "bearing")  # DF needs course/speed in the comment slot.
     if len(primary) > 1:
         yield f"$.extensions.{primary[-1]}", "shares the data-extension slot"
     if e.bearing is not None and e.motion is None:
@@ -590,12 +599,21 @@ def _mic_e_status(v: MicE, policy: EnvelopePolicy) -> Iterator[Finding]:
     if v.extensions.telemetry and any(_telemetry(v.extensions.telemetry, policy)):
         return  # Channel findings are reported when walking the telemetry model.
     try:
-        device, _, comment = _mic_e.read_status(
+        device, decoded_extensions, comment = _mic_e.read_status(
             _mic_e.write_status(v, policy), v.symbol, policy
         )
     except APRSError as error:
         yield "$.device_code", str(error)
         return
+    from dataclasses import fields
+
+    for member in fields(v.extensions):
+        name = member.name
+        if name != "motion" and (
+            (getattr(v.extensions, name) is None)
+            != (getattr(decoded_extensions, name) is None)
+        ):
+            yield "$.extensions." + name, "would be lost or introduced by Mic-E status encoding"
     if (device, comment) != (v.device_code, v.comment.encode()):
         yield "$.comment", "would be read back as a different Mic-E type code"
 
@@ -767,3 +785,9 @@ def _telemetry(v: Telemetry, policy: EnvelopePolicy | None) -> Iterator[Finding]
 def _legacy(v: LegacyPosition, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if not policy or not policy.legacy_positions:
         yield "$", "legacy position requires legacy_positions=True"
+
+
+@_conformance(Maidenhead)
+def _maidenhead(v: Maidenhead, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    if v.symbol is not None:
+        yield "$.symbol", "bracketed Maidenhead beacons have no symbol field"

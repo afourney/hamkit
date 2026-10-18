@@ -26,10 +26,10 @@ def field_examples() -> tuple[object, ...]:
         a.Range(12),
         a.PHG(25, 80, 3),
         a.Signal(5, 80, 3),
-        a.Bearing(120, 3, 2, 7),
+        a.Bearing(120, 3, 4, 7),
         a.Compression(fix="old", nmea_source="other", origin_code=0),
         a.DAO("W", encoding="decimal"),
-        a.Area(0, 3, 10, 10),
+        a.Area(0, 3, 100 / 1500, 100 / 1500),
         a.Signpost("55"),
         a.WaterHeight(a.Measurement(20.1, "feet")),
         a.Weather(

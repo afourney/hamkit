@@ -211,9 +211,11 @@ class Signal(Validated):
 
 @dataclass(frozen=True)
 class Bearing(Validated):
+    """DF bearing with range in miles; hits/quality retain protocol categories."""
+
     bearing_deg: float
     hits_code: int
-    range_code: int
+    range_miles: float
     quality_code: int
     usable: bool | None = field(default=None, kw_only=True)
     accuracy_less_than_deg: float | None = field(default=None, kw_only=True)
@@ -225,8 +227,9 @@ class Bearing(Validated):
         return self.hits_code == 9
 
     @property
-    def range_miles(self) -> float:
-        return float(2**self.range_code)
+    def range_code(self) -> int:
+        """Nearest power-of-two range exponent (ties to even)."""
+        return round(math.log2(self.range_miles))
 
 
 @dataclass(frozen=True)
@@ -261,20 +264,22 @@ class DAO(Validated):
 
 @dataclass(frozen=True)
 class Area(Validated):
+    """Angular dimensions in degrees, quantized by APRS 1.1 square-root codes."""
+
     shape_code: int
     color_code: int
-    latitude_offset_code: int
-    longitude_offset_code: int
+    latitude_offset_deg: float
+    longitude_offset_deg: float
     corridor_half_width_miles: float | None = field(default=None, kw_only=True)
 
     @property
-    def latitude_offset_deg(self) -> float:
-        """Corrected APRS 1.1 offset: code squared over 1500."""
-        return self.latitude_offset_code**2 / 1500
+    def latitude_offset_code(self) -> int:
+        """Nearest square-root code per the APRS 1.1 area correction."""
+        return round(math.sqrt(self.latitude_offset_deg * 1500))
 
     @property
-    def longitude_offset_deg(self) -> float:
-        return self.longitude_offset_code**2 / 1500
+    def longitude_offset_code(self) -> int:
+        return round(math.sqrt(self.longitude_offset_deg * 1500))
 
     @property
     def transmitted_anchor(self) -> Literal["lower_reference", "circle_center"]:
