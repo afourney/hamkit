@@ -147,6 +147,16 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   status beam heading (10°) and ERP (10 × n² watts). A value outside the code
   range after rounding is refused. No saturation or text truncation is
   performed.
+- Course 0 means unknown in both uncompressed and Mic-E positions (APRS101
+  pp. 27, 49), so `course_deg=None` is sent as 0 and a course that rounds to 0°
+  is sent as north (360). Mic-E always carries a speed: `Motion(None, 0)` is a
+  stationary report with unknown course. Likewise, a measured wind from 0° is
+  sent as `360/sss`, because `000/000` reads back as an unavailable reading.
+- Under a weather symbol (`_` or `W`), receivers read a course/speed pair,
+  uncompressed or in compressed csT, as wind. `check_packet` therefore reports
+  `Motion` on such a position at `$.extensions.motion`; send wind in
+  `extensions.weather` instead. More generally, extensions that would read back
+  as different kinds are refused.
   Numeric overlays use table IDs `a`–`j`; sending compressed positions with
   `0`–`9` table IDs is refused as nonconforming.
 - Mic-E generates an omitted destination from latitude, ambiguity, message and

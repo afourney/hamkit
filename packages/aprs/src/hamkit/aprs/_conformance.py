@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable, Iterator
-from dataclasses import replace
+from dataclasses import fields, replace
 from typing import Any
 
 from . import _extensions
@@ -532,6 +532,21 @@ def _position(v: Position, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     except (CodecNotImplementedError, FieldError):
         yield "$.comment", "contains extension syntax this version cannot decode"
         return
+    # The extensions alone must read back as the same kinds; for example, a
+    # weather symbol reads a course/speed pair as wind (APRS101 p62).
+    sent, read = (
+        {f.name for f in fields(x) if getattr(x, f.name) is not None}
+        for x in (extensions, expected)
+    )
+    if sent != read:
+        added = " and ".join(sorted(read - sent))
+        for name in sorted(sent - read):
+            yield f"$.extensions.{name}", (
+                f"would be read back as {added}" if added else "would be lost"
+            )
+        if not sent - read:
+            yield "$.extensions", f"would be read back with {added}"
+        return
     if (actual, rest) != (expected, comment):
         yield "$.comment", "would be read back as a data extension"
     else:
@@ -592,7 +607,10 @@ def _located(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
             yield "$.extensions.telemetry.encoding", "requires " + " or ".join(allowed)
     if isinstance(v, MicE):
         if e.motion is None:
-            yield "$.extensions.motion", "Mic-E always carries course and speed"
+            yield "$.extensions.motion", (
+                "Mic-E always carries a speed; use Motion(None, 0) for a"
+                " stationary report with unknown course"
+            )
         yield from _mic_e_status(v, policy)
         return
     if v.compression is not None:
@@ -619,8 +637,6 @@ def _mic_e_status(v: MicE, policy: EnvelopePolicy) -> Iterator[Finding]:
             error, "message", str(error)
         )
         return
-    from dataclasses import fields
-
     for member in fields(v.extensions):
         name = member.name
         if name != "motion" and (
@@ -638,6 +654,9 @@ def _compressed(v: Any) -> Iterator[Finding]:
         yield "$.symbol.table_id", "compressed numeric overlays require a-j, not 0-9"
     if any(getattr(e, n) is not None for n in ("phg", "signal", "area", "bearing")):
         yield "$.extensions", "not available in the compressed position layout"
+    if v.symbol.code in "_W" and e.motion is not None:
+        # The decoder reads csT course/speed as wind under a weather symbol.
+        yield "$.extensions.motion", "would be read back as weather"
     altitude = e.altitude is not None and e.altitude.encoding == "compressed"
     if csT.ignored:
         if e.motion is not None or e.range is not None or altitude:

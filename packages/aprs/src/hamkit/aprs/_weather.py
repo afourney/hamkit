@@ -226,11 +226,13 @@ def write(
             if speed.unit == "disputed_knots_or_mph"
             else _value(speed, "mph")
         )
-        raw += (
-            _number(w.wind_direction.value, 3, path=f"{path}.wind_direction.value")
-            + b"/"
-            + _number(value, 3, path=f"{path}.wind_speed.value")
+        direction = _number(
+            w.wind_direction.value, 3, path=f"{path}.wind_direction.value"
         )
+        # 000/000 reads back as unavailable, so a measured north wind is 360.
+        if direction == b"000":
+            direction = b"360"
+        raw += direction + b"/" + _number(value, 3, path=f"{path}.wind_speed.value")
     for tag, (name, unit, width, scale) in _FIELDS.items():
         if tag == "l" or positioned and tag in "cs":
             continue

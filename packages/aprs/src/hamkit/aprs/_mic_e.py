@@ -129,7 +129,10 @@ def read(
     course = ((b[4] - 28) % 10) * 100 + b[5] - 28
     if course >= 400:
         course -= 400
-    motion = Motion(course, speed, course_code=course, speed_code=speed)
+    # Course 0 means unknown (APRS101 p49); north is 360.
+    motion = Motion(
+        None if course == 0 else course, speed, course_code=course, speed_code=speed
+    )
     symbol = Symbol(chr(b[7]), chr(b[6]))
     device, extra, tail = read_status(b[8:], symbol, policy)
     e = replace(extra, motion=motion)
@@ -257,9 +260,13 @@ def write(
 ) -> bytes:
     position = position_bytes(p, header)
     m = p.extensions.motion
-    if m is None or m.course_deg is None or m.speed_knots is None:
-        raise FieldError("Mic-E requires course and speed")
-    speed, course = round(m.speed_knots), round(m.course_deg)
+    if m is None or m.speed_knots is None:
+        raise Unrepresentable(
+            "$.extensions.motion.speed_knots", "Mic-E always carries a speed"
+        )
+    speed = round(m.speed_knots)
+    # As in the uncompressed form: 0 is unknown, so north is sent as 360.
+    course = 0 if m.course_deg is None else round(m.course_deg) or 360
     if not 0 <= speed <= 799:
         raise Unrepresentable(
             "$.extensions.motion.speed_knots", "Mic-E carries 0..799 knots"

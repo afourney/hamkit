@@ -278,6 +278,9 @@ def translate(e: JSON) -> JSON:
             if new == "area":
                 # The source names shapes with hyphens; the schema uses underscores.
                 ext[new]["shape"] = ext[new]["shape"].replace("-", "_")
+    if e.get("format") == "mic-e" and ext.get("motion", {}).get("course_code") == 0:
+        # APRS101 p49: Mic-E course 0 is unknown; north is 360.
+        ext["motion"]["course_deg"] = None
     if "df_bearing" in e:
         ext["bearing"] = df_bearing(e["df_bearing"])
     if "altitude" in e and kind != "nmea":
@@ -661,6 +664,9 @@ def fap_projection(e: JSON, packet: str) -> JSON:
             payload.setdefault("extensions", {}).setdefault("motion", {})[target] = (
                 f[source] * factor
             )
+    if f.get("Format") == "mice" and f.get("Course") == 0:
+        # FAP and APRS101 both use Mic-E course 0 for an unknown course.
+        payload["extensions"]["motion"]["course_deg"] = None
     if f.get("RadioRange") is not None:
         payload.setdefault("extensions", {})["range"] = {
             "miles": f["RadioRange"] / 1.609344

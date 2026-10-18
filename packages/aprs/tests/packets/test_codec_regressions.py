@@ -1033,3 +1033,107 @@ def test_df_bearing_takes_plain_values(bearing, nrq):
     assert received.usable == (nrq[2:] != b"0" and nrq != b"000")
     with pytest.raises(a.ModelError):
         a.Bearing(270, 16, 1, hit_ratio=0.5, manual=True)
+
+
+@pytest.mark.parametrize(
+    "motion,course",
+    [
+        (a.Motion(None, 0), None),
+        (a.Motion(0, 10), 360),
+        (a.Motion(0.4, 10), 360),
+        (a.Motion(360, 5), 360),
+        (a.Motion(90, 10), 90),
+    ],
+)
+def test_course_zero_means_unknown_for_mic_e_and_positions(motion, course):
+    symbol = a.Symbol("/", ">")
+    for payload in (
+        a.MicE(49, -72, symbol, message="en_route"),
+        a.Position(49, -72, symbol),
+    ):
+        value = a.Packet(
+            a.Header("N0CALL", None if isinstance(payload, a.MicE) else "APRS"),
+            dataclasses.replace(payload, extensions=a.Extensions(motion=motion)),
+        )
+        if isinstance(payload, a.Position) and course is None:
+            continue  # 000/000 is the uncompressed "unavailable" pair.
+        assert not a.check_packet(value)
+        received = a.parse_packet(a.serialize_packet(value)).payload
+        assert received.extensions.motion.course_deg == course
+    # Received course code 0 is unknown, not north.
+    mic_e = a.parse_packet(b"N0CALL>S32UVT:`(_f\x1c\x1c\x1cj/").payload
+    assert mic_e.extensions.motion.course_deg is None
+    assert mic_e.extensions.motion.course_code == 0
+
+
+def test_mic_e_without_a_speed_is_a_finding():
+    value = a.Packet(
+        a.Header("N0CALL", None),
+        a.MicE(
+            49,
+            -72,
+            a.Symbol("/", ">"),
+            message="en_route",
+            extensions=a.Extensions(motion=a.Motion(90, None)),
+        ),
+    )
+    findings = a.check_packet(value)
+    assert [f.path for f in findings] == ["$.payload.extensions.motion.speed_knots"]
+    with pytest.raises(a.ConformanceError):
+        a.serialize_packet(value)
+    no_motion = dataclasses.replace(
+        value, payload=dataclasses.replace(value.payload, extensions=a.Extensions())
+    )
+    assert "Motion(None, 0)" in a.check_packet(no_motion)[0].message
+
+
+@pytest.mark.parametrize("direction", [0, 0.4, 360])
+def test_measured_north_wind_is_not_read_back_as_unavailable(direction):
+    m = a.Measurement
+    weather = a.Weather(
+        wind_direction=m(direction, "degrees"),
+        wind_speed=m(0, "mph"),
+        gust=m(0, "mph"),
+        temperature=m(50, "fahrenheit"),
+    )
+    value = a.Packet(
+        a.Header("N0CALL", "APRS"),
+        a.Position(
+            49, -72, a.Symbol("/", "_"), extensions=a.Extensions(weather=weather)
+        ),
+    )
+    wire = a.serialize_packet(value)
+    assert b"_360/000g000t050" in wire
+    received = a.parse_packet(wire)
+    assert not received.diagnostics
+    assert received.payload.extensions.weather.wind_direction.value == 360
+    assert received.payload.extensions.weather.wind_speed.value == 0
+    assert a.serialize_packet(received) == wire
+
+
+@pytest.mark.parametrize("table,code", [("/", "_"), ("\\", "_"), ("/", "W")])
+@pytest.mark.parametrize("compressed", [False, True])
+def test_weather_symbol_course_speed_is_a_finding(table, code, compressed):
+    # A weather symbol reads course/speed as wind, so a report without the
+    # other required weather fields would come back incomplete.
+    value = a.Packet(
+        a.Header("N0CALL", "APRS"),
+        a.Position(
+            49,
+            -72,
+            a.Symbol(table, code),
+            compression=a.Compression() if compressed else None,
+            extensions=a.Extensions(motion=a.Motion(90, 10)),
+        ),
+    )
+    findings = a.check_packet(value)
+    assert [(f.path, f.message) for f in findings] == [
+        ("$.payload.extensions.motion", "would be read back as weather")
+    ]
+    with pytest.raises(a.ConformanceError):
+        a.serialize_packet(value)
+    # The same motion under an ordinary symbol is fine.
+    ordinary = dataclasses.replace(
+        value, payload=dataclasses.replace(value.payload, symbol=a.Symbol("/", ">"))
+    )
+    assert not a.check_packet(ordinary)
