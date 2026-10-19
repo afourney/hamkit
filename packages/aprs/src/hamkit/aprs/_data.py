@@ -1,0 +1,653 @@
+# SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
+"""Shared semantic fields, independent of packet DTIs and codec availability.
+
+None on a containing field means absent. Measurement(None, unit) means
+transmitted but unavailable. Raw codes are received evidence: they are kept,
+but never override structured values and never take part in equality. Values
+that follow from other fields (grid bounds, PHG range, csT bits) are properties.
+"""
+
+from __future__ import annotations
+
+import datetime
+import math
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Literal, TypeAlias, get_args
+
+from ._validation import FREE_TEXT, Validated, evidence
+
+TimestampKind: TypeAlias = Literal["dhm_utc", "dhm_local", "hms_utc", "mdhm_utc"]
+Bounds: TypeAlias = tuple[float, float]
+Unit: TypeAlias = Literal[
+    "degrees",
+    "knots",
+    "mph",
+    "m/s",
+    "km/h",
+    "feet",
+    "meters",
+    "miles",
+    "nautical_miles",
+    "fahrenheit",
+    "celsius",
+    "percent",
+    "hPa",
+    "inches",
+    "mm",
+    "W/m2",
+    "nSv/h",
+    "volts",
+    "watts",
+    "dBi",
+    "dB",
+    "S_units",
+    "count",
+    "raw",
+    "disputed_knots_or_mph",
+]
+
+
+@dataclass(frozen=True)
+class Measurement(Validated):
+    value: float | None
+    unit: Unit
+    raw: bytes | None = evidence()
+
+
+@dataclass(frozen=True)
+class Timestamp(Validated):
+    """Partial time; MDHM has month/day, never an inferred year or UTC offset."""
+
+    kind: TimestampKind
+    hour: int
+    minute: int
+    day: int | None = field(default=None, kw_only=True)
+    second: int | None = field(default=None, kw_only=True)
+    month: int | None = field(default=None, kw_only=True)
+    raw: bytes | None = evidence()
+
+    @classmethod
+    def dhm(cls, day: int, hour: int, minute: int, *, local: bool = False) -> Timestamp:
+        """Day/hour/minute, in UTC unless local=True."""
+        return cls("dhm_local" if local else "dhm_utc", hour, minute, day=day)
+
+    @classmethod
+    def hms(cls, hour: int, minute: int, second: int) -> Timestamp:
+        return cls("hms_utc", hour, minute, second=second)
+
+    @classmethod
+    def mdhm(cls, month: int, day: int, hour: int, minute: int) -> Timestamp:
+        """Month/day/hour/minute UTC, as used by positionless weather."""
+        return cls("mdhm_utc", hour, minute, day=day, month=month)
+
+    @classmethod
+    def from_datetime(
+        cls, moment: datetime.datetime, kind: TimestampKind = "dhm_utc"
+    ) -> Timestamp:
+        """The given moment in one of the APRS time formats.
+
+        UTC formats need an aware datetime, which is converted to UTC; a naive
+        one is refused because its offset is unknown. dhm_local uses the wall
+        clock time as given. Formats without seconds drop them.
+        """
+        if not isinstance(moment, datetime.datetime):
+            raise TypeError("from_datetime requires a datetime.datetime")
+        if kind != "dhm_local":
+            if moment.tzinfo is None or moment.utcoffset() is None:
+                raise ValueError("a UTC timestamp needs an aware datetime")
+            moment = moment.astimezone(datetime.UTC)
+        if kind == "hms_utc":
+            return cls.hms(moment.hour, moment.minute, moment.second)
+        if kind == "mdhm_utc":
+            return cls.mdhm(moment.month, moment.day, moment.hour, moment.minute)
+        return cls.dhm(
+            moment.day, moment.hour, moment.minute, local=kind == "dhm_local"
+        )
+
+
+@dataclass(frozen=True)
+class Coordinates(Validated):
+    latitude_deg: float
+    longitude_deg: float
+
+
+@dataclass(frozen=True)
+class Extent(Validated):
+    """A latitude/longitude cell; returned by grid and ambiguity properties."""
+
+    latitude: Bounds
+    longitude: Bounds
+
+
+@dataclass(frozen=True)
+class Symbol(Validated):
+    """Wire table/overlay character plus symbol code."""
+
+    table_id: str
+    code: str
+
+    @property
+    def table(self) -> Literal["primary", "alternate"]:
+        return "primary" if self.table_id == "/" else "alternate"
+
+    @property
+    def overlay(self) -> str | None:
+        """Overlay character; compressed overlays a-j are reported as 0-9."""
+        if self.table_id in "/\\":
+            return None
+        if "a" <= self.table_id <= "j":
+            return str(ord(self.table_id) - ord("a"))
+        return self.table_id
+
+
+@dataclass(frozen=True)
+class Grid(Validated):
+    """A four- or six-character Maidenhead locator."""
+
+    locator: str
+
+    def _cell(self) -> tuple[float, float, float, float]:
+        code = self.locator.upper()
+        west = -180 + (ord(code[0]) - ord("A")) * 20 + int(code[2]) * 2.0
+        south = -90 + (ord(code[1]) - ord("A")) * 10 + int(code[3]) * 1.0
+        width, height = 2.0, 1.0
+        if len(code) == 6:
+            width, height = 2 / 24, 1 / 24
+            west += (ord(code[4]) - ord("A")) * width
+            south += (ord(code[5]) - ord("A")) * height
+        return west, south, width, height
+
+    @property
+    def bounds(self) -> Extent:
+        west, south, width, height = self._cell()
+        return Extent((south, south + height), (west, west + width))
+
+    @property
+    def center(self) -> Coordinates:
+        west, south, width, height = self._cell()
+        return Coordinates(south + height / 2, west + width / 2)
+
+
+@dataclass(frozen=True)
+class Motion(Validated):
+    course_deg: float | None = None
+    speed_knots: float | None = None
+    zero_pair: Literal["unavailable", "fixed", "measured", "unspecified"] = field(
+        default="unspecified", kw_only=True
+    )
+    course_code: int | None = evidence()
+    speed_code: int | None = evidence()
+    raw: bytes | None = evidence()
+
+
+@dataclass(frozen=True)
+class Altitude(Validated):
+    """A height; encoding records the received wire form and is chosen when sent."""
+
+    measurement: Measurement
+    encoding: Literal["feet_extension", "compressed", "mic_e", "nmea"] | None = field(
+        default=None, compare=False, kw_only=True
+    )
+    reference: Literal["unspecified", "MSL", "ellipsoid"] = field(
+        default="unspecified", kw_only=True
+    )
+
+
+@dataclass(frozen=True)
+class Range(Validated):
+    miles: float
+    raw: bytes | None = evidence()
+
+
+@dataclass(frozen=True)
+class PHG(Validated):
+    power_w: float
+    height_haat_ft: float
+    gain_dbi: float
+    directivity_deg: float | None = field(
+        default=None, kw_only=True
+    )  # None denotes omnidirectional
+    rate_per_hour: int | None = field(
+        default=None, kw_only=True
+    )  # compatibility extension
+    raw: bytes | None = evidence()
+
+    @property
+    def range_miles(self) -> float:
+        """APRS101 p29 radio range; APRS 1.1 corrected gain to dBi."""
+        gain = 10 ** (self.gain_dbi / 10)
+        return math.sqrt(
+            2 * self.height_haat_ft * math.sqrt(self.power_w / 10 * gain / 2)
+        )
+
+    @property
+    def display_radius_miles(self) -> float:
+        """APRS 1.1 display recommendation: half the computed range."""
+        return self.range_miles / 2
+
+
+@dataclass(frozen=True)
+class Signal(Validated):
+    s_units: int
+    height_haat_ft: float
+    gain_db: float
+    directivity_deg: float | None = field(default=None, kw_only=True)
+    raw: bytes | None = evidence()
+
+
+@dataclass(frozen=True)
+class Bearing(Validated):
+    """A DF bearing; the library writes the APRS101 p30 NRQ digits.
+
+    hit_ratio is the share of samples that got a hit (sent as N in eighths);
+    manual=True marks a manual report (N=9) instead. range_miles is sent as
+    2^R miles. accuracy_deg is the bearing error bound from APRS101's Q table
+    (under 240° down to under 1°); None means a useless bearing (Q=0). With
+    none of these set, the NRQ is meaningless (000).
+    """
+
+    bearing_deg: float
+    range_miles: float | None = None
+    accuracy_deg: float | None = None
+    hit_ratio: float | None = field(default=None, kw_only=True)
+    manual: bool = field(default=False, kw_only=True)
+    raw: bytes | None = evidence()
+
+    @property
+    def nrq_meaningful(self) -> bool:
+        return self.manual or self.hit_ratio is not None
+
+    @property
+    def usable(self) -> bool:
+        return self.nrq_meaningful and self.accuracy_deg is not None
+
+    @property
+    def hits_code(self) -> int:
+        """N: 0 meaningless, 1-8 eighths of samples with a hit, 9 manual."""
+        if self.manual:
+            return 9
+        if self.hit_ratio is None:
+            return 0
+        return min(8, max(1, round(self.hit_ratio * 8)))
+
+    @property
+    def range_code(self) -> int:
+        """R: nearest power-of-two range exponent (ties to even)."""
+        if self.range_miles is None:
+            return 0
+        return round(math.log2(self.range_miles))
+
+    @property
+    def quality_code(self) -> int:
+        """Q: the tightest APRS101 accuracy bound the bearing meets; 0 if useless.
+
+        A decoded bearing stores the bound itself, so a value equal to a bound
+        meets it and re-encodes to the same Q.
+        """
+        if self.accuracy_deg is None:
+            return 0
+        meets = [
+            q
+            for q, bound in enumerate(DF_ACCURACY)
+            if bound is not None and self.accuracy_deg <= bound
+        ]
+        return max(meets, default=0)
+
+
+# APRS101 p30 DF quality: Q -> bearing accuracy bound in degrees (0 is useless).
+DF_ACCURACY: tuple[float | None, ...] = (None, 240, 120, 64, 32, 16, 8, 4, 2, 1)
+
+
+# APRS101 p39 compression origin (bits 0-2 of the csT type byte), in code order.
+CompressionOrigin: TypeAlias = Literal[
+    "compressed",
+    "tnc_btext",
+    "software",
+    "unassigned",
+    "kpc3",
+    "pico",
+    "other_tracker",
+    "digipeater_conversion",
+]
+COMPRESSION_ORIGINS: tuple[CompressionOrigin, ...] = get_args(CompressionOrigin)
+
+
+@dataclass(frozen=True)
+class Compression(Validated):
+    """Send this position compressed; the fields describe the csT type byte.
+
+    Compression() is enough: when sending, the library uses the csT bytes if
+    the position has motion, range or weather wind for them, and fills missing
+    type fields with a current fix, the "other" source and "software" origin.
+    A GGA source carries the altitude in csT. ignored=True means c=space: the
+    remaining bytes carry nothing. Received values are kept; like other wire
+    details, these fields are ignored by equality.
+    """
+
+    fix: Literal["old", "current"] | None = field(
+        default=None, kw_only=True, compare=False
+    )
+    nmea_source: Literal["other", "GLL", "GGA", "RMC"] | None = field(
+        default=None, kw_only=True, compare=False
+    )
+    origin: CompressionOrigin | None = field(default=None, kw_only=True, compare=False)
+    ignored: bool = field(default=False, kw_only=True, compare=False)
+    raw: bytes | None = evidence()
+
+    @property
+    def type_value(self) -> int | None:
+        """The compression type byte value implied by fix, source and origin."""
+        if self.ignored or self.fix is None or self.nmea_source is None:
+            return None
+        source = {"other": 0, "GLL": 8, "GGA": 16, "RMC": 24}[self.nmea_source]
+        origin = COMPRESSION_ORIGINS.index(self.origin) if self.origin else 0
+        return (32 if self.fix == "current" else 0) + source + origin
+
+
+@dataclass(frozen=True)
+class DAO(Validated):
+    """Datum identifier and added precision; codes are derived from coordinates.
+
+    precision=None sends the datum only. "high" adds one decimal digit of
+    minutes (about 1.85 m); "highest" uses the base-91 form (about 0.2 m).
+    """
+
+    datum: str = "W"
+    precision: Literal["high", "highest"] | None = field(default=None, kw_only=True)
+    raw: bytes | None = evidence()
+
+
+# APRS101 pp60-61 area object type (t) and color (c) tables, in code order.
+AreaShape: TypeAlias = Literal[
+    "open_circle",
+    "line_down_right",
+    "open_ellipse",
+    "open_triangle",
+    "open_box",
+    "filled_circle",
+    "line_down_left",
+    "filled_ellipse",
+    "filled_triangle",
+    "filled_box",
+]
+AreaColor: TypeAlias = Literal[
+    "black", "blue", "green", "cyan", "red", "violet", "yellow", "gray"
+]
+AREA_SHAPES: tuple[AreaShape, ...] = get_args(AreaShape)
+AREA_COLORS: tuple[AreaColor, ...] = get_args(AreaColor)
+
+
+@dataclass(frozen=True)
+class Area(Validated):
+    """A shape, color and size in degrees; the wire codes are derived.
+
+    Offsets are quantized by the APRS 1.1 square-root codes. Colors 8-15 on the
+    wire are the low-intensity versions of colors 0-7.
+    """
+
+    shape: AreaShape
+    color: AreaColor
+    latitude_offset_deg: float
+    longitude_offset_deg: float
+    intensity: Literal["high", "low"] = field(default="high", kw_only=True)
+    corridor_half_width_miles: float | None = field(default=None, kw_only=True)
+
+    @property
+    def shape_code(self) -> int:
+        return AREA_SHAPES.index(self.shape)
+
+    @property
+    def color_code(self) -> int:
+        return AREA_COLORS.index(self.color) + (8 if self.intensity == "low" else 0)
+
+    @property
+    def latitude_offset_code(self) -> int:
+        """Nearest square-root code per the APRS 1.1 area correction."""
+        return round(math.sqrt(self.latitude_offset_deg * 1500))
+
+    @property
+    def longitude_offset_code(self) -> int:
+        return round(math.sqrt(self.longitude_offset_deg * 1500))
+
+    @property
+    def transmitted_anchor(self) -> Literal["lower_reference", "circle_center"]:
+        circle = self.shape in ("open_circle", "filled_circle")
+        return "circle_center" if circle else "lower_reference"
+
+
+@dataclass(frozen=True)
+class Signpost(Validated):
+    label: str
+
+
+@dataclass(frozen=True)
+class WaterHeight(Validated):
+    measurement: Measurement
+    reference_datum: str | None = field(default=None, kw_only=True)
+
+
+@dataclass(frozen=True, kw_only=True)
+class Weather(Validated):
+    """Weather observations, usable as a payload or a located extension."""
+
+    wind_direction: Measurement | None = None
+    wind_speed: Measurement | None = None
+    gust: Measurement | None = None
+    temperature: Measurement | None = None
+    humidity: Measurement | None = None
+    pressure: Measurement | None = None
+    rain_1h: Measurement | None = None
+    rain_24h: Measurement | None = None
+    rain_since_midnight: Measurement | None = None
+    snow_24h: Measurement | None = None
+    luminosity: Measurement | None = None
+    rain_counter: Measurement | None = None
+    water_height: WaterHeight | None = None
+    radiation: Measurement | None = None
+    battery_voltage: Measurement | None = None
+    software_code: str | None = None
+    device_code: str | None = None
+    timestamp: Timestamp | None = None
+    comment: str = field(default="", metadata=FREE_TEXT)
+    raw: bytes | None = evidence()
+
+
+StormKind: TypeAlias = Literal["hurricane", "tropical_storm", "tropical_depression"]
+# APRS101 p66 storm type codes.
+STORM_CODES: dict[StormKind, str] = {
+    "hurricane": "HC",
+    "tropical_storm": "TS",
+    "tropical_depression": "TD",
+}
+
+
+@dataclass(frozen=True)
+class Storm(Validated):
+    kind: StormKind
+    predicted: bool = field(kw_only=True)
+    sustained_wind_knots: float = field(kw_only=True)
+    peak_gust_knots: float = field(kw_only=True)
+    central_pressure_hpa: float = field(kw_only=True)
+    hurricane_radius_nm: float = field(kw_only=True)
+    tropical_storm_radius_nm: float = field(kw_only=True)
+    whole_gale_radius_nm: float | None = field(default=None, kw_only=True)
+    raw: bytes | None = evidence()
+
+
+AnalogChannels: TypeAlias = tuple[float | None, ...]
+DigitalChannels: TypeAlias = tuple[bool | None, ...]
+TelemetryEncoding: TypeAlias = Literal[
+    "classic", "mic_e_hex", "mic_e_binary", "base91_comment"
+]
+
+
+@dataclass(frozen=True)
+class Telemetry(Validated):
+    """Ordered raw channels, uncalibrated. Missing channels are None, not zero."""
+
+    analog: AnalogChannels = ()
+    digital: DigitalChannels = ()
+    sequence: int | Literal["MIC"] | None = field(default=None, kw_only=True)
+    # The received wire form; sending chooses the form the container carries.
+    encoding: TelemetryEncoding = field(default="classic", kw_only=True, compare=False)
+    comment: str = field(default="", metadata=FREE_TEXT, kw_only=True)
+    sequence_raw: bytes | None = evidence()
+    raw: bytes | None = evidence()
+
+
+@dataclass(frozen=True, kw_only=True)
+class Extensions(Validated):
+    motion: Motion | None = None
+    altitude: Altitude | None = None
+    phg: PHG | None = None
+    range: Range | None = None
+    signal: Signal | None = None
+    bearing: Bearing | None = None
+    dao: DAO | None = None
+    area: Area | None = None
+    signpost: Signpost | None = None
+    weather: Weather | None = None
+    storm: Storm | None = None
+    telemetry: Telemetry | None = None
+
+    def __bool__(self) -> bool:
+        return any(getattr(self, name) is not None for name in _EXTENSION_FIELDS)
+
+
+_EXTENSION_FIELDS = (
+    "motion",
+    "altitude",
+    "phg",
+    "range",
+    "signal",
+    "bearing",
+    "dao",
+    "area",
+    "signpost",
+    "weather",
+    "storm",
+    "telemetry",
+)
+
+
+@dataclass(frozen=True)
+class Beam(Validated):
+    heading_deg: float
+    erp_w: float
+    raw: bytes | None = evidence()
+
+
+@dataclass(frozen=True)
+class TelemetryParameters(Validated):
+    """PARM. channel names."""
+
+    channels: tuple[str | None, ...]
+
+
+@dataclass(frozen=True)
+class TelemetryUnits(Validated):
+    """UNIT. channel units or labels."""
+
+    channels: tuple[str | None, ...]
+
+
+@dataclass(frozen=True)
+class Calibration(Validated):
+    """One EQNS. a·x² + b·x + c triple."""
+
+    a: float
+    b: float
+    c: float
+
+
+@dataclass(frozen=True)
+class TelemetryEquations(Validated):
+    """EQNS. coefficients; None keeps a channel's slot empty."""
+
+    coefficients: tuple[Calibration | None, ...]
+
+
+@dataclass(frozen=True)
+class TelemetryBits(Validated):
+    """BITS. sense bits plus an optional project title."""
+
+    sense: tuple[bool, bool, bool, bool, bool, bool, bool, bool]
+    project_title: str = field(default="", kw_only=True)
+
+
+TelemetryDefinitionValue: TypeAlias = (
+    TelemetryParameters | TelemetryUnits | TelemetryEquations | TelemetryBits
+)
+
+
+# ARRL precedences; the radiogram form abbreviates all but EMERGENCY.
+NTSPrecedence: TypeAlias = Literal["routine", "welfare", "priority", "emergency"]
+NTS_PRECEDENCE_CODES: Mapping[NTSPrecedence, str] = MappingProxyType(
+    {"routine": "R", "welfare": "W", "priority": "P", "emergency": "EMERGENCY"}
+)
+
+
+@dataclass(frozen=True, kw_only=True)
+class NTSHeader(Validated):
+    """The radiogram preamble; ``test`` marks a TEST message (precedence prefix)."""
+
+    number: str
+    precedence: NTSPrecedence
+    originator: str
+    check: str
+    place: str
+    date: str
+    handling: str | None = None
+    time: str | None = None
+    test: bool = False
+
+
+@dataclass(frozen=True)
+class NTSAddress(Validated):
+    lines: tuple[str, str, str, str]
+
+
+@dataclass(frozen=True)
+class NTSPhone(Validated):
+    number: str
+
+
+@dataclass(frozen=True)
+class NTSText(Validated):
+    line: Literal[1, 2, 3, 4, 5, 6]
+    text: str
+
+
+@dataclass(frozen=True)
+class NTSSignature(Validated):
+    text: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class NTSRouting(Validated):
+    received_from: str
+    received_at: str
+    sent_to: str
+    sent_at: str
+
+
+NTSRecord: TypeAlias = (
+    NTSHeader | NTSAddress | NTSPhone | NTSText | NTSSignature | NTSRouting
+)
+
+
+@dataclass(frozen=True)
+class Footprint(Validated):
+    center: Coordinates
+    radius_miles: float
+
+
+@dataclass(frozen=True)
+class Capability(Validated):
+    name: str
+    value: str | None = field(default=None, metadata=FREE_TEXT)

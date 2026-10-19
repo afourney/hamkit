@@ -1,0 +1,880 @@
+# SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
+# SPDX-License-Identifier: MIT
+"""APRS conformance: rules a well-formed model can still break.
+
+Received packets that break these rules still decode; each finding becomes a
+nonconforming Diagnostic on the Packet. Serialization refuses to emit them, so
+every packet is checked before it can be sent. Lengths are counted in encoded
+UTF-8 bytes. UTF-8 free text (messages, bulletins, status and comments) follows
+the APRS 1.2 proposed-draft guidance (aprs.org/aprs12/utf-8.txt), adopted for
+compatibility rather than as a ratified requirement.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Callable, Iterable, Iterator
+from dataclasses import fields, replace
+from typing import Any
+
+from . import _extensions
+from ._data import (
+    NTS_PRECEDENCE_CODES,
+    Footprint,
+    Measurement,
+    NTSAddress,
+    NTSHeader,
+    NTSPhone,
+    NTSRouting,
+    NTSSignature,
+    NTSText,
+    Telemetry,
+    TelemetryBits,
+    TelemetryEquations,
+    TelemetryParameters,
+    TelemetryUnits,
+    Weather,
+)
+from ._errors import APRSError, CodecNotImplementedError, FieldError
+from ._models import (
+    NMEA,
+    Acknowledgment,
+    AutoAnswer,
+    Bulletin,
+    Capabilities,
+    Diagnostic,
+    DirectStations,
+    Header,
+    HeardStation,
+    Item,
+    LegacyPosition,
+    Maidenhead,
+    Message,
+    MicE,
+    NWSBulletin,
+    Object,
+    Packet,
+    Position,
+    Query,
+    Status,
+    Trace,
+)
+from ._policy import APRS_IS, EnvelopePolicy
+from ._validation import _fields, walk
+
+Finding = tuple[str, str]
+_Rule = Callable[[Any, EnvelopePolicy | None], Iterable[Finding]]
+_RULES: dict[type, list[_Rule]] = {}
+
+
+def _conformance(*classes: type) -> Callable[[_Rule], _Rule]:
+    def register(rule: _Rule) -> _Rule:
+        for cls in classes:
+            _RULES.setdefault(cls, []).append(rule)
+        return rule
+
+    return register
+
+
+_CACHE: dict[type, tuple[tuple[str, ...], tuple[_Rule, ...]]] = {}
+
+
+def _plan(model: type) -> tuple[tuple[str, ...], tuple[_Rule, ...]]:
+    """The free-text fields and conformance rules that apply to a model."""
+    plan = _CACHE.get(model)
+    if plan is None:
+        free = tuple(f.name for f in _fields(model) if f.metadata.get("text") == "free")
+        rules = tuple(rule for cls in model.__mro__ for rule in _RULES.get(cls, ()))
+        plan = _CACHE[model] = (free, rules)
+    return plan
+
+
+def check(
+    value: Any, policy: EnvelopePolicy | None = None, *, check_envelope: bool = True
+) -> tuple[Diagnostic, ...]:
+    """Every conformance finding in a model graph, with JSON-style paths."""
+    policy = policy or APRS_IS()
+    result: list[Diagnostic] = []
+    if isinstance(value, Weather):
+        result.extend(
+            Diagnostic("nonconforming", message, path)
+            for path, message in _weather_report(value, "$", positioned=False)
+        )
+    for node, path in walk(value):
+        # Envelope policies apply to the outer header, not encapsulated text.
+        node_policy: EnvelopePolicy | None = policy
+        if isinstance(node, (Header, Packet)) and (
+            not check_envelope or path not in ("$", "$.header")
+        ):
+            node_policy = None
+        free, rules = _plan(type(node))
+        for name in free:
+            text = getattr(node, name)
+            if text is None:
+                continue
+            utf8 = "utf8_text" in policy.extensions and isinstance(
+                node,
+                (
+                    Status,
+                    Message,
+                    AutoAnswer,
+                    Bulletin,
+                    NWSBulletin,
+                    Position,
+                    Object,
+                    Item,
+                    MicE,
+                ),
+            )
+            if not text.isascii() and not utf8:
+                result.append(
+                    Diagnostic(
+                        "nonconforming",
+                        "non-ASCII text requires utf8_text in an eligible free-text field",
+                        f"{path}.{name}",
+                    )
+                )
+            if _has_control(text):
+                result.append(
+                    Diagnostic(
+                        "nonconforming",
+                        "text contains control characters",
+                        f"{path}.{name}",
+                    )
+                )
+        for rule in rules:
+            for relative, message in rule(node, node_policy):
+                result.append(Diagnostic("nonconforming", message, path + relative[1:]))
+    return tuple(result)
+
+
+def _has_control(text: str) -> bool:
+    return any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in text)
+
+
+def _size(text: str) -> int:
+    return len(text.encode("utf-8"))
+
+
+def _text(
+    name: str, text: str, limit: int | None, reserved: str = "|~"
+) -> Iterator[Finding]:
+    if limit is not None and _size(text) > limit:
+        yield f"$.{name}", f"exceeds {limit} bytes"
+    if any(c in reserved for c in text):
+        yield f"$.{name}", f"contains a reserved character ({' '.join(reserved)})"
+
+
+# Envelope ------------------------------------------------------------------
+
+
+@_conformance(Header)
+def _header(v: Header, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    if policy is None:
+        return
+    for name, address, pattern in (
+        ("source", v.source, policy.source_pattern),
+        ("destination", v.destination, policy.destination_pattern),
+    ):
+        if address is not None and re.fullmatch(pattern, address) is None:
+            yield f"$.{name}", f"address does not match {name}_pattern"
+    for i, hop in enumerate(v.path):
+        if re.fullmatch(policy.path_address_pattern, hop.address) is None:
+            yield f"$.path[{i}].address", "address does not match path_address_pattern"
+    if policy.max_path_entries is not None and len(v.path) > policy.max_path_entries:
+        yield "$.path", f"path exceeds {policy.max_path_entries} entries"
+
+
+@_conformance(Packet)
+def _packet(v: Packet, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    payload = v.payload
+    if isinstance(payload, Weather):
+        yield from _weather_report(payload, "$.payload", positioned=False)
+    if isinstance(payload, Telemetry) and payload.encoding != "classic":
+        yield "$.payload.encoding", "comment and Mic-E telemetry need a position report"
+    if isinstance(payload, MicE):
+        from . import _mic_e
+
+        try:
+            _mic_e.position_bytes(payload, v.header)
+            if v.header.destination is None:
+                for path, message in _header(
+                    _mic_e.resolve_header(v.header, payload), policy
+                ):
+                    if path == "$.destination":
+                        yield "$.header" + path[1:], message
+        except FieldError as exc:
+            yield "$.header.destination", str(exc)
+    if isinstance(payload, NMEA) and payload.symbol is not None:
+        from ._nmea_codec import destination_for, header_symbol
+
+        if v.header.destination is None:
+            generated = replace(v.header, destination=destination_for(payload.symbol))
+            for path, message in _header(generated, policy):
+                if path == "$.destination":
+                    yield "$.header" + path[1:], message
+        elif payload.symbol != header_symbol(v.header):
+            yield (
+                "$.payload.symbol",
+                (
+                    "NMEA symbol does not match the packet header;"
+                    " leave the destination out to have it generated"
+                ),
+            )
+
+
+# Status and messages -------------------------------------------------------
+
+
+@_conformance(Status)
+def _status(v: Status, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    yield from _text("text", v.text, None)
+    size = _size(v.text) + (7 if v.timestamp is not None else 0)
+    if v.grid is not None:
+        if v.text and not v.text.startswith(" "):
+            yield "$.text", "grid status text begins with a space"
+        size += len(v.grid.locator) + 2
+    if v.beam is not None:
+        size += 3
+    if size > 62:
+        yield "$.text", "status exceeds 62 bytes"
+
+
+@_conformance(Message)
+def _message(v: Message, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    yield from _text("text", v.text, 67)
+    reply = v.reply_ack
+    if reply is not None and v.message_id and len(v.message_id) + 1 + len(reply) > 5:
+        yield "$.reply_ack", "reply-ack ID and ack exceed five characters"
+
+
+@_conformance(Acknowledgment)
+def _ack(v: Acknowledgment, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    if v.reply_ack is not None and len(v.message_id) + 1 + len(v.reply_ack) > 5:
+        yield "$.reply_ack", "reply-ack ID and ack exceed five characters"
+
+
+@_conformance(AutoAnswer)
+def _auto_answer(v: AutoAnswer, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    suffix = 1 + len(v.previous_ack) if v.previous_ack is not None else 0
+    yield from _text("text", v.text, 67 - 3 - suffix)
+    if v.previous_ack is not None and len(v.previous_ack) > 2:
+        yield "$.previous_ack", "auto-answer acknowledgments have two characters"
+
+
+@_conformance(Bulletin, NWSBulletin)
+def _bulletin(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    yield from _text("text", v.text, 67)
+
+
+_CHANNEL_LIMITS = (7, 6, 5, 5, 4, 5, 4, 3, 3, 3, 2, 2, 2)
+
+
+@_conformance(TelemetryParameters, TelemetryUnits)
+def _labels(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    if not 1 <= len(v.channels) <= len(_CHANNEL_LIMITS):
+        yield "$.channels", "requires one to thirteen channels"
+    for i, (channel, limit) in enumerate(zip(v.channels, _CHANNEL_LIMITS)):
+        if channel is not None:
+            yield from _text(f"channels[{i}]", channel, limit, "|~{")
+
+
+@_conformance(TelemetryEquations)
+def _equations(
+    v: TelemetryEquations, policy: EnvelopePolicy | None
+) -> Iterator[Finding]:
+    if not 1 <= len(v.coefficients) <= 5:
+        yield "$.coefficients", "requires one to five channels"
+
+
+@_conformance(TelemetryBits)
+def _bits(v: TelemetryBits, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    yield from _text("project_title", v.project_title, 23, "|~{")
+
+
+def _nts_values(v: Any) -> list[str]:
+    if isinstance(v, NTSHeader):
+        return [
+            v.number,
+            ("TEST " if v.test else "") + NTS_PRECEDENCE_CODES[v.precedence],
+            v.handling or "",
+            v.originator,
+            v.check,
+            v.place,
+            v.time or "",
+            v.date,
+        ]
+    if isinstance(v, NTSAddress):
+        return list(v.lines)
+    if isinstance(v, NTSRouting):
+        return [v.received_from, v.received_at, v.sent_to, v.sent_at]
+    return [v.number if isinstance(v, NTSPhone) else v.text]
+
+
+@_conformance(NTSHeader, NTSAddress, NTSPhone, NTSText, NTSSignature, NTSRouting)
+def _nts(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    if isinstance(v, NTSHeader):
+        if not re.fullmatch(r"(?:SVC )?[1-9][0-9]*", v.number):
+            yield "$.number", "requires a positive number, optionally after SVC"
+        for name in ("originator", "check", "place", "date"):
+            if not getattr(v, name).strip():
+                yield f"$.{name}", "required preamble value is empty"
+        if not re.fullmatch(r"(?:ARL ?)?[0-9]+", v.check):
+            yield "$.check", "requires a word count, optionally after ARL"
+    if isinstance(v, NTSAddress) and not any(x.strip() for x in v.lines):
+        yield "$.lines", "address must identify a recipient"
+    if isinstance(v, NTSSignature) and not v.text.strip():
+        yield "$.text", "signature must identify the originating party"
+    yield from _text("record", "\\".join(_nts_values(v)), 64, "{|~")
+
+
+# Queries and responses -----------------------------------------------------
+
+_GENERAL_QUERIES = {"APRS", "IGATE", "WX"}
+_DIRECTED_QUERIES = {
+    "APRSD",
+    "APRSH",
+    "APRSM",
+    "APRSO",
+    "APRSP",
+    "APRSS",
+    "APRST",
+    "PING",
+}
+
+
+@_conformance(Query)
+def _query(v: Query, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    if v.name in _GENERAL_QUERIES and v.addressee is not None:
+        yield "$.addressee", "general queries have no addressee"
+    if v.name in _DIRECTED_QUERIES and v.addressee is None:
+        yield "$.addressee", "directed queries require an addressee"
+    if v.footprint is not None and (v.name != "APRS" or v.addressee is not None):
+        yield "$.footprint", "footprints apply to general APRS queries"
+    if v.heard_station is not None and v.name != "APRSH":
+        yield "$.heard_station", "a heard-station operand applies to APRSH"
+    known = _GENERAL_QUERIES | _DIRECTED_QUERIES
+    if v.arguments and (
+        v.name in known or v.footprint is not None or v.heard_station is not None
+    ):
+        yield "$.arguments", "raw arguments apply only to unknown queries"
+
+
+@_conformance(Footprint)
+def _footprint(v: Footprint, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    if v.radius_miles > 9999 or v.radius_miles != int(v.radius_miles):
+        yield "$.radius_miles", "requires whole miles in 0..9999"
+
+
+@_conformance(DirectStations)
+def _direct(v: DirectStations, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    yield from _text("stations", "Directs= " + " ".join(v.stations), 67)
+
+
+@_conformance(HeardStation)
+def _heard(v: HeardStation, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    if len(v.counts) != 8:
+        yield "$.counts", "requires eight hourly slots (None when unavailable)"
+    counts = " ".join("." if x is None else str(x) for x in v.counts)
+    yield from _text("counts", f"{v.station} HEARD: {counts}", 67)
+
+
+@_conformance(Trace)
+def _trace(v: Trace, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    yield from _text("header", str(v.header) + ":", 67)
+
+
+@_conformance(NMEA)
+def _nmea(v: NMEA, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    from . import _nmea as n
+    from ._nmea_codec import write_date, write_time
+
+    sentence = v.sentence
+    if isinstance(sentence, (n.GGA, n.GLL, n.RMC)):
+        active = (
+            sentence.fix_quality != "invalid"
+            if isinstance(sentence, n.GGA)
+            else sentence.fix_status == "active"
+        )
+        if active and sentence.time_utc is None:
+            yield "$.sentence.time_utc", "an active fix requires UTC time"
+        try:
+            write_time(sentence.time_utc)
+        except FieldError as exc:
+            yield "$.sentence.time_utc", str(exc)
+        if isinstance(sentence, n.RMC):
+            if active and sentence.date is None:
+                yield "$.sentence.date", "an active RMC fix requires a date"
+            try:
+                write_date(sentence.date)
+            except FieldError as exc:
+                yield "$.sentence.date", str(exc)
+    # The encoder computes a fresh checksum, so sending a sentence received with
+    # a bad one would make corrupt data look verified. Require explicit repair:
+    # clear checksum_valid (or omit the checksum) once the fields are trusted.
+    if v.metadata.checksum_valid is False:
+        yield (
+            "$.metadata.checksum_valid",
+            "NMEA checksum mismatch; clear checksum_valid to repair before sending",
+        )
+
+
+@_conformance(Capabilities)
+def _capabilities(v: Capabilities, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    if not v.tokens:
+        yield "$.tokens", "a capabilities report requires at least one token"
+    for i, token in enumerate(v.tokens):
+        if token.name in ("MSG_CNT", "LOC_CNT") and (
+            token.value is None or not token.value.isdigit()
+        ):
+            yield f"$.tokens[{i}].value", "counters require a decimal integer"
+
+
+# Places --------------------------------------------------------------------
+
+
+@_conformance(Item)
+def _item(v: Item, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    if len(v.name) < 3:
+        yield "$.name", "item names have at least three characters"
+
+
+# APRS101 pp.63-66 end every weather report with the optional software (S) and
+# unit (uuuu) codes and define no comment after them, so the decoder reads codes
+# only when they end the report. Text after them would hide the codes.
+WEATHER_CODES_LAST = (
+    "weather software/unit codes must end the report; a comment cannot follow them"
+)
+WEATHER_COMMENT_AS_CODES = "comment would be read back as weather software/unit codes"
+
+
+def _weather_comment(weather: Any, comment: str) -> str | None:
+    """Why a comment after weather data would not read back unchanged."""
+    if not comment:
+        return None
+    if weather.software_code or weather.device_code:
+        return WEATHER_CODES_LAST
+    from ._weather import CODES
+
+    if CODES.fullmatch(comment.encode("utf-8")):
+        return WEATHER_COMMENT_AS_CODES
+    return None
+
+
+def _weather_tail(
+    w: Weather, path: str, positioned: bool, policy: EnvelopePolicy
+) -> Iterator[Finding]:
+    """Codes or comment that the decoder would start reading as a bad field."""
+    from . import _weather as codec
+
+    compressed = positioned and w.wind_direction is None and w.wind_speed is None
+    diagnostics: list[Diagnostic] = []
+    try:
+        encoded = codec.write(
+            w, positioned=positioned, compressed=compressed, policy=policy
+        )
+        codec.read(
+            encoded if positioned else encoded[1:],
+            positioned=positioned,
+            compressed=compressed,
+            diagnostics=diagnostics,
+            policy=policy,
+        )
+    except APRSError:
+        return  # Missing slots and unencodable values are reported separately.
+    if diagnostics:
+        yield (
+            f"{path}.software_code" if w.software_code else f"{path}.comment",
+            "would be read back as the start of a malformed weather field",
+        )
+
+
+def _weather_exempt_bytes(extensions: Any, policy: EnvelopePolicy) -> int:
+    """Encoded weather bytes outside the 43-byte position-comment budget.
+
+    Uncompressed wind (ddd/sss) occupies the 7-byte data-extension slot, which
+    the budget still counts, leaving 36 comment bytes as for course/speed. The
+    other weather fields, and all of them when wind is in compressed csT, are
+    structured data rather than comment. Envelope limits still apply to them.
+    """
+    w = extensions.weather
+    if w is None:
+        return 0
+    from . import _weather
+
+    compressed_wind = w.wind_direction is None and w.wind_speed is None
+    encoded = _weather.write(
+        w, positioned=True, compressed=compressed_wind, policy=policy
+    )
+    return len(encoded) - (0 if compressed_wind else 7)
+
+
+@_conformance(Position, Object, Item)
+def _position(v: Position, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    """The encoded tail must read back as the same extensions and comment."""
+    if any(_located(v, policy)):
+        return  # Report structural slot errors without secondary comment errors.
+    try:
+        from ._dao import base_coordinates
+
+        latitude, longitude = base_coordinates(v)
+        if v.compression is None:
+            from ._position_codec import coordinate_bytes
+
+            coordinate_bytes(latitude, "latitude", v.ambiguity)
+            coordinate_bytes(longitude, "longitude", v.ambiguity)
+        extensions = v.extensions
+        if v.compression is not None:
+            from ._position_codec import compressed_bytes
+
+            _, extensions = compressed_bytes(v)
+        prefix = _extensions.write(
+            extensions,
+            v.symbol,
+            v.comment.encode("utf-8"),
+            policy or APRS_IS(),
+            coordinates=(v.latitude_deg, v.longitude_deg),
+        )
+    except CodecNotImplementedError:
+        return
+    except _extensions.Unrepresentable as exc:
+        yield exc.path, exc.message
+        return
+    except FieldError as exc:
+        yield "$.extensions", str(exc)
+        return
+    comment = v.comment.encode("utf-8")
+    problem = extensions.weather and _weather_comment(extensions.weather, v.comment)
+    if problem:
+        yield "$.comment", problem
+        return
+    if (
+        len(prefix)
+        - _weather_exempt_bytes(extensions, policy or APRS_IS())
+        + len(comment)
+        > 43
+    ):
+        yield "$.comment", "extensions and comment exceed 43 bytes"
+    try:
+        compressed = v.compression is not None
+        expected, _ = _extensions.read(
+            prefix, v.symbol, policy or APRS_IS(), compressed=compressed
+        )
+        actual, rest = _extensions.read(
+            prefix + comment, v.symbol, policy or APRS_IS(), compressed=compressed
+        )
+    except (CodecNotImplementedError, FieldError):
+        yield "$.comment", "contains extension syntax this version cannot decode"
+        return
+    # The extensions alone must read back as the same kinds; for example, a
+    # weather symbol reads a course/speed pair as wind (APRS101 p62).
+    sent, read = (
+        {f.name for f in fields(x) if getattr(x, f.name) is not None}
+        for x in (extensions, expected)
+    )
+    if sent != read:
+        added = " and ".join(sorted(read - sent))
+        for name in sorted(sent - read):
+            yield f"$.extensions.{name}", (
+                f"would be read back as {added}" if added else "would be lost"
+            )
+        if not sent - read:
+            yield "$.extensions", f"would be read back with {added}"
+        return
+    if (actual, rest) != (expected, comment):
+        yield "$.comment", "would be read back as a data extension"
+    else:
+        yield from _extensions.lookalikes(
+            actual, rest, v.symbol, compressed=v.compression is not None
+        )
+
+
+@_conformance(Position, Object, Item, MicE)
+def _located(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    policy = policy or APRS_IS()
+    e = v.extensions
+    if e.dao is not None and "dao" not in policy.extensions:
+        yield "$.extensions.dao", "requires dao extension"
+    if (
+        e.phg is not None
+        and e.phg.rate_per_hour is not None
+        and "phg_rate" not in policy.extensions
+    ):
+        yield "$.extensions.phg.rate_per_hour", "requires phg_rate extension"
+    symbol = (v.symbol.table_id, v.symbol.code)
+    primary = [
+        name
+        for name in ("motion", "phg", "range", "signal", "area")
+        if getattr(e, name) is not None
+        and not (isinstance(v, MicE) and name == "motion")
+    ]
+    if isinstance(v, MicE) and e.bearing is not None:
+        primary.insert(0, "bearing")  # DF needs course/speed in the comment slot.
+    if len(primary) > 1:
+        yield f"$.extensions.{primary[-1]}", "shares the data-extension slot"
+    if e.bearing is not None and e.motion is None:
+        yield "$.extensions.bearing", "DF bearing follows a course/speed extension"
+    if e.storm is not None:
+        if symbol != ("/" if e.storm.predicted else "\\", "@"):
+            yield "$.symbol", "storm symbol must agree with predicted/current"
+        if e.motion is None:
+            yield "$.extensions.motion", "storm reports require direction and speed"
+    for name, required in (
+        ("bearing", ("/", "\\")),
+        ("signal", ("/", "\\")),
+        ("area", ("\\", "l")),
+        ("signpost", ("\\", "m")),
+    ):
+        if getattr(e, name) is not None and symbol != required:
+            yield "$.symbol", f"{name} requires symbol {''.join(required)}"
+    if e.weather is not None:
+        if v.symbol.code not in "_W":
+            yield "$.symbol", "located weather uses the weather symbol"
+        if primary or e.bearing is not None:
+            yield "$.extensions.weather", "weather uses the wind extension slot"
+        yield from _weather_report(e.weather, "$.extensions.weather", positioned=True)
+        yield from _weather_tail(e.weather, "$.extensions.weather", True, policy)
+    if e.telemetry is not None:
+        allowed = (
+            ("mic_e_hex", "mic_e_binary", "base91_comment")
+            if isinstance(v, MicE)
+            else ("base91_comment",)
+        )
+        if e.telemetry.encoding not in allowed:
+            yield "$.extensions.telemetry.encoding", "requires " + " or ".join(allowed)
+    if isinstance(v, MicE):
+        if e.motion is None:
+            yield "$.extensions.motion", (
+                "Mic-E always carries a speed; use Motion(None, 0) for a"
+                " stationary report with unknown course"
+            )
+        elif e.motion.speed_knots is None:
+            yield "$.extensions.motion.speed_knots", "Mic-E always carries a speed"
+        yield from _mic_e_status(v, policy)
+        return
+    if v.compression is not None:
+        yield from _compressed(v, policy)
+
+
+def _mic_e_status(v: MicE, policy: EnvelopePolicy) -> Iterator[Finding]:
+    """The type code and status text must read back as composed."""
+    from . import _mic_e
+
+    # Coordinates and a PHGR rate are reported at their own paths (the
+    # destination, phg.rate_per_hour); encoding the status would repeat them.
+    try:
+        _mic_e._base_coordinates(v)
+    except APRSError:
+        return
+    phg = v.extensions.phg
+    if phg and phg.rate_per_hour is not None and "phg_rate" not in policy.extensions:
+        return
+    try:
+        _mic_e.device_parts(v.device_code, policy)
+    except APRSError as error:
+        yield "$.device_code", str(error)
+        return
+    if v.extensions.telemetry and any(_telemetry(v.extensions.telemetry, policy)):
+        return  # Channel findings are reported when walking the telemetry model.
+    try:
+        device, decoded_extensions, comment = _mic_e.read_status(
+            _mic_e.write_status(v, policy), v.symbol, policy
+        )
+    except APRSError as error:
+        yield getattr(error, "path", "$.device_code"), getattr(
+            error, "message", str(error)
+        )
+        return
+    for member in fields(v.extensions):
+        name = member.name
+        if name != "motion" and (
+            (getattr(v.extensions, name) is None)
+            != (getattr(decoded_extensions, name) is None)
+        ):
+            yield "$.extensions." + name, "would be lost or introduced by Mic-E status encoding"
+    if (device, comment) != (v.device_code, v.comment.encode()):
+        yield "$.comment", "would be read back as a different Mic-E type code"
+
+
+def _compressed(v: Any, policy: EnvelopePolicy) -> Iterator[Finding]:
+    e, csT = v.extensions, v.compression
+    if v.symbol.table_id in "0123456789":
+        yield "$.symbol.table_id", "compressed numeric overlays require a-j, not 0-9"
+    if any(getattr(e, n) is not None for n in ("phg", "signal", "area", "bearing")):
+        yield "$.extensions", "not available in the compressed position layout"
+    weather_symbol = v.symbol.code == "_" or (
+        v.symbol.code == "W"
+        and ("w_symbol_motion" not in policy.extensions or e.weather is not None)
+    )
+    if weather_symbol and e.motion is not None:
+        # The decoder reads csT course/speed as wind under a weather symbol.
+        yield "$.extensions.motion", "would be read back as weather"
+    altitude = e.altitude is not None and e.altitude.encoding == "compressed"
+    if csT.ignored:
+        if e.motion is not None or e.range is not None or altitude:
+            yield "$.compression", "ignored csT cannot carry motion, range or altitude"
+        return
+    if not altitude and e.motion is None and e.range is None and e.weather is None:
+        yield "$.compression", "csT requires motion, range, altitude or weather wind"
+    if (csT.nmea_source == "GGA") != altitude:
+        yield "$.compression", "compressed altitude and the GGA source go together"
+    if altitude and (e.motion is not None or e.range is not None):
+        yield "$.compression", "compressed altitude shares the motion/range slot"
+
+
+# Weather and telemetry -----------------------------------------------------
+
+
+def _weather_report(w: Weather, path: str, positioned: bool) -> Iterator[Finding]:
+    if positioned and w.timestamp is not None:
+        yield f"{path}.timestamp", "located weather uses the report timestamp"
+    if not positioned and w.timestamp is None:
+        yield f"{path}.timestamp", "positionless weather requires an MDHM timestamp"
+    for name in ("wind_direction", "wind_speed", "gust", "temperature"):
+        if getattr(w, name) is None:
+            yield (
+                f"{path}.{name}",
+                "required report slot; use Measurement(None, unit) if unavailable",
+            )
+    if not positioned and w.snow_24h is not None:
+        yield f"{path}.snow_24h", "positionless reports cannot carry snow"
+
+
+@_conformance(Weather)
+def _weather(v: Weather, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    policy = policy or APRS_IS()
+    if "weather_extensions" not in policy.extensions:
+        for name in ("radiation", "battery_voltage"):
+            if getattr(v, name) is not None:
+                yield f"$.{name}", "requires weather_extensions"
+    if (
+        "water_height_tenths" not in policy.extensions
+        and v.water_height
+        and v.water_height.measurement.value is None
+    ):
+        yield "$.water_height", "unavailable height requires water_height_tenths"
+    problem = _weather_comment(v, v.comment)
+    if problem:
+        yield "$.comment", problem
+    elif v.comment:
+        from . import _weather as codec
+
+        try:
+            back, _ = codec.read(codec.write(v, policy=policy)[1:], policy=policy)
+        except APRSError:
+            pass  # Missing slots and unencodable values are reported separately.
+        else:
+            if back.comment != v.comment:
+                yield "$.comment", "comment would be read back as weather fields"
+    if not problem:
+        yield from _weather_tail(v, "$", False, policy)
+    for name in (
+        "wind_direction",
+        "wind_speed",
+        "gust",
+        "temperature",
+        "humidity",
+        "pressure",
+        "rain_1h",
+        "rain_24h",
+        "rain_since_midnight",
+        "snow_24h",
+        "luminosity",
+        "rain_counter",
+        "radiation",
+        "battery_voltage",
+    ):
+        reading: Measurement | None = getattr(v, name)
+        if reading is None or reading.value is None:
+            continue
+        low = {"celsius": -273.15, "fahrenheit": -459.67}.get(reading.unit, 0)
+        high = {"humidity": 100, "wind_direction": 360}.get(name, float("inf"))
+        if not low <= reading.value <= high:
+            yield f"$.{name}.value", "reading outside the quantity's range"
+    if v.radiation is not None and v.radiation.value is not None:
+        from . import _weather as codec
+
+        try:
+            codec.radiation_code(v.radiation.value)
+        except FieldError:
+            yield "$.radiation.value", "requires two digits times a power of ten"
+    volts = v.battery_voltage.value if v.battery_voltage is not None else None
+    if volts is not None and round(volts * 10) > 999:
+        yield "$.battery_voltage.value", "exceeds the three-digit tenths field"
+    if v.software_code is not None and len(v.software_code) != 1:
+        yield "$.software_code", "requires one character"
+    if v.device_code is not None and not 2 <= len(v.device_code) <= 4:
+        yield "$.device_code", "requires two to four characters"
+
+
+@_conformance(Telemetry)
+def _telemetry(v: Telemetry, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    policy = policy or APRS_IS()
+
+    def analog(low: int, high: int, missing: tuple[int, ...] = ()) -> Iterator[Finding]:
+        for i, value in enumerate(v.analog):
+            if i in missing and value is None:
+                continue
+            if (
+                value is None
+                or not float(value).is_integer()
+                or not low <= value <= high
+            ):
+                yield f"$.analog[{i}]", f"requires an integer in {low}..{high}"
+
+    if v.encoding == "classic":
+        if len(v.analog) != 5:
+            yield "$.analog", "classic telemetry has five analog channels"
+        if len(v.digital) != 8 or None in v.digital:
+            yield "$.digital", "classic telemetry has eight binary channels"
+        yield from analog(0, 999 if "expanded_telemetry" in policy.extensions else 255)
+        if v.sequence != "MIC" and not (
+            isinstance(v.sequence, int) and v.sequence <= 999
+        ):
+            yield "$.sequence", "classic telemetry requires 0..999 or MIC"
+    elif v.encoding in ("mic_e_hex", "mic_e_binary"):
+        if v.encoding == "mic_e_hex" and "mice_hex_as_device" in policy.extensions:
+            yield "$.encoding", "hexadecimal telemetry conflicts with mice_hex_as_device"
+        counts = (2, 5) if v.encoding == "mic_e_hex" else (5,)
+        if len(v.analog) not in counts:
+            yield "$.analog", f"{v.encoding} carries {' or '.join(map(str, counts))} channels"
+        missing = (
+            (1, 3, 4)
+            if v.encoding == "mic_e_hex"
+            and len(v.analog) == 5
+            and all(v.analog[i] is None for i in (1, 3, 4))
+            else ()
+        )
+        yield from analog(0, 255, missing)
+        if v.digital:
+            yield "$.digital", "Mic-E telemetry has no digital channels"
+        if v.sequence is not None:
+            yield "$.sequence", "Mic-E telemetry has no sequence"
+        if v.comment:
+            yield "$.comment", "Mic-E telemetry replaces the status text"
+    elif v.encoding == "base91_comment":
+        if "base91_telemetry" not in policy.extensions:
+            yield "$.encoding", "requires base91_telemetry extension"
+        if not (isinstance(v.sequence, int) and v.sequence <= 8280):
+            yield "$.sequence", "base91 telemetry requires a sequence in 0..8280"
+        if not v.analog:
+            yield "$.analog", "base91 telemetry requires an analog channel"
+        yield from analog(0, 8280)
+        if v.digital and (
+            len(v.analog) != 5 or len(v.digital) != 8 or None in v.digital
+        ):
+            yield "$.digital", "eight binary channels follow five analog channels"
+        if v.comment:
+            yield "$.comment", "base91 telemetry uses the report comment"
+
+
+@_conformance(LegacyPosition)
+def _legacy(v: LegacyPosition, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    if not policy or not policy.legacy_positions:
+        yield "$", "legacy position requires legacy_positions=True"
+
+
+@_conformance(Maidenhead)
+def _maidenhead(v: Maidenhead, policy: EnvelopePolicy | None) -> Iterator[Finding]:
+    if v.symbol is not None:
+        yield "$.symbol", "bracketed Maidenhead beacons have no symbol field"

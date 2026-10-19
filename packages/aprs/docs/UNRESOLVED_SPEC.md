@@ -1,0 +1,235 @@
+# Unresolved specification questions
+
+This module validates the modeled baseline without claiming complete APRS or
+NMEA conformance. Validation has two tiers: constructors reject values that cannot
+exist on the wire or contradict another field, and conformance rules report APRS
+limits that a transmitter could still break. Received packets keep conformance
+findings as diagnostics; `serialize_packet` refuses to send them. The questions below are deliberately not resolved by guessing
+values, inventing sensor observations, or treating interoperability examples as
+normative specifications. Implemented layouts and selected receiver policies are documented in
+[API_COVERAGE.md](API_COVERAGE.md).
+
+APRS101 page numbers below are printed page numbers. PDF viewer pages are ten
+higher. The [APRS 1.1 addendum](https://www.aprs.org/aprs11.html) evolves over time;
+later proposals linked from it are not automatically settled baseline rules.
+
+## Text encoding: ASCII and UTF-8
+
+**Authority:** [APRS101](https://www.aprs.org/doc/APRS101.PDF) and the 1.1
+addendum specify printable 7-bit ASCII for all text. The 1.1 page states that
+"all new updates and additions to APRS since 2004 are found on the APRS 1.2
+proposed draft addendum", whose
+[UTF-8 International Alphabets note](https://www.aprs.org/aprs12/utf-8.txt)
+(WB4APR, 17 December 2009) allows UTF-8 in message, bulletin and announcement
+text, in status text after the optional timestamp, in position/object free text
+after the fixed extension fields, and in Mic-E status text. It still recommends
+ASCII for global communication. The 1.2 document is a proposed draft, so this
+is adopted compatibility guidance, not a ratified baseline requirement. APRS-IS
+services such as aprs.fi decode UTF-8 in these fields.
+
+**Current behavior:** received free text decodes as UTF-8. The policy's
+`byte_fallback` independently selects Latin-1 plus a diagnostic or rejection
+when UTF-8 cannot decode. The exact received bytes remain in `original_wire`.
+`utf8_text` permits non-ASCII only in the designated message, bulletin, status,
+position/object/item and Mic-E free-text fields. Without it, intelligible
+non-ASCII is retained with conformance diagnostics and cannot be sent.
+Protocol tokens remain ASCII under every policy. Lengths count encoded bytes.
+See [packet policies](ENVELOPE_POLICIES.md) for defaults and overrides.
+
+**What remains unresolved:** these are explicitly selected compatibility rules,
+not evidence that the proposed guidance was ratified.
+
+## NMEA versions, missing fix fields and receiver profiles
+
+**Authority:** [APRS101 chapter 6, p25](https://www.aprs.org/doc/APRS101.PDF#page=35)
+references NMEA 0183 version 2.0 but does not reproduce its sentence tables. The
+[NMEA standard](https://www.nmea.org/nmea-0183.html) is licensed; its complete 2.0
+tables were unavailable for this implementation. The 1.1 addendum tentatively
+corrects the printed WPT name to WPL.
+
+**Current behavior:** GGA/GLL/RMC coordinates accept explicit `None` for invalid
+fixes, but their keys remain required. Time, and the RMC date, remain required
+even for a void fix. No zero position, clock, date, talker ID or usable-fix flag
+is invented. GGA quality remains 0..8; newer mode fields are not represented.
+This is a limited model contract, not proof that absent times are prohibited by
+every NMEA version. GGA/GLL/RMC/VTG/WPL codecs preserve these requirements. Unsupported sentences stay opaque.
+
+**What resolves it:** consult the versioned normative sentence tables and select
+the intended core and receiver extensions before changing omission semantics,
+sentence lengths, modes, quality codes, waypoint limits or checksum requirements.
+[Trimble's GGA table](https://receiverhelp.trimble.com/alloy-gnss/en-us/nmea0183-messages-gga.html),
+[GLL table](https://receiverhelp.trimble.com/alloy-gnss/en-us/nmea0183-messages-gll.html),
+[Garmin GPS18x §4.2](https://static.garmin.com/pumac/GPS_18x_Tech_Specs.pdf), and
+[NovAtel GGA](https://docs.novatel.com/OEM7/Content/Logs/GPGGA.htm) document receiver
+profiles; for example, NovAtel includes quality 9. They do not establish universal
+NMEA 2.0 rules.
+
+## NMEA reported precision and evidence
+
+**Authority:** [Trimble VTG](https://receiverhelp.trimble.com/alloy-gnss/en-us/nmea0183-messages-vtg.html)
+reports one speed in knots and km/h. [NovAtel RMC](https://docs.novatel.com/OEM7/Content/Logs/GPRMC.htm)
+describes date and variation, but a two-digit year does not identify a century.
+
+**Current behavior:** `VTG.speed_knots` and `speed_kmh_reported` remain separately
+reported observations; agreement is not enforced because numeric fields do not
+retain the precision needed to compare rounded wire readings. The encoder preserves both reported observations. Calendar validation rejects
+impossible dates, allowing February 29 in YY=00 without assigning a century.
+`checksum_valid` requires `checksum=True`, but is evidence about original
+input, not certification of an edited sentence. The model does not store
+checksums; the encoder computes one, and refuses to send a sentence still
+marked `checksum_valid=False` until the caller repairs it.
+
+**What resolves it:** define which speed is authoritative for composition and
+retain each received field's precision, or define an explicitly selected rounding
+policy. Supply a century context only if an application needs an absolute date.
+
+## Base91 comment telemetry's channel minimum
+
+**Authority:** the author's [specification §3.7](https://github.com/hessu/aprs-specs/blob/master/aprs-base91-comment-telemetry.txt)
+requires at least one channel; the same author's [README](https://github.com/hessu/aprs-specs#readme)
+allows sequence-only telemetry. The extension describes itself as experimental.
+
+**Current behavior:** conformance for `base91_comment` follows §3.7: a sequence
+in 0..8280 and at least one analog value are required. Digital data follows all five analog fields.
+Sequence-only data is unsupported by this model contract, not declared universally
+malformed on receipt; the core decoder retains sequence-only blocks as comment text.
+
+**What resolves it:** choose a versioned extension profile or obtain an author
+clarification reconciling the documents. Do not silently expand the baseline by
+filling missing channels with zero.
+
+## Weather proposals, unavailable readings and water gauges
+
+**Authority:** [APRS101 pp63–66](https://www.aprs.org/doc/APRS101.PDF#page=73),
+[1.1 weather clarification](https://www.aprs.org/aprs11/spec-wx.txt), and
+[1.2 weather proposals](https://www.aprs.org/aprs12/weather-new.txt).
+
+**Current behavior:** conformance requires direction, speed, gust and
+temperature slots in a complete report. Positionless reports require MDHM; located
+reports use the enclosing position time. Explicit unavailable readings satisfy
+slot presence. There is no extra requirement for a numeric observation. A
+`Weather` model may be incomplete; only sending an incomplete report is refused.
+
+The later minimum flood example omits gust; proposed water units and examples
+disagree across the documents. `WaterHeight` remains a signed measurement with
+explicit feet/meters and optional external datum metadata. With opt-in `water_height_tenths`, the two water-level
+spellings are told apart by their syntax: a decimal value (`F20.1`, `f-1.2`) is
+the 1.1 clarification's feet or meters, and four bytes without a decimal point
+(`F0123`, `F-042`, `F....`) are the 1.2 proposal's tenths of a foot. The 1.2
+proposal's `Xnnn` radiation (two digits times a power of ten, nSv/h) and `Vnnn`
+battery volts (tenths) decode into `radiation` and `battery_voltage`, with `...`
+for unavailable under the independent `weather_extensions` switch. Without
+`water_height_tenths`, the older whole-number F/f reading is retained (so
+`F1234` means 1234 feet rather than 123.4 feet). Both factories leave that
+reinterpretation disabled while enabling additive X/V fields. The extension selects a meaning, not a detected version.
+`disputed_knots_or_mph` explicitly records unresolved velocity units and must
+not be converted without a selected profile.
+
+**What resolves it:** a chosen, cited water/flood profile and clarification of
+units, unavailable markers, field widths and mandatory slots. The blanket baseline
+must not be replaced by an inconsistent proposal. An application may reject
+reports with no numeric observations, but that is separate from protocol validity.
+
+## Telemetry equations and empty definition slots
+
+**Authority:** [APRS101 pp69–70](https://www.aprs.org/doc/APRS101.PDF#page=79)
+allows the coefficient list to stop at any field; its relationship to complete
+triples, interior empty fields and default coefficients is not fully explicit.
+
+**Current behavior:** `Calibration` requires all three coefficients.
+`TelemetryEquations` can omit trailing channels or preserve a `None` channel, but cannot claim an
+incomplete trailing triple is an evaluable polynomial. PARM/UNIT channel lengths
+and delimiters are checked; `None` and empty labels are retained without invented
+labels. No parser or encoder silently inserts calibration coefficients. The
+BITS project segment is limited to 23 characters; exact future comma framing
+must be checked against the diagram when implementing its codec.
+
+**What resolves it:** agree whether to model transmitted coefficient lists or
+complete evaluable calibrations separately; verify empty/interior-field semantics
+and delimiter accounting before implementing a wire codec.
+
+## Direction-finding mappings and PHG extensions
+
+**Authority:** [APRS101 pp28–30](https://www.aprs.org/doc/APRS101.PDF#page=38),
+[original protocol notes](https://www.aprs.org/APRS-docs/PROTOCOL.TXT),
+[DF notes](https://www.aprs.org/APRS-docs/DF.TXT), and
+[PHG display guidance](https://www.aprs.org/symbols/PHGmobile.txt), and the
+[PHGR proposal dated 26 February 2003](https://www.aprs.org/aprs12/probes.txt).
+
+**Current behavior:** APRS101's p30 table is the baseline, following Rule 1
+(APRS101 plus the 1.1 addendum); the original protocol notes predate APRS101,
+omit Q=6 and differ at low Q values, and are not used. `Bearing` takes
+`hit_ratio` (N in eighths) or `manual` (N=9), `range_miles` (2^R) and
+`accuracy_deg` (the Q bound, `None` for a useless bearing); with none set, the
+NRQ is meaningless (000). The NRQ digits are derived properties, so they cannot
+disagree with the values. The WB2OSZ APRS 1.2 reference reproduces the same
+quality table. With `phg_rate`, PHGR uses the documented
+`PHGabcdr/` layout: `r` is `0`–`9` or `A`–`Z` (0–35 reports per hour), with zero
+denoting an unscheduled transmission. Its slash is required and consumed by the
+public decoder. The encoder emits the rate and slash before other extensions.
+The older PHG form accepts an optional slash before the comment; surrounding
+ASCII whitespace is trimmed for PHG comments. Other position comments and message
+text do not acquire this normalization. With the extension disabled, text
+after baseline PHG is preserved, including separators, rate-shaped text and
+whitespace. This follows the PHGR note's delimiter
+convention, not a universal rule in APRS101 (p20 says there is no separator unless
+otherwise specified). Display half-radius is a documented display choice,
+not an independently transmitted observation.
+
+**What resolves it:** a revised DF specification that replaces APRS101's table.
+Do not silently combine conflicting tables or treat UI guidance as another
+on-air field.
+
+## NWS, historical beacons and vendor weather
+
+**Authority:** [APRS101 pp25,62,74,89,103](https://www.aprs.org/doc/APRS101.PDF),
+the [1.1 WXSVR links](https://www.aprs.org/aprs11.html), and
+[Peet Bros serial specification](https://www.peetbros.com/shop/custom.aspx?recid=29).
+
+**Current behavior:** NWS transport addressee/ID/text constraints are checked,
+but a full WXSVR alert grammar is not claimed. Maidenhead bracket-beacon symbol
+and comment suffixes lack verified historical placement. Agrelo's three-digit
+bearing/one-digit quality layout is known, but exact reference and quality
+semantics remain unverified. RawWeather checks its declared prefix only; hardware
+and mode aliases are documented, and decoded observations are external evidence.
+Detailed Peet layouts exist; absence of a codec is an implementation boundary,
+not absence of an authoritative vendor grammar.
+
+**What resolves it:** retrieve the specific WXSVR/historical/Agrelo grammar, and
+select Peet device/mode/rain-gauge profiles before interpretation. Raw bytes remain
+the content of explicit raw models. Editing annotations does not edit those bytes.
+
+## Names, lifecycles, reply-ack and authoring policy
+
+**Authority:** [APRS101 pp57–61](https://www.aprs.org/doc/APRS101.PDF#page=67),
+[object clarification](https://www.aprs.org/aprs11/Objects.txt),
+[names and spaces](https://www.aprs.org/aprs11/aprs-names-and-spaces.txt), and
+[reply-ack format](https://www.aprs.org/aprs11/replyacks.txt).
+
+**Current behavior:** standard killed Objects still require location and timestamp;
+Items still require location. Detailed object grammar takes precedence over the
+contradictory overview's optional-timestamp wording. Semantic names exclude outer
+padding but do not impose every waypoint-friendly punctuation recommendation.
+Reply-ack is one `reply_ack` suffix on the message or acknowledgment ID, so the
+two cannot disagree; conformance checks that the combined field fits five
+characters, and exact two-character halves are not forced. Truncated historical objects cannot construct the required public fields and
+remain Malformed; no missing timestamp or position is invented.
+
+**What resolves it:** a documented compatibility profile for truncated kills,
+obsolete reports, stricter name conventions or shorter reply-ack halves. These
+choices must not weaken strict modern construction silently.
+
+## Quantization and wire precision
+
+Physical measurements and some derived fields can have more precision or a
+larger magnitude than a selected wire format can express. Current semantic
+validation is not universal representability validation. Encoders must
+choose and document exact conversion, rounding, saturation-versus-rejection and
+field-budget rules. They must not round implicitly in constructors, truncate text,
+reuse stale raw evidence, or invent unavailable data. The original APRS101 widths
+and the exact selected extension's rules remain authoritative for that encoder.
+
+Mandatory symbol facts, ordinary status/message text, and NMEA talker metadata
+are explicit constructor inputs. Empty text is valid when supplied; missing text
+in recovered data is not an empty observation. Ordinary JSON import requires the
+same facts as Python construction, so incomplete repair data remains incomplete.
