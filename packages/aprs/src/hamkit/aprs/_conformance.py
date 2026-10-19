@@ -651,7 +651,7 @@ def _located(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
         yield from _mic_e_status(v, policy)
         return
     if v.compression is not None:
-        yield from _compressed(v)
+        yield from _compressed(v, policy)
 
 
 def _mic_e_status(v: MicE, policy: EnvelopePolicy) -> Iterator[Finding]:
@@ -685,14 +685,15 @@ def _mic_e_status(v: MicE, policy: EnvelopePolicy) -> Iterator[Finding]:
         yield "$.comment", "would be read back as a different Mic-E type code"
 
 
-def _compressed(v: Any) -> Iterator[Finding]:
+def _compressed(v: Any, policy: EnvelopePolicy) -> Iterator[Finding]:
     e, csT = v.extensions, v.compression
     if v.symbol.table_id in "0123456789":
         yield "$.symbol.table_id", "compressed numeric overlays require a-j, not 0-9"
     if any(getattr(e, n) is not None for n in ("phg", "signal", "area", "bearing")):
         yield "$.extensions", "not available in the compressed position layout"
     weather_symbol = v.symbol.code == "_" or (
-        v.symbol.code == "W" and e.weather is not None
+        v.symbol.code == "W"
+        and ("w_symbol_motion" not in policy.extensions or e.weather is not None)
     )
     if weather_symbol and e.motion is not None:
         # The decoder reads csT course/speed as wind under a weather symbol.

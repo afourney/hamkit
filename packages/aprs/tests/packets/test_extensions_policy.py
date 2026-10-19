@@ -16,6 +16,7 @@ def test_factory_defaults_and_explicit_empty(factory):
     assert set(default.extensions) == set(a.SUPPORTED_EXTENSIONS) - {
         "mice_hex_as_device",
         "water_height_tenths",
+        "w_symbol_motion",
     }
     assert factory(extensions=set()).extensions == ()
     explicit = factory(extensions={"mice_device_ids"}, max_information_bytes=0)
@@ -77,6 +78,7 @@ CATALOG = [
     ("phg_rate", "comment", True),
     ("weather_extensions", "additive", True),
     ("water_height_tenths", "reinterpretive", False),
+    ("w_symbol_motion", "reinterpretive", False),
 ]
 
 

@@ -42,6 +42,40 @@ def outcome(value: Any, policy: a.EnvelopePolicy) -> tuple[str | None, Any]:
     return encode(value, policy)
 
 
+def needs_context(payload: Any) -> bool:
+    """Payloads whose encoding depends on the packet header."""
+    return isinstance(payload, a.MicE) or (
+        isinstance(payload, a.NMEA) and payload.symbol is not None
+    )
+
+
+def payload_outcome(value: a.Packet, policy: a.EnvelopePolicy) -> Any:
+    try:
+        return a.serialize_payload(value.payload, policy=policy)
+    except a.ContextRequiredError:
+        assert needs_context(value.payload), "only Mic-E and NMEA symbols need context"
+        return "context"
+    except (a.APRSError, TypeError) as exc:
+        return error_json(exc)
+
+
+def payload_relative(error: dict[str, Any]) -> dict[str, Any] | None:
+    """The refusal serialize_payload gives: payload findings, made relative.
+
+    Header findings and envelope size limits ("information exceeds N bytes",
+    reported at $.payload) belong to the packet, not the payload alone.
+    """
+    if error["type"] != "ConformanceError":
+        return error
+    found = [
+        {**d, "path": "$" + d["path"][len("$.payload") :]}
+        for d in error["diagnostics"]
+        if (d["path"] == "$.payload" or d["path"].startswith("$.payload."))
+        and not d["message"].startswith("information exceeds ")
+    ]
+    return {"type": "ConformanceError", "diagnostics": found} if found else None
+
+
 def check_encoding(
     row: dict[str, Any], value: Any, policy: a.EnvelopePolicy, *, received: bool
 ) -> None:
@@ -77,21 +111,34 @@ def check_encoding(
         if received:
             same_semantics(clean, decoded)
         assert outcome(without_evidence(decoded), policy) == (sent, None)
+    payload = payload_outcome(value, policy)
     if row["reencoded"] is None:
+        # Line framing refuses exactly as serialize_packet does, and the payload
+        # alone is refused for its own findings (header-only refusals aside).
+        try:
+            a.serialize_tnc2_line(value, policy=policy)
+            line = None
+        except (a.APRSError, TypeError) as exc:
+            line = error_json(exc)
+        assert line == error
+        relative = payload_relative(error)
+        # A Mic-E destination is half its encoding, so the payload alone is
+        # refused for what it can see; the packet check covers the rest.
+        if payload != "context" and not needs_context(value.payload):
+            if relative is None:
+                assert isinstance(payload, bytes), payload
+            else:
+                assert payload == relative
         return
     wire = row["reencoded"].encode("latin-1")
     # The payload alone encodes to the same information field, unless it needs
     # header context (Mic-E, NMEA symbols). An unknown Mic-E message is refused
     # outright without its destination.
-    try:
-        information = a.serialize_payload(value.payload, policy=policy)
-    except a.ContextRequiredError:
-        information = None
-    except a.ConformanceError:
-        assert isinstance(value.payload, a.MicE) and value.payload.message == "unknown"
-        information = None
-    if information is not None:
-        assert information == wire.partition(b":")[2]
+    if isinstance(payload, bytes):
+        assert payload == wire.partition(b":")[2]
+    elif payload != "context":
+        p = value.payload
+        assert isinstance(p, a.MicE) and p.message == "unknown", payload
     if b"\r" in wire or b"\n" in wire:
         with pytest.raises(a.EnvelopeError):
             a.serialize_tnc2_line(value, policy=policy)

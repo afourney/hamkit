@@ -45,6 +45,11 @@ def same_semantics(x: Any, y: Any, path="$") -> None:
         for i, (v, w) in enumerate(zip(x, y)):
             same_semantics(v, w, f"{path}[{i}]")
     elif isinstance(x, (float, int)) and not isinstance(x, bool):
+        if path.endswith((".wind_direction.value", ".course_deg")) and {x, y} == {
+            0,
+            360,
+        }:
+            return  # Both are north; north is sent as 360 (APRS101 p27).
         assert math.isclose(x, y, abs_tol=1e-8, rel_tol=1e-9), (path, x, y)
         if x == y == 0:
             assert math.copysign(1, x) == math.copysign(1, y), (

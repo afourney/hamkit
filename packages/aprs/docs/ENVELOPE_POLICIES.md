@@ -37,7 +37,7 @@ or `None`. Zero is a real limit. Unknown factory overrides raise `TypeError`.
 `RF()` and `APRS_IS()` are optional factories returning the **same type**. Both
 default to `utf8_text`, `dao`, `base91_telemetry`, `mice_device_ids`,
 `expanded_telemetry`, `phg_rate`, and `weather_extensions`. Neither enables
-`mice_hex_as_device` or `water_height_tenths`.
+`mice_hex_as_device`, `water_height_tenths` or `w_symbol_motion`.
 The public codec defaults are the resolved result of `APRS_IS()`.
 An explicit extension collection replaces the entire default set:
 
@@ -80,6 +80,7 @@ do not silently enable every [1.2 proposal](https://www.aprs.org/aprs12.html).
 | `phg_rate`            | PHGR rate and delimiter, optional PHG separator, documented PHG comment whitespace normalization                                                                          | Decode baseline PHG; preserve following rate-shaped text, separators and whitespace as comment                                                                                                                                                           |
 | `weather_extensions`  | X radiation and V battery voltage                                                                                                                                         | Original weather fields; X/V are not sensor fields                                                                                                                                                                                                       |
 | `water_height_tenths` | Interpret fixed-width F water height in tenths of a foot, including unavailable F....                                                                                     | Preserve the older decimal/whole F/f feet/meters interpretation                                                                                                                                                                                          |
+| `w_symbol_motion`     | Read a course/speed after the /W or \W symbol as station motion when no weather field follows                                                                             | /W and \W are weather symbols, interchangeable with \_, so the course/speed is wind                                                                                                                                                                      |
 
 The catalog is exported as `SUPPORTED_EXTENSIONS`, with `Extension` and
 `ByteFallback` annotation aliases and typed `PolicyOverrides` factory keywords. Only implemented behavior has an identifier.
@@ -112,11 +113,11 @@ recovers the same value. Unavailable `F....` requires the extension.
 `ExtensionKind`. Every supported identifier must be classified explicitly.
 Factories enable only `additive` and the approved `comment` category:
 
-| Class            | Current identifiers                                      | Factory default |
-| ---------------- | -------------------------------------------------------- | --------------- |
-| `additive`       | `utf8_text`, `expanded_telemetry`, `weather_extensions`  | Enabled         |
-| `comment`        | `dao`, `base91_telemetry`, `mice_device_ids`, `phg_rate` | Enabled         |
-| `reinterpretive` | `mice_hex_as_device`, `water_height_tenths`              | Disabled        |
+| Class            | Current identifiers                                            | Factory default |
+| ---------------- | -------------------------------------------------------------- | --------------- |
+| `additive`       | `utf8_text`, `expanded_telemetry`, `weather_extensions`        | Enabled         |
+| `comment`        | `dao`, `base91_telemetry`, `mice_device_ids`, `phg_rate`       | Enabled         |
+| `reinterpretive` | `mice_hex_as_device`, `water_height_tenths`, `w_symbol_motion` | Disabled        |
 
 The consistent rule is that a convention changing the numeric or type meaning
 of an existing encoded field requires explicit opt-in. Recognizing structured

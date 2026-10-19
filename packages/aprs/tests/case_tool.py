@@ -189,7 +189,7 @@ def propose(paths: list[Path], apply: bool) -> int:
                 changed += 1
                 print(f"{path.name} {row['id']}:")
                 for key in ("decoded", "reencoded", "encoding_error"):
-                    if old.get(key) != row[key]:
+                    if not same(old.get(key), row[key]):
                         print(f"  {key}: {json.dumps(old.get(key))}")
                         print(f"  {' ' * len(key)}->{json.dumps(row[key])}")
         if apply and not same(new, rows):

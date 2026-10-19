@@ -342,10 +342,14 @@ def _decode_position(
             value = getattr(primary, name)
             if value is not None:
                 extensions = replace(extensions, **{name: value})
-        # csT course/speed is wind under a weather symbol (under W, only when
-        # weather fields follow; see _extensions.weather_follows).
+        # csT course/speed is wind under a weather symbol; under W with the
+        # opt-in w_symbol_motion, only when weather fields follow.
         weather_symbol = symbol.code == "_" or (
-            symbol.code == "W" and extensions.weather is not None
+            symbol.code == "W"
+            and (
+                "w_symbol_motion" not in policy.extensions
+                or extensions.weather is not None
+            )
         )
         if weather_symbol and primary.motion is not None:
             weather = extensions.weather or d.Weather()
@@ -373,6 +377,16 @@ def _decode_position(
     except ModelError as exc:
         raise ModelError("$.symbol" + exc.path[1:], exc.message) from exc
     extensions, rest = _extensions.read(body[19:], symbol, policy)
+    wind = extensions.weather.wind_direction if extensions.weather else None
+    if wind is not None and wind.raw == b"000" and wind.value == 0:
+        # APRS101 p27: 001-360, with 000/000 the unavailable pair. Read as north.
+        diagnostics.append(
+            Diagnostic(
+                "nonconforming",
+                "wind direction 000 is outside 001-360; north is sent as 360",
+                "$.extensions.weather.wind_direction",
+            )
+        )
     return Position(
         pc.dao_offset(latitude, extensions.dao, "latitude")
         if not ambiguity
