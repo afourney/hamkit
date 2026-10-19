@@ -108,7 +108,10 @@ def same(x: Any, y: Any) -> bool:
     return json.dumps(x, ensure_ascii=False) == json.dumps(y, ensure_ascii=False)
 
 
-def shape(row: dict[str, Any]) -> tuple[Any, ...]:
+Shape = tuple[str, tuple[tuple[str, str, str], ...], bool]
+
+
+def shape(row: dict[str, Any]) -> Shape:
     """What kind of packet a row is: its payload type, the problems we report
     (indices and quoted text removed) and whether FAP rejects it."""
     decoded = row["decoded"]
@@ -212,7 +215,7 @@ def sweep(
         line.removesuffix(b"\r") for line in capture.read_bytes().split(b"\n") if line
     ]
     counts = collections.Counter(lines)
-    first = {}
+    first: dict[bytes, int] = {}
     for n, line in enumerate(lines, 1):
         first.setdefault(line, n)
     policy_json = a.to_json_dict(policy, include_defaults=True)
@@ -243,8 +246,8 @@ def sweep(
             test_case(r)
         except AssertionError as exc:
             failures.append((r, str(exc).splitlines()[0] if str(exc) else ""))
-    known_shapes = collections.Counter()
-    known_keys = collections.Counter()
+    known_shapes: collections.Counter[Shape] = collections.Counter()
+    known_keys: collections.Counter[tuple[Shape, str]] = collections.Counter()
     for r in all_rows():
         if r["tnc2"] is not None and r["fap"] is not None:
             known_shapes[shape(r)] += 1

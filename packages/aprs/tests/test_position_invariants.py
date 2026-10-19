@@ -77,7 +77,8 @@ class PositionInvariantTests(unittest.TestCase):
         ):
             self.assertEqual(a.from_json(a.to_json(value)), value)
         with self.assertRaises(a.ModelError):
-            a.Compression(fix="current", nmea_source="GGA", origin="nonsense")
+            # Deliberately violate the literal type to exercise runtime validation.
+            a.Compression(fix="current", nmea_source="GGA", origin="nonsense")  # type: ignore[arg-type]
         with self.assertRaises(a.ModelError):
             a.Compression(
                 fix="old", nmea_source="other", origin="compressed", ignored=True

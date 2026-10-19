@@ -54,8 +54,10 @@ class NMEAInvariantTests(unittest.TestCase):
             a.NMEAMetadata, {"talker": "GP", "checksum": "yes"}, "nmea_metadata"
         )
         evidence = a.NMEAMetadata("GN", checksum_supplied="aF", checksum_valid=False)
-        self.assertEqual(a.from_json(a.to_json(evidence)), evidence)
-        self.assertEqual(a.from_json(a.to_json(evidence)).checksum_supplied, "aF")
+        restored = a.from_json(a.to_json(evidence))
+        assert isinstance(restored, a.NMEAMetadata)
+        self.assertEqual(restored, evidence)
+        self.assertEqual(restored.checksum_supplied, "aF")
 
     def test_calendar_and_magnetic_variation(self) -> None:
         base = {
