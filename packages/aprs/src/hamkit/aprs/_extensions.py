@@ -82,15 +82,57 @@ def _motion(match: re.Match[bytes], df: bool) -> Motion | None:
     return Motion(None if c == 0 else c, s, course_code=c, speed_code=s, raw=match[0])
 
 
+# A weather field: its letter, then the start of a value (APRS101 pp62-66 and
+# the APRS 1.1/1.2 additions F/f, X and V).
+_WEATHER_FIELD = re.compile(rb"[cgstrpPhbLl#FfXV][-0-9. ]")
+
+
+def w_symbol_motion(symbol: Symbol, tail: bytes, policy: EnvelopePolicy) -> bool:
+    """Under the opt-in w_symbol_motion, a course/speed after /W or \\W that no
+    weather field follows is station motion rather than wind."""
+    return (
+        symbol.code == "W"
+        and "w_symbol_motion" in policy.extensions
+        and bool(_COURSE_SPEED.match(tail))
+        and not _WEATHER_FIELD.match(tail, 7)
+    )
+
+
+def weather_follows(
+    symbol: Symbol,
+    tail: bytes,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
+    *,
+    compressed: bool = False,
+) -> bool:
+    """Whether a weather report starts here: under _ (APRS101 pp62-65), or /W
+    and \\W, which spec-wx (aprs.org/aprs11/spec-wx.txt) accepts as alternate
+    weather symbols. After a compressed position the wind is in csT, so only a
+    weather field starts the report."""
+    if symbol.code not in "_W" or w_symbol_motion(symbol, tail, policy):
+        return False
+    if not compressed and _COURSE_SPEED.match(tail):
+        return True
+    return bool(_WEATHER_FIELD.match(tail))
+
+
 def read(
-    tail: bytes, symbol: Symbol, policy: EnvelopePolicy = _DEFAULT_POLICY
+    tail: bytes,
+    symbol: Symbol,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
+    *,
+    compressed: bool = False,
 ) -> tuple[Extensions, bytes]:
-    """Split decoded extensions from the information after an uncompressed symbol."""
+    """Split decoded extensions from the information after the symbol.
+
+    After a compressed position no 7-byte data extension follows (APRS101
+    pp27, 36: they follow uncompressed positions, and the compressed format
+    "does not support PHG"); course/speed and range travel in csT. Text shaped
+    like one is plain comment text.
+    """
 
     found: dict[str, Any] = {}
-    if symbol.code in "_W" and (
-        _COURSE_SPEED.match(tail) or tail.startswith((b"g", b"t", b"c"))
-    ):
+    if weather_follows(symbol, tail, policy, compressed=compressed):
         from . import _weather
 
         weather, tail = _weather.read(
@@ -100,8 +142,14 @@ def read(
             policy=policy,
         )
         found["weather"] = weather
-    elif (symbol.table_id, symbol.code) == ("\\", "l") and (
-        match := re.match(rb"(\d)(\d{2})(/[0-9]|1[0-5])(\d{2})(?:\{([0-9.]+)\})?", tail)
+    elif (
+        not compressed
+        and (symbol.table_id, symbol.code) == ("\\", "l")
+        and (
+            match := re.match(
+                rb"(\d)(\d{2})(/[0-9]|1[0-5])(\d{2})(?:\{([0-9.]+)\})?", tail
+            )
+        )
     ):
         color = int(match[3].lstrip(b"/"))
         found["area"] = d.Area(
@@ -113,7 +161,7 @@ def read(
             corridor_half_width_miles=float(match[5]) if match[5] else None,
         )
         tail = tail[match.end() :]
-    elif match := _COURSE_SPEED.match(tail):
+    elif not compressed and (match := _COURSE_SPEED.match(tail)):
         if (motion := _motion(match, _is_df(symbol))) is not None:
             found["motion"] = motion
             tail = tail[7:]
@@ -130,7 +178,7 @@ def read(
                     raw=bearing[0],
                 )
                 tail = tail[8:]
-    elif match := _PHG.match(tail):
+    elif not compressed and (match := _PHG.match(tail)):
         found["phg"] = PHG(
             int(match[1]) ** 2,
             _height(match[2]),
@@ -154,10 +202,10 @@ def read(
             # The older PHG form also commonly separates its comment with '/'.
             # Consume one delimiter, but leave /A= altitude for the decoder below.
             tail = tail[1:]
-    elif match := _RNG.match(tail):
+    elif not compressed and (match := _RNG.match(tail)):
         found["range"] = Range(int(match[1]), raw=match[0])
         tail = tail[7:]
-    elif match := _DFS.match(tail):
+    elif not compressed and (match := _DFS.match(tail)):
         found["signal"] = Signal(
             int(match[1]),
             _height(match[2]),
@@ -245,14 +293,14 @@ def read(
 
 
 def lookalikes(
-    extensions: Extensions, comment: bytes, symbol: Symbol
+    extensions: Extensions, comment: bytes, symbol: Symbol, *, compressed: bool = False
 ) -> list[tuple[str, str]]:
     """Comment text shaped like an extension that did not decode (invalid values)."""
     findings = []
     primary = ("motion", "phg", "range", "signal")
-    if not any(getattr(extensions, n) for n in primary) and _LOOKALIKE_PREFIX.match(
-        comment
-    ):
+    # After a compressed position, data-extension-shaped text is ordinary comment.
+    prefix = None if compressed else _LOOKALIKE_PREFIX.match(comment)
+    if not any(getattr(extensions, n) for n in primary) and prefix:
         findings.append(("$.comment", "begins with an invalid data extension"))
     if b"/A=" in comment:
         findings.append(("$.comment", "contains an invalid /A= altitude"))

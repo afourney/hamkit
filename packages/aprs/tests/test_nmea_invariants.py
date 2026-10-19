@@ -113,15 +113,8 @@ class NMEAInvariantTests(unittest.TestCase):
             dgps_age_seconds=0.25,
             dgps_station=42,
         )
+        # The wire form and malformed DGPS fields are NME case vectors.
         self.assertEqual(a.from_json(a.to_json(sentence)), sentence)
-        wire = a.serialize_payload(a.NMEA(sentence, a.NMEAMetadata("GP")))
-        self.assertIn(b",0.25,0042*", wire)
-        self.assertEqual(a.parse_payload(wire).sentence, sentence)
-        for field in (b",1e3,0042*", b",0.25,ABCD*", b",-1,0042*"):
-            bad = wire.split(b",0.25,0042*")[0] + field.rstrip(b"*")
-            self.assertIsInstance(
-                a.parse_packet(b"N0CALL>APRS:" + bad), a.Malformed, bad
-            )
         for name in ("A,B", "A*B", "$GP"):
             with self.assertRaises(a.ModelError):
                 a.WPL(a.Coordinates(1, 2), name)
@@ -164,8 +157,6 @@ class NMEAInvariantTests(unittest.TestCase):
             )
         report = a.NMEA(valid, a.NMEAMetadata("GP"), position_usable=True)
         self.assertEqual(a.from_json(a.to_json(report)), report)
-        packet = a.Packet(a.Header("N0CALL", "APRS"), report)
-        self.assertEqual(a.parse_packet(a.serialize_packet(packet)), packet)
 
     def test_receiver_specific_rules_are_not_invented(self) -> None:
         # No received precision is available to establish a speed tolerance.

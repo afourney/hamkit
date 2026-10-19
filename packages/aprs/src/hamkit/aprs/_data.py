@@ -650,4 +650,4 @@ class Footprint(Validated):
 @dataclass(frozen=True)
 class Capability(Validated):
     name: str
-    value: str | None = None
+    value: str | None = field(default=None, metadata=FREE_TEXT)

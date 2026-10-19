@@ -14,32 +14,9 @@ HEADER = a.Header("N0CALL", "APRS")
 
 
 class ModelContractTests(unittest.TestCase):
-    def test_every_payload_has_construction_and_codec_example(self) -> None:
-        examples = payload_examples()
-        self.assertEqual({type(p) for p in examples}, set(get_args(a.Payload)))
+    def test_every_payload_has_codec_support(self) -> None:
+        # Each payload's documented example is a case vector that must send.
         self.assertEqual({c.model for c in a.codec_support()}, set(get_args(a.Payload)))
-        for payload in examples:
-            with self.subTest(model=type(payload).__name__):
-                packet = a.Packet(
-                    (
-                        a.Header("N0CALL", "TY0P0P")
-                        if isinstance(payload, a.MicE)
-                        else HEADER
-                    ),
-                    payload,
-                )
-                policy = a.APRS_IS(
-                    legacy_positions=isinstance(payload, a.LegacyPosition)
-                )
-                self.assertIs(packet.payload, payload)
-                self.assertEqual(a.check_packet(packet, policy=policy), ())
-                if a.codec_support_for(payload).encode == "unimplemented":
-                    with self.assertRaises(a.CodecNotImplementedError):
-                        a.serialize_packet(packet, policy=policy)
-                else:
-                    self.assertIsInstance(
-                        a.serialize_packet(packet, policy=policy), bytes
-                    )
 
     def test_every_public_dataclass_has_an_example(self) -> None:
         public = {
@@ -93,6 +70,8 @@ class ModelContractTests(unittest.TestCase):
             cast(Any, a.Message)("W1AW", "Hello", "003")
         with self.assertRaises(TypeError):
             cast(Any, a.Weather)(a.Measurement(1, "degrees"))
+        with self.assertRaises(TypeError):
+            cast(Any, a.Altitude)(a.Measurement(1, "feet"), "mic_e")
 
     def test_derived_values_are_properties(self) -> None:
         grid = a.Grid("AA00")
@@ -179,14 +158,6 @@ class ModelContractTests(unittest.TestCase):
             if isinstance(value, get_args(a.ResponseValue)):
                 self.assertIs(a.Response("W1AW", value).response, value)
 
-    def test_missing_is_not_unavailable_or_zero(self) -> None:
-        absent = a.Weather()
-        unavailable = a.Weather(wind_speed=a.Measurement(None, "mph"))
-        zero = a.Weather(wind_speed=a.Measurement(0, "mph"))
-        self.assertNotEqual(absent, unavailable)
-        self.assertNotEqual(unavailable, zero)
-        self.assertNotEqual(absent, zero)
-
     def test_mic_e_decoding_requires_context(self) -> None:
         with self.assertRaises(a.ContextRequiredError):
             a.parse_payload(b"`12345678")
@@ -199,12 +170,7 @@ class ModelContractTests(unittest.TestCase):
         )
         with self.assertRaises(a.FieldError):
             a.serialize_payload(mic_e)  # Missing motion is still unencodable.
-        with self.assertRaises(a.FieldError):
-            a.serialize_packet(a.Packet(HEADER, mic_e))
-        parsed = a.parse_packet(b"N0CALL>490S5P:`123456>/")
-        assert isinstance(parsed, a.Packet) and isinstance(parsed.payload, a.MicE)
-        self.assertEqual(parsed.header.destination, "490S5P")
-        self.assertEqual(a.parse_packet(a.serialize_packet(parsed)), parsed)
+        # Sending it, and decoding with a destination, are MIC case vectors.
 
     def test_option_values_are_checked(self) -> None:
         for kwargs in (

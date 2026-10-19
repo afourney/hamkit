@@ -36,54 +36,41 @@ legacy X1J position (opt in with `legacy_positions=True`); FAP trims comments,
 converts weather units, rounds some values, and accepts certain incomplete
 historical reports.
 
-Schema-only differences are resolved in the stored JSONL expectations, not by
-rewriting actual public output during comparison. The offline source-to-schema
-generator preserves values while translating names, nesting and equivalent units;
-it never consults a parser or expected decoder output.
+Each case vector stores the public decoder's exact output (`decoded`) beside
+the captured FAP output (`fap`), which is provenance and never asserted; the
+`comment` of each row explains where and why the two differ.
 
 The public codec is deterministic and preserves the richer wire interpretation.
-There is no receiver-emulation layer: every vector compares public
-`parse_packet` output with its stored expectation. FAP's own extra fields
+There is no receiver-emulation layer: every case vector compares public
+`parse_packet` output with its stored expectation exactly. FAP's own extra fields
 (display resolution, raw timestamps, warnings, indoor sensors) describe that
 library's output rather than this schema, so they remain source provenance
 without assertions. The pinned reference implementation was consulted; it is
 not a runtime dependency.
 
-Incomplete historical GLL layouts and undecodable timestamps remain `Malformed`.
+Incomplete historical GLL layouts remain `Malformed`. A position whose timestamp
+cannot be decoded (often a time of day sent with `z`) keeps its other fields:
+the timestamp is left out, with a nonconforming diagnostic quoting it, so sending
+the decoded fields drops it. Objects require a timestamp and remain `Malformed`.
+Out-of-spec values that the model can hold (non-ASCII capability values,
+telemetry bits that are not eight binary digits, a non-base-91 Mic-E altitude
+kept as comment text) decode with nonconforming diagnostics and are refused when
+sent.
 Decodable partial NMEA times/dates remain structured with diagnostics; `Malformed.recovered` keeps the intact
 fields of positions, objects and status reports. No missing time, coordinate or
 calibration coefficient is fabricated.
 
-The completed schema migration rewrites 35 expectations (33 FAP, two historical
-positions). It stores weather measurements in the public decoder's equivalent
-units, compressed weather wind in `extensions.weather`, legacy positions inside
-`LegacyPosition`, vendor readings inside `RawWeather.weather`, and captured NMEA
-coordinates/speed/course/altitude/symbol/checksum assertions in typed fields. Four
-Mic-E comments now store their device marker separately in `device_code`,
-preserving every character.
-The runtime weather-unit conversion, wrapper flattening, and NMEA source-schema
-comparison have been removed. Source snapshots and all raw packet bytes remain
-unchanged; inverse-unit and source-value tests check that no information was lost.
+Historical and FAP rows parse with `legacy_positions=True`. Fifty-five FAP rows
+record in their `comment` where FAP's interpretation differs from the
+specification-following public decoder, with the reason.
 
-Historical and FAP rows parse with `legacy_positions=True`. Fifty-five FAP
-expectations record where FAP's interpretation differs from the
-specification-following public decoder (`tests/fap_divergences.json`), each
-with its reasons.
+Each case vector stores the complete serialized `EnvelopePolicy` under `policy`,
+including explicit extensions, byte fallback and the legacy-position setting;
+the runner uses nothing else to choose an interpretation.
 
-Each JSONL row stores a complete serialized `EnvelopePolicy` under `policy`
-(28 RF and 1,536 APRS-IS), including explicit extensions, byte fallback and legacy-position settings.
-The separate `legacy_positions` field is provenance. Corpus,
-individual-packet and round-trip runners reconstruct that policy directly. Source
-`profile` and `options` remain provenance, not runtime envelope-policy hints.
-The generator resolves the historical hints once; contract tests verify unchanged
-effective parsing, including diagnostics, for every row.
-
-The 23 packet occurrences from the archived application sequences are tested
-independently. Hand-authored expectations in `tests/sequence_packet_expectations.json`
-describe only transmitted headers and payload fields, using the documented packet
-bytes and cited APRS layouts. No decoder output is used to generate expectations.
-The original `source_expected` values remain non-executable application-state
-provenance, explicitly labeled by `source_expected_scope`. There is no test
+The 23 packet occurrences from the archived application sequences (SEQ) are
+tested independently, one packet per row. Their original accumulated-state
+assertions are kept in each row's `comment` as provenance only. There is no test
 receiver, replay of earlier steps, or accumulated-state assertion. Ownership,
 deduplication, acknowledgment scheduling, calibration application, bulletin
 replacement, status precedence and weather-location inheritance belong to a
@@ -159,9 +146,15 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   is sent as north (360). Mic-E always carries a speed: `Motion(None, 0)` is a
   stationary report with unknown course. Likewise, a measured wind from 0° is
   sent as `360/sss`, because `000/000` reads back as an unavailable reading.
-- Under a weather symbol (`_` or `W`), receivers read a course/speed pair,
-  uncompressed or in compressed csT, as wind. `check_packet` therefore reports
-  `Motion` on such a position at `$.extensions.motion`; send wind in
+- Under a weather symbol, receivers read a course/speed pair, uncompressed or in
+  compressed csT, as wind. The weather symbol is `_` (APRS101 pp. 62-65), and
+  `/W` and `\W` are accepted interchangeably with it
+  ([spec-wx](https://www.aprs.org/aprs11/spec-wx.txt)). Reading a `W`
+  course/speed with no following weather field as station motion, as some
+  mobile apps intend, is the opt-in reinterpretive extension `w_symbol_motion`.
+  A received `000` wind direction with a non-zero speed is read as north with
+  a nonconforming diagnostic (APRS101 p. 27 gives 001-360). `check_packet` therefore reports
+  `Motion` on a position read as weather at `$.extensions.motion`; send wind in
   `extensions.weather` instead. More generally, extensions that would read back
   as different kinds are refused.
 - Numeric overlays use table IDs `a`–`j`; sending compressed positions with
@@ -253,31 +246,27 @@ warnings alone do not prevent encoding: Latin-1 input can become valid UTF-8.
 
 ## Verification
 
-All 1,564 decode cases pass without skips or expected failures. Public JSON
-projections and documented core packet/field assertions outside the projections are checked,
-including partial values recovered before a rejection.
-All original packet bytes, semantic expectations, options and provenance have a
-frozen integrity hash tied to PR #4's head commit.
+Packet behaviour is tested by 5,269 case vectors in `tests/cases` (see its
+README), with no skips or expected failures. 3,899 rows start from received
+bytes, 1,947 of them a curated sample of live APRS-IS traffic: their exact
+decoded JSON is asserted, including diagnostics and the partial values a
+`Malformed` result recovers (220 rows). 1,370 rows start from a composed model
+and assert what is sent or exactly why it is refused. Every row with received
+bytes also records go-aprs-fap's output for comparison.
 
-Every vector also has an encoding test. With an explicit permissive envelope
-policy (the row policy with its envelope patterns and limits relaxed), 1,303 occurrences encode and stabilize
-through semantic decode/encode round trips with all raw evidence removed. The
-other 261 have explicit refusal records: 172 malformed public packets and 89
-violations of the existing transmit-conformance rules. Those refusal tests assert
-the reason; they are not broad exception catches or skipped tests. Three NMEA
-sentences with bad checksums are first refused, then encode after an explicit
-repair; they are counted among the 1,303.
+For every row the runner also checks that every sending path agrees
+(`serialize_packet`, `validate_packet`, `serialize_tnc2_line`, `check_packet`,
+and `serialize_payload` where no header context is needed); that whatever is sent
+parses back cleanly and re-encodes to the same bytes; and that the value with
+all received evidence removed is refused the same way or reads back with the
+same meaning. Received packets the library will not resend as they are (386) or
+cannot represent (the 220 `Malformed`) record the exact refusal. The 25 rows
+with a `-P` suffix repeat a packet whose stored policy refuses its addresses
+under a permissive envelope policy, so its payload still round-trips; the three
+`-R` rows send NMEA reports with known-bad checksums after an explicit repair.
 
-Of those 1,303, 15 have addresses rejected by the `APRS_IS()` envelope constraints,
-including two with SSID `-0`; the tests independently require those
-envelope refusals and validate the other 1,288 with the row’s interpretation settings. The permissive policy changes no decoded
-fields, packet bytes or payload conformance checks. Dedicated policy tests cover
-custom patterns, optional and zero limits, boundary sizes including CRLF,
-repeated markers, and consistent outer-envelope handling of third-party packets.
-
-The round-trip runner also checks each row's stored policy separately: 25 of the
-1,303 representable packets have envelope refusals under that policy, and 1,278
-validate. The additional 10 refusals exercise RF address/path constraints.
+The suite passes unchanged on CPython 3.11 to 3.15 and PyPy, with exact JSON
+comparison (so `-0.0` differs from `0.0`, and `1` from `1.0`).
 
 PHG/PHGR vectors exercise the public API directly. The PHGR rate character and required slash, ordinary PHG separators,
 and PHG comment whitespace are handled by the shared public decoder/encoder.

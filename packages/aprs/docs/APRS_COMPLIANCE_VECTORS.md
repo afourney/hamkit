@@ -139,9 +139,9 @@ Exact conversions used: 1 knot = 1.852 km/h = 1852/3600 m/s; 1 mph = 0.44704 m/s
 Stateful source records have `steps` instead of a single `packet` and `outcome`.
 Their original accumulated-state assertions and initial conditions are archived
 application-level provenance, not executable tests of this stateless codec.
-The JSONL suite keeps all 23 packet inputs and tests their transmitted fields
-independently using hand-authored packet expectations. It does not replay prior
-steps, simulate a receiver, or assert application-state transitions.
+The case vectors (`tests/cases/seq.jsonl`) keep all 23 packet inputs and test
+each packet independently. They do not replay prior steps, simulate a
+receiver, or assert application-state transitions.
 
 <a id="coverage"></a>
 

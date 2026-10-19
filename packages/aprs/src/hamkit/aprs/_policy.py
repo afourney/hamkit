@@ -18,6 +18,7 @@ Extension: TypeAlias = Literal[
     "phg_rate",
     "weather_extensions",
     "water_height_tenths",
+    "w_symbol_motion",
 ]
 ExtensionKind: TypeAlias = Literal["additive", "comment", "reinterpretive"]
 # Explicit classification is required for each implemented identifier. Defaults
@@ -33,6 +34,7 @@ EXTENSION_KINDS: Mapping[Extension, ExtensionKind] = MappingProxyType(
         "phg_rate": "comment",
         "weather_extensions": "additive",
         "water_height_tenths": "reinterpretive",
+        "w_symbol_motion": "reinterpretive",
     }
 )
 SUPPORTED_EXTENSIONS: tuple[Extension, ...] = tuple(EXTENSION_KINDS)

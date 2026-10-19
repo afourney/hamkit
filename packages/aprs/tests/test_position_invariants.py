@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2024-present Adam Fourney <adam.fourney@gmail.com>
 # SPDX-License-Identifier: MIT
-"""Spatial constructor rules, independent of the not-yet-implemented encoders."""
+"""Spatial constructor rules, enforced alike for Python and JSON input."""
 from __future__ import annotations
 
 import unittest

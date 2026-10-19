@@ -231,7 +231,8 @@ def write(
         direction = _number(
             w.wind_direction.value, 3, path=f"{path}.wind_direction.value"
         )
-        # 000/000 reads back as unavailable, so a measured north wind is 360.
+        # APRS101 p27 gives the direction as 001-360, and 000/000 reads back as
+        # unavailable, so a north wind is always sent as 360.
         if direction == b"000":
             direction = b"360"
         raw += direction + b"/" + _number(value, 3, path=f"{path}.wind_speed.value")

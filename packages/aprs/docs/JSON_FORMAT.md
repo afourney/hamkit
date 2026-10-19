@@ -197,18 +197,18 @@ Standalone tag: `policy`. [Back to type map](#type-map-and-object-catalog).
 }
 ```
 
-| Field                   | JSON value / allowed values                                                                                                                                                               | Presence / default   |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `type`                  | `"policy"`                                                                                                                                                                                | see [Tags](#tags)    |
-| `source_pattern`        | string                                                                                                                                                                                    | **required in JSON** |
-| `destination_pattern`   | string                                                                                                                                                                                    | **required in JSON** |
-| `path_address_pattern`  | string                                                                                                                                                                                    | **required in JSON** |
-| `max_path_entries`      | integer or null                                                                                                                                                                           | **required in JSON** |
-| `max_information_bytes` | integer or null                                                                                                                                                                           | **required in JSON** |
-| `max_tnc2_line_bytes`   | integer or null                                                                                                                                                                           | **required in JSON** |
-| `extensions`            | array of `'utf8_text'`, `'dao'`, `'base91_telemetry'`, `'mice_device_ids'`, `'mice_hex_as_device'`, `'expanded_telemetry'`, `'phg_rate'`, `'weather_extensions'`, `'water_height_tenths'` | **required in JSON** |
-| `legacy_positions`      | boolean                                                                                                                                                                                   | **required in JSON** |
-| `byte_fallback`         | `'latin-1'`, `'reject'`                                                                                                                                                                   | **required in JSON** |
+| Field                   | JSON value / allowed values                                                                                                                                                                                    | Presence / default   |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `type`                  | `"policy"`                                                                                                                                                                                                     | see [Tags](#tags)    |
+| `source_pattern`        | string                                                                                                                                                                                                         | **required in JSON** |
+| `destination_pattern`   | string                                                                                                                                                                                                         | **required in JSON** |
+| `path_address_pattern`  | string                                                                                                                                                                                                         | **required in JSON** |
+| `max_path_entries`      | integer or null                                                                                                                                                                                                | **required in JSON** |
+| `max_information_bytes` | integer or null                                                                                                                                                                                                | **required in JSON** |
+| `max_tnc2_line_bytes`   | integer or null                                                                                                                                                                                                | **required in JSON** |
+| `extensions`            | array of `'utf8_text'`, `'dao'`, `'base91_telemetry'`, `'mice_device_ids'`, `'mice_hex_as_device'`, `'expanded_telemetry'`, `'phg_rate'`, `'weather_extensions'`, `'water_height_tenths'`, `'w_symbol_motion'` | **required in JSON** |
+| `legacy_positions`      | boolean                                                                                                                                                                                                        | **required in JSON** |
+| `byte_fallback`         | `'latin-1'`, `'reject'`                                                                                                                                                                                        | **required in JSON** |
 
 ### Measurement
 

@@ -110,6 +110,8 @@ def check(
         free, rules = _plan(type(node))
         for name in free:
             text = getattr(node, name)
+            if text is None:
+                continue
             utf8 = "utf8_text" in policy.extensions and isinstance(
                 node,
                 (
@@ -132,7 +134,7 @@ def check(
                         f"{path}.{name}",
                     )
                 )
-            if _has_control(getattr(node, name)):
+            if _has_control(text):
                 result.append(
                     Diagnostic(
                         "nonconforming",
@@ -554,8 +556,13 @@ def _position(v: Position, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     ):
         yield "$.comment", "extensions and comment exceed 43 bytes"
     try:
-        expected, _ = _extensions.read(prefix, v.symbol, policy or APRS_IS())
-        actual, rest = _extensions.read(prefix + comment, v.symbol, policy or APRS_IS())
+        compressed = v.compression is not None
+        expected, _ = _extensions.read(
+            prefix, v.symbol, policy or APRS_IS(), compressed=compressed
+        )
+        actual, rest = _extensions.read(
+            prefix + comment, v.symbol, policy or APRS_IS(), compressed=compressed
+        )
     except (CodecNotImplementedError, FieldError):
         yield "$.comment", "contains extension syntax this version cannot decode"
         return
@@ -577,7 +584,9 @@ def _position(v: Position, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if (actual, rest) != (expected, comment):
         yield "$.comment", "would be read back as a data extension"
     else:
-        yield from _extensions.lookalikes(actual, rest, v.symbol)
+        yield from _extensions.lookalikes(
+            actual, rest, v.symbol, compressed=v.compression is not None
+        )
 
 
 @_conformance(Position, Object, Item, MicE)
@@ -639,16 +648,27 @@ def _located(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
                 "Mic-E always carries a speed; use Motion(None, 0) for a"
                 " stationary report with unknown course"
             )
+        elif e.motion.speed_knots is None:
+            yield "$.extensions.motion.speed_knots", "Mic-E always carries a speed"
         yield from _mic_e_status(v, policy)
         return
     if v.compression is not None:
-        yield from _compressed(v)
+        yield from _compressed(v, policy)
 
 
 def _mic_e_status(v: MicE, policy: EnvelopePolicy) -> Iterator[Finding]:
     """The type code and status text must read back as composed."""
     from . import _mic_e
 
+    # Coordinates and a PHGR rate are reported at their own paths (the
+    # destination, phg.rate_per_hour); encoding the status would repeat them.
+    try:
+        _mic_e._base_coordinates(v)
+    except APRSError:
+        return
+    phg = v.extensions.phg
+    if phg and phg.rate_per_hour is not None and "phg_rate" not in policy.extensions:
+        return
     try:
         _mic_e.device_parts(v.device_code, policy)
     except APRSError as error:
@@ -676,13 +696,17 @@ def _mic_e_status(v: MicE, policy: EnvelopePolicy) -> Iterator[Finding]:
         yield "$.comment", "would be read back as a different Mic-E type code"
 
 
-def _compressed(v: Any) -> Iterator[Finding]:
+def _compressed(v: Any, policy: EnvelopePolicy) -> Iterator[Finding]:
     e, csT = v.extensions, v.compression
     if v.symbol.table_id in "0123456789":
         yield "$.symbol.table_id", "compressed numeric overlays require a-j, not 0-9"
     if any(getattr(e, n) is not None for n in ("phg", "signal", "area", "bearing")):
         yield "$.extensions", "not available in the compressed position layout"
-    if v.symbol.code in "_W" and e.motion is not None:
+    weather_symbol = v.symbol.code == "_" or (
+        v.symbol.code == "W"
+        and ("w_symbol_motion" not in policy.extensions or e.weather is not None)
+    )
+    if weather_symbol and e.motion is not None:
         # The decoder reads csT course/speed as wind under a weather symbol.
         yield "$.extensions.motion", "would be read back as weather"
     altitude = e.altitude is not None and e.altitude.encoding == "compressed"

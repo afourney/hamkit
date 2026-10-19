@@ -17,12 +17,10 @@ class WeatherInvariantTests(unittest.TestCase):
         zero = a.Weather(wind_speed=a.Measurement(0, "mph"))
         self.assertNotEqual(empty, unavailable)
         self.assertNotEqual(unavailable, zero)
-        # An incomplete report is a valid model; only sending checks the slots.
+        # An incomplete report is a valid model; only sending checks the slots
+        # (a WX case vector).
         packet = a.Packet(a.Header("N0CALL", "APRS"), empty)
         self.assertEqual(a.from_json(a.to_json(packet)), packet)
-        self.assertTrue(a.check_packet(packet))
-        with self.assertRaises(a.ConformanceError):
-            a.serialize_packet(packet)
 
     def test_units_describe_the_quantity(self) -> None:
         for field, unit in (

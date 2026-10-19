@@ -369,7 +369,8 @@ def read_status(
         device = tail[:1].decode()
         suffix = _suffix(device, tail[1:]) if modern else b""
         tail = tail[1 : len(tail) - len(suffix)]
-    if len(tail) >= 4 and tail[3:4] == b"}":
+    # Only base-91 digits make an altitude; anything else stays comment text.
+    if len(tail) >= 4 and tail[3:4] == b"}" and all(33 <= c <= 123 for c in tail[:3]):
         altitude = Altitude(
             Measurement(base91(tail[:3]) - 10000, "meters"), encoding="mic_e"
         )
@@ -441,9 +442,16 @@ def write_status(p: MicE, policy: EnvelopePolicy = _DEFAULT_POLICY) -> bytes:
             )
         from ._units import height
 
-        first += (
-            pack91(round(height(e.altitude.measurement, "meters")) + 10000, 3) + b"}"
-        )
+        try:
+            altitude = pack91(
+                round(height(e.altitude.measurement, "meters")) + 10000, 3
+            )
+        except FieldError as exc:
+            raise Unrepresentable(
+                "$.extensions.altitude.measurement.value",
+                "outside the Mic-E altitude range (-10000..743570 meters)",
+            ) from exc
+        first += altitude + b"}"
         e = replace(e, altitude=None)
     from . import _extensions
 

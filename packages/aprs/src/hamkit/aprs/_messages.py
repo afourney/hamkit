@@ -255,7 +255,9 @@ def telemetry(
     if tail is not None:
         bits, comment = tail[:8], tail[8:]
         if len(bits) != 8 or any(v not in b"01" for v in bits):
-            raise FieldError("telemetry requires eight binary digits")
+            # Not eight binary digits: like a report without bits, which
+            # conformance reports; the field is kept as comment text.
+            bits, comment = b"", tail
     return d.Telemetry(
         tuple(analog),
         tuple(v == 49 for v in bits),
@@ -353,9 +355,14 @@ def write(payload):
         address = p.addressee
         v = p.definition
         if isinstance(v, (d.TelemetryParameters, d.TelemetryUnits)):
+            # Decoding always yields 13 slots; trailing empty ones are not sent,
+            # so a decoded definition re-encodes to its shortest form.
+            channels = list(v.channels)
+            while channels and not channels[-1]:
+                channels.pop()
             body = (
                 b"PARM." if isinstance(v, d.TelemetryParameters) else b"UNIT."
-            ) + ",".join(x or "" for x in v.channels).encode()
+            ) + ",".join(x or "" for x in channels).encode()
         elif isinstance(v, d.TelemetryEquations):
             body = (
                 b"EQNS."

@@ -122,9 +122,21 @@ class _NestedMalformed(Exception):
         self.result = result
 
 
-def _timestamp(raw: bytes) -> Timestamp:
+def _timestamp(raw: bytes, diagnostics: list[Diagnostic]) -> Timestamp:
+    # APRS101 defines only a lowercase "z"; an uppercase one is read the same,
+    # and reported.
+    upper = raw[6:7] == b"Z"
     try:
-        return decode_timestamp(raw)
+        value = decode_timestamp(raw[:6] + b"z" if upper else raw)
+        if upper:
+            diagnostics.append(
+                Diagnostic(
+                    "nonconforming",
+                    "timestamp suffix 'Z' read as 'z' (APRS101 defines lowercase)",
+                    "$.timestamp",
+                )
+            )
+        return value
     except ModelError as exc:
         raise ModelError("$.timestamp" + exc.path[1:], exc.message) from exc
     except FieldError as exc:
@@ -190,9 +202,18 @@ def _decode_payload(
         return _messages.query(information)
     if dti == b"<":
         tokens = []
-        for part in token(body, "$.tokens").split(","):
-            name, sep, value = part.partition("=")
-            tokens.append(d.Capability(name, value if sep else None))
+        for i, part in enumerate(body.split(b",")):
+            key, sep, value = part.partition(b"=")
+            path = f"$.tokens[{i}]"
+            # Names are protocol tokens; values are text, checked when sent.
+            tokens.append(
+                d.Capability(
+                    token(key, path + ".name"),
+                    free_text(value, path + ".value", diagnostics, policy)
+                    if sep
+                    else None,
+                )
+            )
         return m.Capabilities(tuple(tokens))
     if information.startswith(b"T#"):
         return _messages.telemetry(information, diagnostics, policy)
@@ -204,7 +225,9 @@ def _decode_payload(
         if len(body) < 17 or body[9:10] not in (b"*", b"_"):
             raise FieldError("invalid object name or alive marker")
         name = token(body[:9], "$.name").rstrip()
-        position = _decode_position(b"/", body[10:], diagnostics, policy)
+        position = _decode_position(
+            b"/", body[10:], diagnostics, policy, timestamp_required=True
+        )
         assert position.timestamp is not None
         return m.Object(
             name,
@@ -272,11 +295,31 @@ def _decode_payload(
 
 
 def _decode_position(
-    dti: bytes, body: bytes, diagnostics: list[Diagnostic], policy: EnvelopePolicy
+    dti: bytes,
+    body: bytes,
+    diagnostics: list[Diagnostic],
+    policy: EnvelopePolicy,
+    *,
+    timestamp_required: bool = False,
 ) -> Position:
     timestamp = None
     if dti in (b"/", b"@"):
-        timestamp, body = _timestamp(body[:7]), body[7:]
+        raw_time, body = body[:7], body[7:]
+        try:
+            timestamp = _timestamp(raw_time, diagnostics)
+        except ModelError as exc:
+            # A bad timestamp (often HMS sent with "z") leaves the position
+            # usable: report it and decode the rest without a timestamp.
+            if timestamp_required or len(raw_time) < 7:
+                raise
+            text = raw_time.decode("latin-1")
+            diagnostics.append(
+                Diagnostic(
+                    "nonconforming",
+                    f"{exc.message}; timestamp {text!r} not decoded",
+                    exc.path,
+                )
+            )
     from . import _position_codec as pc
 
     compressed = bool(
@@ -294,12 +337,21 @@ def _decode_position(
                     "nonconforming", "reserved compression type bit", "$.compression"
                 )
             )
-        extensions, rest = _extensions.read(rest, symbol, policy)
+        extensions, rest = _extensions.read(rest, symbol, policy, compressed=True)
         for name in ("motion", "altitude", "range"):
             value = getattr(primary, name)
             if value is not None:
                 extensions = replace(extensions, **{name: value})
-        if symbol.code in "_W" and primary.motion is not None:
+        # csT course/speed is wind under a weather symbol; under W with the
+        # opt-in w_symbol_motion, only when weather fields follow.
+        weather_symbol = symbol.code == "_" or (
+            symbol.code == "W"
+            and (
+                "w_symbol_motion" not in policy.extensions
+                or extensions.weather is not None
+            )
+        )
+        if weather_symbol and primary.motion is not None:
             weather = extensions.weather or d.Weather()
             weather = replace(
                 weather,
@@ -325,6 +377,16 @@ def _decode_position(
     except ModelError as exc:
         raise ModelError("$.symbol" + exc.path[1:], exc.message) from exc
     extensions, rest = _extensions.read(body[19:], symbol, policy)
+    wind = extensions.weather.wind_direction if extensions.weather else None
+    if wind is not None and wind.raw == b"000" and wind.value == 0:
+        # APRS101 p27: 001-360, with 000/000 the unavailable pair. Read as north.
+        diagnostics.append(
+            Diagnostic(
+                "nonconforming",
+                "wind direction 000 is outside 001-360; north is sent as 360",
+                "$.extensions.weather.wind_direction",
+            )
+        )
     return Position(
         pc.dao_offset(latitude, extensions.dao, "latitude")
         if not ambiguity

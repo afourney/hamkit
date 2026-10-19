@@ -8,7 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ._errors import APRSError
-from ._fields import decode_coordinate
+from ._fields import decode_coordinate, decode_timestamp
 from ._models import Diagnostic
 from ._text import free_text, token
 
@@ -73,6 +73,12 @@ def payload_data(raw: bytes) -> tuple[dict[str, object], list[Diagnostic]]:
         data = {"type": "position", "messaging": dti in (b"=", b"@")}
         if dti in (b"/", b"@"):
             data["timestamp"] = _timestamp(body[:7])
+            try:
+                decode_timestamp(body[:7])
+            except APRSError as exc:
+                path = "$.timestamp" + (getattr(exc, "path", "$")[1:])
+                message = getattr(exc, "message", str(exc))
+                diagnostics.append(Diagnostic("malformed", message, path))
             body = body[7:]
         located(body)
     elif (
