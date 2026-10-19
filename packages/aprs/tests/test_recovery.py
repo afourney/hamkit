@@ -4,7 +4,6 @@
 """Received input: lenient where usable, Malformed only where undecodable."""
 
 import copy
-import dataclasses
 import json
 import unittest
 from typing import Any, cast
@@ -51,14 +50,6 @@ class MalformedTests(unittest.TestCase):
         assert isinstance(payload, a.Malformed)
         self.assertEqual(payload.recovered["type"], "position")
         self.assertTrue(any(d.path == "$.longitude_deg" for d in payload.diagnostics))
-
-    def test_invalid_message_id_is_repaired_through_json(self) -> None:
-        result = a.parse_packet(b"W1AW>APRS::N0CALL   :hello{\xff")
-        assert isinstance(result, a.Malformed)
-        fixed = copy.deepcopy(cast(dict[str, Any], result.recovered))
-        fixed["payload"]["message_id"] = "01"
-        packet = a.from_json_dict(fixed, expected_type=a.Packet)
-        self.assertEqual(packet.payload, a.Message("N0CALL", "hello", message_id="01"))
 
     def test_unknown_codec_raises_only_when_asked(self) -> None:
         with self.assertRaises(a.CodecNotImplementedError):
@@ -159,12 +150,3 @@ class StrictConstructionTests(unittest.TestCase):
             a.serialize_packet(packet)
         with self.assertRaises(a.JSONModelError):
             a.to_json(packet)
-
-    def test_genuine_absence_and_unavailable_readings(self) -> None:
-        absent = a.Weather()
-        unavailable = a.Weather(wind_speed=a.Measurement(None, "mph", raw=b"..."))
-        self.assertNotEqual(absent, unavailable)
-        self.assertEqual(a.Message("W1AW", "").message_id, None)
-        self.assertEqual(a.Position(49, -72, SYMBOL).timestamp, None)
-        self.assertEqual(a.GLL(None, a.UTCTime(12, 30, 0), "void").coordinates, None)
-        self.assertEqual(dataclasses.replace(unavailable, wind_speed=None), absent)

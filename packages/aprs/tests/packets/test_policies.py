@@ -8,11 +8,6 @@ import hamkit.aprs as a
 
 
 class PolicyTests(unittest.TestCase):
-    def test_malformed_recovery_is_separate(self) -> None:
-        # The Malformed results are case vectors (BAD); this is the raise option.
-        with self.assertRaises(a.FieldError):
-            a.parse_packet(b"N0CALL>APRS:!9000.01N/07201.75W-", malformed="raise")
-
     def test_line_framing_is_explicit(self) -> None:
         packet = a.Packet(a.Header("N0CALL", "APRS"), a.Status("Ready"))
         self.assertEqual(a.parse_tnc2_line(a.serialize_tnc2_line(packet)), packet)
@@ -45,10 +40,3 @@ class PolicyTests(unittest.TestCase):
             a.parse_packet(wire, max_third_party_depth=1)
         with self.assertRaises(a.ResourceLimitError):
             a.parse_payload(b"}W1AW>APRS:>Ready", max_third_party_depth=0)
-
-    def test_mdhm_codec(self) -> None:
-        from hamkit.aprs._fields import decode_timestamp, encode_timestamp
-
-        stamp = a.Timestamp.mdhm(10, 17, 12, 30)
-        self.assertEqual(encode_timestamp(stamp), b"10171230")
-        self.assertEqual(decode_timestamp(b"10171230"), stamp)

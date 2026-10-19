@@ -69,6 +69,9 @@ class PacketTests(unittest.TestCase):
         ):
             with self.subTest(information=information), self.assertRaises(FieldError):
                 parse_payload(information, malformed="raise")
+            if information:
+                with self.subTest(packet=information), self.assertRaises(FieldError):
+                    parse_packet(b"N0CALL>APRS:" + information, malformed="raise")
 
     def test_invalid_construction(self) -> None:
         for build in (

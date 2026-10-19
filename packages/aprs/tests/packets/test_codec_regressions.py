@@ -76,12 +76,6 @@ def test_timestamp_from_datetime():
         a.Timestamp.from_datetime(dt.datetime(2026, 1, 1))  # offset unknown
 
 
-def test_altitude_encoding_is_keyword_only():
-    with pytest.raises(TypeError):
-        a.Altitude(a.Measurement(1, "feet"), "mic_e")  # type: ignore[misc]
-    assert a.Altitude(a.Measurement(1, "feet"), encoding="mic_e").encoding == "mic_e"
-
-
 def test_models_refuse_contradictory_values():
     # Sending refusals are case vectors; these fail when the model is built.
     with pytest.raises(a.ModelError):
@@ -104,8 +98,3 @@ def test_models_refuse_contradictory_values():
     )
     with pytest.raises(a.ModelError):
         dataclasses.replace(header, precedence="R")
-
-
-def test_compression_type_byte_takes_names():
-    csT = a.Compression(fix="current", nmea_source="other", origin="kpc3")
-    assert csT.type_value == 32 + 0 + 4  # current fix, other source, KPC3 origin

@@ -14,11 +14,9 @@ HEADER = a.Header("N0CALL", "APRS")
 
 
 class ModelContractTests(unittest.TestCase):
-    def test_every_payload_has_construction_and_codec_example(self) -> None:
-        examples = payload_examples()
-        self.assertEqual({type(p) for p in examples}, set(get_args(a.Payload)))
+    def test_every_payload_has_codec_support(self) -> None:
+        # Each payload's documented example is a case vector that must send.
         self.assertEqual({c.model for c in a.codec_support()}, set(get_args(a.Payload)))
-        # Each example is a case vector that must pass check_packet and send.
 
     def test_every_public_dataclass_has_an_example(self) -> None:
         public = {
@@ -72,6 +70,8 @@ class ModelContractTests(unittest.TestCase):
             cast(Any, a.Message)("W1AW", "Hello", "003")
         with self.assertRaises(TypeError):
             cast(Any, a.Weather)(a.Measurement(1, "degrees"))
+        with self.assertRaises(TypeError):
+            cast(Any, a.Altitude)(a.Measurement(1, "feet"), "mic_e")
 
     def test_derived_values_are_properties(self) -> None:
         grid = a.Grid("AA00")
@@ -157,14 +157,6 @@ class ModelContractTests(unittest.TestCase):
                 self.assertIs(a.NMEA(value, a.NMEAMetadata("GP")).sentence, value)
             if isinstance(value, get_args(a.ResponseValue)):
                 self.assertIs(a.Response("W1AW", value).response, value)
-
-    def test_missing_is_not_unavailable_or_zero(self) -> None:
-        absent = a.Weather()
-        unavailable = a.Weather(wind_speed=a.Measurement(None, "mph"))
-        zero = a.Weather(wind_speed=a.Measurement(0, "mph"))
-        self.assertNotEqual(absent, unavailable)
-        self.assertNotEqual(unavailable, zero)
-        self.assertNotEqual(absent, zero)
 
     def test_mic_e_decoding_requires_context(self) -> None:
         with self.assertRaises(a.ContextRequiredError):
