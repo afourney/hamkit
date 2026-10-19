@@ -207,7 +207,11 @@ def _aprs(args):
                 "The message encodes to:",
             )
             _write_packets(
-                [aprs.Packet(aprs.Header.parse(header), aprs.Message(addressee, args[3]))]
+                [
+                    aprs.Packet(
+                        aprs.Header.parse(header), aprs.Message(addressee, args[3])
+                    )
+                ]
             )
 
         elif subcommand == "position" and len(args) in [4, 5]:
