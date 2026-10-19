@@ -82,8 +82,9 @@ def _motion(match: re.Match[bytes], df: bool) -> Motion | None:
     return Motion(None if c == 0 else c, s, course_code=c, speed_code=s, raw=match[0])
 
 
-# Field letters that can follow the wind in a positioned weather report.
-_WEATHER_FIELDS = b"cgstrpPhbLl#FfXV"
+# A weather field: its letter, then the start of a value (APRS101 pp62-66 and
+# the APRS 1.1/1.2 additions F/f, X and V).
+_WEATHER_FIELD = re.compile(rb"[cgstrpPhbLl#FfXV][-0-9. ]")
 
 
 def w_symbol_motion(symbol: Symbol, tail: bytes, policy: EnvelopePolicy) -> bool:
@@ -93,7 +94,7 @@ def w_symbol_motion(symbol: Symbol, tail: bytes, policy: EnvelopePolicy) -> bool
         symbol.code == "W"
         and "w_symbol_motion" in policy.extensions
         and bool(_COURSE_SPEED.match(tail))
-        and tail[7:8] not in [bytes([c]) for c in _WEATHER_FIELDS]
+        and not _WEATHER_FIELD.match(tail, 7)
     )
 
 
@@ -112,7 +113,7 @@ def weather_follows(
         return False
     if not compressed and _COURSE_SPEED.match(tail):
         return True
-    return tail.startswith((b"g", b"t", b"c"))
+    return bool(_WEATHER_FIELD.match(tail))
 
 
 def read(

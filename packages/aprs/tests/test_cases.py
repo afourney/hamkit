@@ -43,18 +43,48 @@ def outcome(value: Any, policy: a.EnvelopePolicy) -> tuple[str | None, Any]:
 
 
 def needs_context(payload: Any) -> bool:
-    """Payloads whose encoding depends on the packet header."""
-    return isinstance(payload, a.MicE) or (
-        isinstance(payload, a.NMEA) and payload.symbol is not None
-    )
+    """Payloads that cannot be encoded without the header: an NMEA symbol is
+    written into the destination. (A Mic-E destination is computed from the
+    payload, so a Mic-E payload encodes alone.)"""
+    return isinstance(payload, a.NMEA) and payload.symbol is not None
 
 
 def payload_outcome(value: a.Packet, policy: a.EnvelopePolicy) -> Any:
     try:
         return a.serialize_payload(value.payload, policy=policy)
     except a.ContextRequiredError:
-        assert needs_context(value.payload), "only Mic-E and NMEA symbols need context"
+        assert needs_context(value.payload), "only an NMEA symbol needs context"
         return "context"
+    except (a.APRSError, TypeError) as exc:
+        return error_json(exc)
+
+
+def mic_e_alone(value: a.Packet, policy: a.EnvelopePolicy) -> Any:
+    """What serialize_payload must give for a Mic-E payload, from the packet."""
+    import dataclasses
+
+    auto = dataclasses.replace(
+        value, header=dataclasses.replace(value.header, destination=None)
+    )
+    loose = dataclasses.replace(
+        policy,
+        source_pattern=".*",
+        destination_pattern=".*",
+        path_address_pattern=".*",
+        max_path_entries=None,
+        max_information_bytes=None,
+        max_tnc2_line_bytes=None,
+    )
+    try:
+        return a.serialize_packet(auto, policy=loose).partition(b":")[2]
+    except a.ConformanceError as exc:
+        found = [
+            {**d, "path": "$"}
+            if d["path"] == "$.header.destination"
+            else {**d, "path": "$" + d["path"][len("$.payload") :]}
+            for d in error_json(exc)["diagnostics"]
+        ]
+        return {"type": "ConformanceError", "diagnostics": found}
     except (a.APRSError, TypeError) as exc:
         return error_json(exc)
 
@@ -122,13 +152,16 @@ def check_encoding(
             line = error_json(exc)
         assert line == error
         relative = payload_relative(error)
-        # A Mic-E destination is half its encoding, so the payload alone is
-        # refused for what it can see; the packet check covers the rest.
-        if payload != "context" and not needs_context(value.payload):
-            if relative is None:
-                assert isinstance(payload, bytes), payload
-            else:
-                assert payload == relative
+        if payload == "context":
+            return  # The NMEA symbol is checked against the header (above).
+        if not isinstance(value.payload, a.MicE):
+            assert payload == (relative or payload), payload
+            assert isinstance(payload, bytes) or relative is not None, payload
+            return
+        # A Mic-E payload alone encodes like the packet with its destination
+        # generated (under a permissive envelope): destination-level problems
+        # then appear at "$", and payload-local refusals must match.
+        assert payload == mic_e_alone(value, policy), payload
         return
     wire = row["reencoded"].encode("latin-1")
     # The payload alone encodes to the same information field, unless it needs

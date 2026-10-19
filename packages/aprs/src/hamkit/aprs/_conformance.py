@@ -648,6 +648,8 @@ def _located(v: Any, policy: EnvelopePolicy | None) -> Iterator[Finding]:
                 "Mic-E always carries a speed; use Motion(None, 0) for a"
                 " stationary report with unknown course"
             )
+        elif e.motion.speed_knots is None:
+            yield "$.extensions.motion.speed_knots", "Mic-E always carries a speed"
         yield from _mic_e_status(v, policy)
         return
     if v.compression is not None:
@@ -658,6 +660,15 @@ def _mic_e_status(v: MicE, policy: EnvelopePolicy) -> Iterator[Finding]:
     """The type code and status text must read back as composed."""
     from . import _mic_e
 
+    # Coordinates and a PHGR rate are reported at their own paths (the
+    # destination, phg.rate_per_hour); encoding the status would repeat them.
+    try:
+        _mic_e._base_coordinates(v)
+    except APRSError:
+        return
+    phg = v.extensions.phg
+    if phg and phg.rate_per_hour is not None and "phg_rate" not in policy.extensions:
+        return
     try:
         _mic_e.device_parts(v.device_code, policy)
     except APRSError as error:

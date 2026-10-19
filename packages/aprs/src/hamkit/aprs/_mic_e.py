@@ -442,9 +442,16 @@ def write_status(p: MicE, policy: EnvelopePolicy = _DEFAULT_POLICY) -> bytes:
             )
         from ._units import height
 
-        first += (
-            pack91(round(height(e.altitude.measurement, "meters")) + 10000, 3) + b"}"
-        )
+        try:
+            altitude = pack91(
+                round(height(e.altitude.measurement, "meters")) + 10000, 3
+            )
+        except FieldError as exc:
+            raise Unrepresentable(
+                "$.extensions.altitude.measurement.value",
+                "outside the Mic-E altitude range (-10000..743570 meters)",
+            ) from exc
+        first += altitude + b"}"
         e = replace(e, altitude=None)
     from . import _extensions
 
