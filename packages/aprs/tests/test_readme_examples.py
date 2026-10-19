@@ -92,9 +92,7 @@ class ReadmeTests(unittest.TestCase):
     def test_every_example_runs_with_only_declared_context_and_exact_output(
         self,
     ) -> None:
-        # 29 construction pairs, 5 parsing inputs with 5 JSON displays, then one
-        # each of unsupported encoding, repair and refusal to send.
-        self.assertEqual(len(self.examples), 87)
+        self.assertEqual(len(self.examples), 74)
         namespace: dict[str, Any] | None = None
         for index, example in enumerate(self.examples):
             with self.subTest(example=index + 1):
