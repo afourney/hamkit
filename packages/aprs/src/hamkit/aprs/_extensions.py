@@ -82,15 +82,36 @@ def _motion(match: re.Match[bytes], df: bool) -> Motion | None:
     return Motion(None if c == 0 else c, s, course_code=c, speed_code=s, raw=match[0])
 
 
+def weather_follows(symbol: Symbol, tail: bytes) -> bool:
+    """Whether a weather report starts here. Under _ (APRS101 pp62-65) any
+    wind or weather field does; /W and \\W are accepted as alternate weather
+    symbols (aprs.org/aprs11/spec-wx.txt) only when weather fields follow, as
+    the symbol is also used by moving stations whose ddd/sss is course/speed."""
+    if symbol.code == "_":
+        return bool(_COURSE_SPEED.match(tail)) or tail.startswith((b"g", b"t", b"c"))
+    if symbol.code == "W":
+        if _COURSE_SPEED.match(tail):
+            tail = tail[7:]
+        return tail.startswith((b"g", b"t"))
+    return False
+
+
 def read(
-    tail: bytes, symbol: Symbol, policy: EnvelopePolicy = _DEFAULT_POLICY
+    tail: bytes,
+    symbol: Symbol,
+    policy: EnvelopePolicy = _DEFAULT_POLICY,
+    *,
+    compressed: bool = False,
 ) -> tuple[Extensions, bytes]:
-    """Split decoded extensions from the information after an uncompressed symbol."""
+    """Split decoded extensions from the information after the symbol.
+
+    After a compressed position, PHG, DF signal, area and DF bearing data are
+    plain comment text: the compressed layout does not carry them (APRS101
+    p36: "this format does not support PHG").
+    """
 
     found: dict[str, Any] = {}
-    if symbol.code in "_W" and (
-        _COURSE_SPEED.match(tail) or tail.startswith((b"g", b"t", b"c"))
-    ):
+    if weather_follows(symbol, tail):
         from . import _weather
 
         weather, tail = _weather.read(
@@ -100,8 +121,14 @@ def read(
             policy=policy,
         )
         found["weather"] = weather
-    elif (symbol.table_id, symbol.code) == ("\\", "l") and (
-        match := re.match(rb"(\d)(\d{2})(/[0-9]|1[0-5])(\d{2})(?:\{([0-9.]+)\})?", tail)
+    elif (
+        not compressed
+        and (symbol.table_id, symbol.code) == ("\\", "l")
+        and (
+            match := re.match(
+                rb"(\d)(\d{2})(/[0-9]|1[0-5])(\d{2})(?:\{([0-9.]+)\})?", tail
+            )
+        )
     ):
         color = int(match[3].lstrip(b"/"))
         found["area"] = d.Area(
@@ -117,7 +144,9 @@ def read(
         if (motion := _motion(match, _is_df(symbol))) is not None:
             found["motion"] = motion
             tail = tail[7:]
-            bearing = _BEARING.match(tail) if _is_df(symbol) else None
+            bearing = (
+                _BEARING.match(tail) if _is_df(symbol) and not compressed else None
+            )
             if bearing and int(bearing[1]) <= 360:
                 hits, range_code, quality = (int(bearing[i]) for i in (2, 3, 4))
                 meaningful = hits != 0
@@ -130,7 +159,7 @@ def read(
                     raw=bearing[0],
                 )
                 tail = tail[8:]
-    elif match := _PHG.match(tail):
+    elif not compressed and (match := _PHG.match(tail)):
         found["phg"] = PHG(
             int(match[1]) ** 2,
             _height(match[2]),
@@ -157,7 +186,7 @@ def read(
     elif match := _RNG.match(tail):
         found["range"] = Range(int(match[1]), raw=match[0])
         tail = tail[7:]
-    elif match := _DFS.match(tail):
+    elif not compressed and (match := _DFS.match(tail)):
         found["signal"] = Signal(
             int(match[1]),
             _height(match[2]),
@@ -245,14 +274,16 @@ def read(
 
 
 def lookalikes(
-    extensions: Extensions, comment: bytes, symbol: Symbol
+    extensions: Extensions, comment: bytes, symbol: Symbol, *, compressed: bool = False
 ) -> list[tuple[str, str]]:
     """Comment text shaped like an extension that did not decode (invalid values)."""
     findings = []
     primary = ("motion", "phg", "range", "signal")
-    if not any(getattr(extensions, n) for n in primary) and _LOOKALIKE_PREFIX.match(
-        comment
-    ):
+    prefix = _LOOKALIKE_PREFIX.match(comment)
+    # After a compressed position, PHG and DFS text is ordinary comment.
+    if compressed and prefix and prefix[0] in (b"PHG", b"DFS"):
+        prefix = None
+    if not any(getattr(extensions, n) for n in primary) and prefix:
         findings.append(("$.comment", "begins with an invalid data extension"))
     if b"/A=" in comment:
         findings.append(("$.comment", "contains an invalid /A= altitude"))

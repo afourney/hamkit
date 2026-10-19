@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""JSON contracts are independent of partial APRS wire codec support."""
+"""JSON contracts, independent of the APRS wire codec."""
 
 import dataclasses
 import math
@@ -255,8 +255,6 @@ class JSONRoundTripTests(unittest.TestCase):
             self.round_trip(model)
             self.round_trip(a.Packet(HEADER, model))
             self.assertEqual(a.to_json_dict(model)["type"], tag)
-            packet = a.Packet(HEADER, model)
-            self.assertEqual(a.parse_packet(a.serialize_packet(packet)), packet)
         extensions = a.Extensions(
             weather=dataclasses.replace(weather, timestamp=None),
             telemetry=a.Telemetry((1, 2), sequence=1, encoding="base91_comment"),

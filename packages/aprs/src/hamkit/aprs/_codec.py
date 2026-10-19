@@ -337,12 +337,17 @@ def _decode_position(
                     "nonconforming", "reserved compression type bit", "$.compression"
                 )
             )
-        extensions, rest = _extensions.read(rest, symbol, policy)
+        extensions, rest = _extensions.read(rest, symbol, policy, compressed=True)
         for name in ("motion", "altitude", "range"):
             value = getattr(primary, name)
             if value is not None:
                 extensions = replace(extensions, **{name: value})
-        if symbol.code in "_W" and primary.motion is not None:
+        # csT course/speed is wind under a weather symbol (under W, only when
+        # weather fields follow; see _extensions.weather_follows).
+        weather_symbol = symbol.code == "_" or (
+            symbol.code == "W" and extensions.weather is not None
+        )
+        if weather_symbol and primary.motion is not None:
             weather = extensions.weather or d.Weather()
             weather = replace(
                 weather,

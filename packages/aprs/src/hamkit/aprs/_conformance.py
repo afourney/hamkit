@@ -556,8 +556,13 @@ def _position(v: Position, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     ):
         yield "$.comment", "extensions and comment exceed 43 bytes"
     try:
-        expected, _ = _extensions.read(prefix, v.symbol, policy or APRS_IS())
-        actual, rest = _extensions.read(prefix + comment, v.symbol, policy or APRS_IS())
+        compressed = v.compression is not None
+        expected, _ = _extensions.read(
+            prefix, v.symbol, policy or APRS_IS(), compressed=compressed
+        )
+        actual, rest = _extensions.read(
+            prefix + comment, v.symbol, policy or APRS_IS(), compressed=compressed
+        )
     except (CodecNotImplementedError, FieldError):
         yield "$.comment", "contains extension syntax this version cannot decode"
         return
@@ -579,7 +584,9 @@ def _position(v: Position, policy: EnvelopePolicy | None) -> Iterator[Finding]:
     if (actual, rest) != (expected, comment):
         yield "$.comment", "would be read back as a data extension"
     else:
-        yield from _extensions.lookalikes(actual, rest, v.symbol)
+        yield from _extensions.lookalikes(
+            actual, rest, v.symbol, compressed=v.compression is not None
+        )
 
 
 @_conformance(Position, Object, Item, MicE)
@@ -684,7 +691,10 @@ def _compressed(v: Any) -> Iterator[Finding]:
         yield "$.symbol.table_id", "compressed numeric overlays require a-j, not 0-9"
     if any(getattr(e, n) is not None for n in ("phg", "signal", "area", "bearing")):
         yield "$.extensions", "not available in the compressed position layout"
-    if v.symbol.code in "_W" and e.motion is not None:
+    weather_symbol = v.symbol.code == "_" or (
+        v.symbol.code == "W" and e.weather is not None
+    )
+    if weather_symbol and e.motion is not None:
         # The decoder reads csT course/speed as wind under a weather symbol.
         yield "$.extensions.motion", "would be read back as weather"
     altitude = e.altitude is not None and e.altitude.encoding == "compressed"

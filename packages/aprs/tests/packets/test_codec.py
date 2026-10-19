@@ -30,14 +30,12 @@ class PacketTests(unittest.TestCase):
         self.assertFalse(Position(0, 0, Symbol("/", "-")).is_null_position)
 
     def test_original_wire_is_archival(self) -> None:
-        # Unusual tokens (lowercase, SSID -0) show nothing is normalized; the
-        # permissive policy keeps envelope rules out of this archival check.
+        # The byte-for-byte round trip is a case vector (HDR); an edit keeps the
+        # archived bytes but sends the edited fields.
         loose = EnvelopePolicy(".*", ".*", ".*")
         raw = b"n0call-0>APRS,qAR,igate:>radio: ready > listening"
         packet = parse_packet(raw)
         assert isinstance(packet, Packet)
-        self.assertEqual(packet.original_wire, raw)
-        self.assertEqual(serialize_packet(packet, policy=loose), raw)
         changed = replace(packet, payload=Status("Changed"))
         self.assertEqual(changed.original_wire, raw)
         self.assertTrue(serialize_packet(changed, policy=loose).endswith(b":>Changed"))

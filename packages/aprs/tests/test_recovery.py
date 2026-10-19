@@ -15,57 +15,21 @@ from hamkit.aprs._fields import encode_timestamp
 SYMBOL = a.Symbol("/", "-")
 
 
-def codes(packet: a.Packet) -> set[tuple[str, str]]:
-    return {(d.code, d.path) for d in packet.diagnostics}
-
-
-class LenientDecodingTests(unittest.TestCase):
-    def test_invalid_extension_text_stays_comment_with_a_finding(self) -> None:
-        raw = b"N0CALL>APRS:!4903.50N/07201.75W>999/999Hello"
-        packet = a.parse_packet(raw, unsupported="raise")
-        assert isinstance(packet, a.Packet)
-        assert isinstance(packet.payload, a.Position)
-        self.assertEqual(packet.payload.comment, "999/999Hello")
-        self.assertEqual(codes(packet), {("nonconforming", "$.payload.comment")})
-        with self.assertRaises(a.ConformanceError):
-            a.serialize_packet(packet)
-
-    def test_invalid_df_bearing_is_inspectable_but_not_sendable(self) -> None:
-        raw = b"N0CALL>APRS:!4903.50N/07201.75W\\088/036/999/729"
-        packet = a.parse_packet(raw, unsupported="raise")
-        assert isinstance(packet, a.Packet)
-        assert isinstance(packet.payload, a.Position)
-        self.assertEqual(packet.original_wire, raw)
-        self.assertEqual(packet.payload.comment, "/999/729")
-        self.assertEqual(packet.payload.extensions.motion, a.Motion(88, 36))
-        self.assertIsNone(packet.payload.extensions.bearing)
-        self.assertEqual(codes(packet), {("nonconforming", "$.payload.comment")})
-        for policy in (a.APRS_IS(), a.RF()):
-            self.assertTrue(a.check_packet(packet, policy=policy))
-            with self.assertRaises(a.ConformanceError):
-                a.serialize_packet(packet, policy=policy)
-
-
 class MalformedTests(unittest.TestCase):
-    def test_multiple_bad_components_keep_reliable_data(self) -> None:
+    # How received input decodes, including what Malformed recovers, is in the
+    # case vectors (BAD-150, TIM-022, NET-033, MSG-086 and others); these test
+    # the API around Malformed results.
+
+    def test_recovered_data_round_trips_and_is_repaired_through_json(self) -> None:
         raw = b">APRS,BAD**:!4903.50N/19000.00W>tail\xff"
         result = a.parse_packet(raw)
         assert isinstance(result, a.Malformed)
-        self.assertEqual(result.original_wire, raw)
         self.assertIsNone(result.header)
-        paths = {d.path for d in result.diagnostics}
-        self.assertIn("$.header.source", paths)
-        self.assertIn("$.header.path[0].address", paths)
-        self.assertIn("$.payload.longitude_deg", paths)
         recovered = cast(dict[str, Any], result.recovered)
-        self.assertEqual(recovered["header"]["destination"], "APRS")
-        self.assertAlmostEqual(recovered["payload"]["latitude_deg"], 49 + 3.5 / 60)
-        self.assertNotIn("longitude_deg", recovered["payload"])
-        self.assertEqual(recovered["payload"]["comment"], "tail\xff")
         self.assertEqual(json.loads(a.to_json(result))["recovered"], recovered)
         self.assertEqual(a.from_json(a.to_json(result)), result)
         with self.assertRaises(a.JSONModelError):
-            a.from_json_dict(recovered)
+            a.from_json_dict(recovered)  # Recovered data is not a model.
         fixed = copy.deepcopy(recovered)
         fixed["header"]["source"] = "N0CALL"
         fixed["header"]["path"][0]["address"] = "WIDE1-1"
@@ -76,70 +40,29 @@ class MalformedTests(unittest.TestCase):
             "N0CALL>APRS,WIDE1-1*:!4903.50N/07200.00W>tailÿ".encode(),
         )
 
-    def test_partial_timestamp_and_missing_coordinate_are_not_invented(self) -> None:
+    def test_partial_recovered_data_is_not_a_model(self) -> None:
         result = a.parse_packet(b"N0CALL>APRS:@001230z4903.50N")
         assert isinstance(result, a.Malformed)
-        data = cast(dict[str, Any], result.recovered["payload"])
-        self.assertEqual(
-            data["timestamp"], {"kind": "dhm_utc", "hour": 12, "minute": 30}
-        )
-        self.assertNotIn("longitude_deg", data)
-        paths = {d.path for d in result.diagnostics}
-        self.assertIn("$.payload.timestamp.day", paths)
-        self.assertIn("$.payload.longitude_deg", paths)
         with self.assertRaises(a.JSONModelError):
             a.from_json_dict(result.recovered)
 
-    def test_standalone_boundary_and_nested_packet_boundary(self) -> None:
+    def test_payload_parsing_reports_payload_relative_paths(self) -> None:
         payload = a.parse_payload(b"!4903.50N/19000.00W-")
         assert isinstance(payload, a.Malformed)
         self.assertEqual(payload.recovered["type"], "position")
         self.assertTrue(any(d.path == "$.longitude_deg" for d in payload.diagnostics))
-        outer = a.parse_packet(b"OUTER>APRS:}INNER>APRS:!4903.50N/19000.00W-")
-        assert isinstance(outer, a.Malformed)
-        recovered = cast(dict[str, Any], outer.recovered)
-        self.assertEqual(recovered["payload"]["type"], "third_party")
-        self.assertEqual(recovered["payload"]["packet"]["header"]["source"], "INNER")
-        self.assertTrue(
-            any(
-                d.path == "$.payload.packet.payload.longitude_deg"
-                for d in outer.diagnostics
-            )
-        )
 
-    def test_invalid_message_id_is_kept_for_repair(self) -> None:
+    def test_invalid_message_id_is_repaired_through_json(self) -> None:
         result = a.parse_packet(b"W1AW>APRS::N0CALL   :hello{\xff")
         assert isinstance(result, a.Malformed)
-        self.assertEqual({d.path for d in result.diagnostics}, {"$.payload.message_id"})
         fixed = copy.deepcopy(cast(dict[str, Any], result.recovered))
-        self.assertEqual(fixed["payload"]["message_id"], "\xff")
         fixed["payload"]["message_id"] = "01"
         packet = a.from_json_dict(fixed, expected_type=a.Packet)
         self.assertEqual(packet.payload, a.Message("N0CALL", "hello", message_id="01"))
 
-    def test_binary_is_lossless(self) -> None:
-        binary = a.Packet(
-            a.Header("N0CALL", "APRS"), a.UserDefined(b"Q", b"1", bytes(range(256)))
-        )
-        self.assertEqual(a.parse_packet(a.serialize_packet(binary)), binary)
-        self.assertEqual(a.from_json(a.to_json(binary)), binary)
-
-    def test_unknown_codec_is_not_a_malformed_diagnosis(self) -> None:
-        for raw in (b"N0CALL>APRS:~\xff",):
-            result = a.parse_packet(raw)
-            assert isinstance(result, a.Packet)
-            assert isinstance(result.payload, a.Opaque)
-            self.assertEqual(a.serialize_packet(result), raw)
-            with self.assertRaises(a.CodecNotImplementedError):
-                a.parse_packet(raw, unsupported="raise")
-        for raw in (b"N0CALL>APRS:_not-a-timestamp", b"N0CALL>APRS:T#incomplete"):
-            self.assertIsInstance(a.parse_packet(raw), a.Malformed)
-        result = a.parse_packet(b">490S5P:`12345678")
-        assert isinstance(result, a.Malformed)
-        self.assertEqual(
-            cast(dict[str, Any], result.recovered["payload"])["type"], "opaque"
-        )
-        self.assertTrue(all(d.path.startswith("$.header") for d in result.diagnostics))
+    def test_unknown_codec_raises_only_when_asked(self) -> None:
+        with self.assertRaises(a.CodecNotImplementedError):
+            a.parse_packet(b"N0CALL>APRS:~\xff", unsupported="raise")
 
     def test_malformed_is_not_serializable_or_a_packet_payload(self) -> None:
         result = a.parse_packet(b"broken")
@@ -224,16 +147,12 @@ class StrictConstructionTests(unittest.TestCase):
     def test_evidence_never_overrides_edits(self) -> None:
         timestamp = a.Timestamp("dhm_utc", 12, 30, day=17, raw=b"010000z")
         self.assertEqual(encode_timestamp(timestamp), b"171230z")
+        # Sending edited fields over stale evidence is an STA/OTH case vector.
         packet = a.Packet(
             a.Header("N0CALL", "APRS"),
             a.Status("Edited", timestamp=timestamp),
             original_wire=b"wrong",
         )
-        self.assertEqual(a.serialize_packet(packet), b"N0CALL>APRS:>171230zEdited")
-        raw = a.Packet(
-            a.Header("N0CALL", "APRS"), a.Opaque(b"~new"), original_wire=b"old"
-        )
-        self.assertEqual(a.serialize_packet(raw), b"N0CALL>APRS:~new")
         # Defend the serialization boundary even against frozen-dataclass bypasses.
         object.__setattr__(packet.payload, "text", "\udcff")
         with self.assertRaises(a.ModelError):

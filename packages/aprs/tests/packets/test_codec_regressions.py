@@ -10,7 +10,6 @@ import pytest
 
 from case_tool import all_rows
 from hamkit import aprs as a
-from semantics import without_evidence
 
 
 def packet(raw, policy=None):
@@ -37,18 +36,6 @@ def test_truncation_and_mutation_do_not_escape_recovery():
                 continue
             assert isinstance(result, (a.Packet, a.Malformed)), repr(candidate)
             assert result.original_wire == candidate
-
-
-def test_mic_e_longitude_100_to_109_degrees_uses_specified_bytes():
-    # APRS101 p.48 encodes 100-109 degrees as 'l'-'u'; bytes 28-37 decode to the
-    # same values but include FS-US control characters.
-    cases = [r for r in all_rows() if r["id"] in {f"MIC-{n}" for n in range(116, 126)}]
-    assert len(cases) == 10
-    for row in cases:
-        raw = row["tnc2"].encode("latin-1")
-        wire = a.serialize_packet(without_evidence(packet(raw)))
-        assert wire == raw, row["id"]
-        assert 108 <= wire[wire.index(b":") + 2] <= 117
 
 
 def test_legacy_positions_keyword_matches_the_policy_switch():

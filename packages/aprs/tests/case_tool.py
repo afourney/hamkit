@@ -112,7 +112,11 @@ def shape(row: dict[str, Any]) -> tuple[Any, ...]:
     """What kind of packet a row is: its payload type, the problems we report
     (indices and quoted text removed) and whether FAP rejects it."""
     decoded = row["decoded"]
-    kind = decoded["type"] if decoded["type"] == "malformed" else decoded["payload"]["type"]
+    kind = (
+        decoded["type"]
+        if decoded["type"] == "malformed"
+        else decoded["payload"]["type"]
+    )
     problems = sorted(
         {
             (
@@ -157,7 +161,9 @@ def fill_fap(binary: Path, paths: list[Path]) -> None:
         rows = read(path)
         missing = [r for r in rows if r["tnc2"] is not None and r["fap"] is None]
         for ax25 in (False, True):
-            group = [r for r in missing if (r["policy"]["source_pattern"] == rf) == ax25]
+            group = [
+                r for r in missing if (r["policy"]["source_pattern"] == rf) == ax25
+            ]
             snapshots = fap_snapshots(binary, group, ax25=ax25) if group else {}
             for r in group:
                 r["fap"] = snapshots[r["id"]]
@@ -256,7 +262,10 @@ def sweep(
     )
     if binary is not None:
         table = collections.Counter(
-            (r["decoded"]["type"], "fap rejects" if "error" in r["fap"] else "fap parses")
+            (
+                r["decoded"]["type"],
+                "fap rejects" if "error" in r["fap"] else "fap parses",
+            )
             for r in rows
         )
         print("ours / fap:", dict(table))
@@ -285,7 +294,8 @@ def sweep(
             r["id"] = f"{prefix}-{number:0{width}d}"
             r["comment"] = (
                 f"Captured traffic: line {first[r['tnc2'].encode('latin-1')]} of "
-                f"{capture.name}" + (f" (seen {seen} times)" if seen > 1 else "")
+                f"{capture.name}"
+                + (f" (seen {seen} times)" if seen > 1 else "")
                 + ". Added by sweep for a new shape or software family; the "
                 "expectations are this library's output, to be reviewed against fap."
             )

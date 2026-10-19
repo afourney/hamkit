@@ -4,16 +4,16 @@ Packet behaviour is tested here. Each `.jsonl` file holds one family of cases
 (`pos`, `mic`, `nme`, `wx`, `msg`, `hdr`, `bad`, `fap`, ...), one JSON object per
 line, with exactly these fields in this order:
 
-| Field            | Checked | Meaning                                                                                                                       |
-| ---------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `id`             | unique  | Stable identifier (`EXT-001`). Docs and comments refer to rows by id; never renumber.                                         |
-| `comment`        | no      | Provenance, what the case tests, and any decision that explains the expected output.                                          |
+| Field            | Checked | Meaning                                                                                                                        |
+| ---------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `id`             | unique  | Stable identifier (`EXT-001`). Docs and comments refer to rows by id; never renumber.                                          |
+| `comment`        | no      | Provenance, what the case tests, and any decision that explains the expected output.                                           |
 | `tnc2`           | yes     | The packet as a Latin-1 byte carrier (one character per byte; use `tnc2.encode("latin-1")`), or `null` for an encode-only row. |
 | `policy`         | yes     | The complete `EnvelopePolicy`, exactly as `to_json_dict(policy, include_defaults=True)` writes it.                             |
-| `decoded`        | yes     | With `tnc2`: the exact `to_json_dict(parse_packet(...), include_defaults=True)`. Without: the input, in the same full form.     |
-| `reencoded`      | yes     | What `serialize_packet` sends (Latin-1 carrier), or `null` when sending fails.                                                |
-| `encoding_error` | yes     | The expected error, or `null`. Exactly one of `reencoded` and `encoding_error` is `null`.                                     |
-| `fap`            | no      | FAP's output for the same packet, for auditing; `implementation` names which FAP produced it.                                 |
+| `decoded`        | yes     | With `tnc2`: the exact `to_json_dict(parse_packet(...), include_defaults=True)`. Without: the input, in the same full form.    |
+| `reencoded`      | yes     | What `serialize_packet` sends (Latin-1 carrier), or `null` when sending fails.                                                 |
+| `encoding_error` | yes     | The expected error, or `null`. Exactly one of `reencoded` and `encoding_error` is `null`.                                      |
+| `fap`            | no      | FAP's output for the same packet, for auditing; `implementation` names which FAP produced it.                                  |
 
 `encoding_error` mirrors how the library reports the failure:
 
@@ -95,6 +95,25 @@ survives a JSON round trip.
 
 The runner also requires the exact field list, a nonempty `comment`, unique
 ids across all files, and a policy in canonical form.
+
+## Comments
+
+A `comment` records where the case came from, what it tests and why the
+expected output is right. Three kinds of sentence have fixed openings, so they
+can be searched:
+
+- `Differs from FAP: ...` says where our decoding and `fap` disagree, whose
+  reading is followed and why (citing APRS101 or the addendum where it decides
+  the matter). `Differs from FAP (representation only): ...` marks the same data
+  shown differently, such as a Mic-E type code kept in FAP's comment but in
+  `device_code` here, or 0 versus `None` for an unknown course.
+- `Decision: ...` states a library decision the expected output depends on, for
+  example that an undecodable position timestamp leaves the position usable.
+- `Under this row's policy ...` explains a difference that comes from the row's
+  `policy` (for example no extensions) rather than from the decoder.
+
+Captured traffic rows end their provenance with `Reviewed against FAP` (followed
+by `: FAP agrees.` when nothing differs).
 
 ## Changing expectations
 

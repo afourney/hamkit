@@ -52,8 +52,13 @@ def check_encoding(
     if not isinstance(value, a.Packet):
         return
     # check_packet predicts exactly the conformance findings, and nothing else.
-    findings = [a.to_json_dict(d, include_defaults=True) for d in a.check_packet(value, policy=policy)]
-    conformance = error["diagnostics"] if error and error["type"] == "ConformanceError" else []
+    findings = [
+        a.to_json_dict(d, include_defaults=True)
+        for d in a.check_packet(value, policy=policy)
+    ]
+    conformance = (
+        error["diagnostics"] if error and error["type"] == "ConformanceError" else []
+    )
     assert findings == conformance
     try:
         a.validate_packet(value, policy=policy)
@@ -112,7 +117,9 @@ def test_case(row):
         if b"\r" not in wire and b"\n" not in wire:
             for terminator in (b"\r\n", b"\n"):
                 line = a.parse_tnc2_line(wire + terminator, policy=policy)
-                assert exact(a.to_json_dict(line, include_defaults=True), row["decoded"])
+                assert exact(
+                    a.to_json_dict(line, include_defaults=True), row["decoded"]
+                )
         # decoded is lossless: it rebuilds the parsed value exactly.
         rebuilt = a.from_json_dict(row["decoded"])
         assert rebuilt == parsed

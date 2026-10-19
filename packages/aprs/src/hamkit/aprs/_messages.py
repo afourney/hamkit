@@ -355,9 +355,14 @@ def write(payload):
         address = p.addressee
         v = p.definition
         if isinstance(v, (d.TelemetryParameters, d.TelemetryUnits)):
+            # Decoding always yields 13 slots; trailing empty ones are not sent,
+            # so a decoded definition re-encodes to its shortest form.
+            channels = list(v.channels)
+            while channels and not channels[-1]:
+                channels.pop()
             body = (
                 b"PARM." if isinstance(v, d.TelemetryParameters) else b"UNIT."
-            ) + ",".join(x or "" for x in v.channels).encode()
+            ) + ",".join(x or "" for x in channels).encode()
         elif isinstance(v, d.TelemetryEquations):
             body = (
                 b"EQNS."

@@ -131,7 +131,7 @@ def field_examples() -> tuple[object, ...]:
                 ),
             ),
         ),
-        a.CodecSupport(a.MicE, "unimplemented", "unimplemented", "header dependent"),
+        a.CodecSupport(a.MicE, "implemented", "implemented", "header dependent"),
     )
 
 

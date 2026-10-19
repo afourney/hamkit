@@ -146,9 +146,12 @@ NMEA fields, or extension `raw` evidence. Explicit raw models are the exception:
   is sent as north (360). Mic-E always carries a speed: `Motion(None, 0)` is a
   stationary report with unknown course. Likewise, a measured wind from 0° is
   sent as `360/sss`, because `000/000` reads back as an unavailable reading.
-- Under a weather symbol (`_` or `W`), receivers read a course/speed pair,
-  uncompressed or in compressed csT, as wind. `check_packet` therefore reports
-  `Motion` on such a position at `$.extensions.motion`; send wind in
+- Under the weather symbol `_` (APRS101 pp. 62-65), receivers read a course/speed
+  pair, uncompressed or in compressed csT, as wind. `/W` and `\W` are accepted as
+  alternate weather symbols ([spec-wx](https://www.aprs.org/aprs11/spec-wx.txt))
+  only when weather fields follow, since moving stations also use them; a bare
+  course/speed pair under `W` is motion. `check_packet` therefore reports
+  `Motion` on a position read as weather at `$.extensions.motion`; send wind in
   `extensions.weather` instead. More generally, extensions that would read back
   as different kinds are refused.
 - Numeric overlays use table IDs `a`–`j`; sending compressed positions with
