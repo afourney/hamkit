@@ -23,7 +23,8 @@ class ReadmeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         document = (Path(__file__).parents[1] / "README.md").read_text()
-        blocks = list(re.finditer(r"```(\w+)\n(.*?)\n```", document, re.DOTALL))
+        # Other fences, such as a console install line, are not examples.
+        blocks = list(re.finditer(r"```(python|text)\n(.*?)\n```", document, re.DOTALL))
         cls.examples = []
         for index in range(0, len(blocks), 2):
             source, output = blocks[index : index + 2]

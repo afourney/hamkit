@@ -8,14 +8,13 @@
 > [!NOTE]  
 > `hamkit.aprs` is a _small standalone component_ of [`hamkit`](https://pypi.org/project/hamkit/). You can use it by itself (see below) if APRS parsing and rendering is all that you need. Alternatively, install the entire collection of HamKit modules with `pip install hamkit`.
 
-
-## Parse APRS packets and build them in Python. 
+## Parse APRS packets and build them in Python.
 
 Pure Python · MIT license · Python 3.11+ · no runtime dependencies.
 
-~~~console
+```console
 pip install hamkit-uls
-~~~
+```
 
 ### Parse a packet
 
@@ -107,7 +106,7 @@ N0CALL>APRS:>Ready
 ## Choose a policy
 
 Every parse, check and serialize function takes `policy=`. The default is
-`aprs.APRS_IS()`; pass `aprs.RF()` for AX.25 radio rules. 
+`aprs.APRS_IS()`; pass `aprs.RF()` for AX.25 radio rules.
 
 Consider the following example. This packet came from APRS-IS, where a
 two-character SSID and the `qAR` construct are normal. Read under `RF()`, it
@@ -188,8 +187,7 @@ Output:
 (Diagnostic(code='nonconforming', message='address does not match source_pattern', path='$.header.source'),)
 ```
 
-
-## Design principles 
+## Design principles
 
 **The developer never does the encoding.**
 
@@ -207,7 +205,7 @@ Output:
   [APRS 1.1 addendum](http://www.aprs.org/aprs11.html)).
 - Each [APRS 1.2](https://www.aprs.org/aprs12.html) proposal
   can be switched on or off in the policy. Many policies are on by default.
-- On by default: 1.2 proposals that add rather than re-interpret structure. 
+- On by default: 1.2 proposals that add rather than re-interpret structure.
   For example, extensions that find structure inside comment text are
   on by default.
 - Off by default: proposals that change the interpretation of existing structured
@@ -240,7 +238,6 @@ Output:
   [Received packets](#received-packets) and
   [Checking before sending](#checking-before-sending).
 
-
 ## Find an example
 
 - [Parse a packet](#parse-a-packet)
@@ -264,8 +261,6 @@ Output:
 - [Checking before sending](#checking-before-sending)
 - [Text, bytes, units and round trips](#text-bytes-units-and-round-trips)
 - [Full reference](#full-reference)
-
-
 
 ## Working wire examples
 
