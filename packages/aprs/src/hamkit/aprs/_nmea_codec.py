@@ -251,7 +251,7 @@ def _variation_fields(value: float | None, num: Any) -> list[str]:
 
 def write(p: NMEA) -> bytes:
     s = p.sentence
-    num = lambda v: "" if v is None else f"{v:.12g}"
+    num = lambda v: "" if v is None else _decimal(v)
     if isinstance(s, n.GGA):
         f = [
             write_time(s.time_utc),
