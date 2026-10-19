@@ -255,7 +255,9 @@ def telemetry(
     if tail is not None:
         bits, comment = tail[:8], tail[8:]
         if len(bits) != 8 or any(v not in b"01" for v in bits):
-            raise FieldError("telemetry requires eight binary digits")
+            # Not eight binary digits: like a report without bits, which
+            # conformance reports; the field is kept as comment text.
+            bits, comment = b"", tail
     return d.Telemetry(
         tuple(analog),
         tuple(v == 49 for v in bits),

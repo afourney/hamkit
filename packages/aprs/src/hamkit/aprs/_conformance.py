@@ -110,6 +110,8 @@ def check(
         free, rules = _plan(type(node))
         for name in free:
             text = getattr(node, name)
+            if text is None:
+                continue
             utf8 = "utf8_text" in policy.extensions and isinstance(
                 node,
                 (
@@ -132,7 +134,7 @@ def check(
                         f"{path}.{name}",
                     )
                 )
-            if _has_control(getattr(node, name)):
+            if _has_control(text):
                 result.append(
                     Diagnostic(
                         "nonconforming",

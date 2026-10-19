@@ -20,68 +20,6 @@ def codes(packet: a.Packet) -> set[tuple[str, str]]:
 
 
 class LenientDecodingTests(unittest.TestCase):
-    def test_utf8_text_follows_aprs_1_2(self) -> None:
-        raw = "N0CALL>APRS::W1AW     :héllo 👋{01".encode()
-        packet = a.parse_packet(raw)
-        assert isinstance(packet, a.Packet)
-        self.assertEqual(packet.payload, a.Message("W1AW", "héllo 👋", message_id="01"))
-        self.assertEqual(packet.diagnostics, ())
-        self.assertEqual(a.serialize_packet(packet), raw)
-        status = a.parse_packet("N0CALL>APRS:>Grüße".encode())
-        assert isinstance(status, a.Packet)
-        self.assertEqual(status.payload, a.Status("Grüße"))
-
-    def test_invalid_utf8_falls_back_to_latin1(self) -> None:
-        packet = a.parse_packet(b"N0CALL>APRS:!4903.50N/07201.75W-Caf\xe9")
-        assert isinstance(packet, a.Packet)
-        assert isinstance(packet.payload, a.Position)
-        self.assertEqual(packet.payload.comment, "Café")
-        self.assertEqual(codes(packet), {("nonconforming", "$.payload.comment")})
-        self.assertEqual(
-            packet.original_wire, b"N0CALL>APRS:!4903.50N/07201.75W-Caf\xe9"
-        )
-        # Sending transcodes the text to UTF-8; original_wire is never replayed.
-        self.assertTrue(a.serialize_packet(packet).endswith("Café".encode()))
-
-    def test_out_of_spec_but_usable_packets_still_decode(self) -> None:
-        for raw, path in (
-            (b"N0CALL>APRS:>" + b"x" * 80, "$.payload.text"),
-            (b"N0CALL>APRS::W1AW     :" + b"x" * 100, "$.payload.text"),
-            (b"N0CALL>APRS:>bad|text", "$.payload.text"),
-            (b"N0CALL>APRS:>bell\x07", "$.payload.text"),
-            (b"N0CALL>APRS:!4903.50N/07201.75W>" + b"c" * 50, "$.payload.comment"),
-        ):
-            with self.subTest(raw=raw):
-                packet = a.parse_packet(raw)
-                assert isinstance(packet, a.Packet)
-                self.assertIn(("nonconforming", path), codes(packet))
-                with self.assertRaises(a.ConformanceError):
-                    a.serialize_packet(packet)
-
-    def test_rf_policy_reports_instead_of_rejecting(self) -> None:
-        raw = b"n0call>APRS,A,B,C,D,E,F,G,H,I:>" + b"x" * 10
-        packet = a.parse_packet(raw, policy=a.RF())
-        assert isinstance(packet, a.Packet)
-        self.assertEqual(
-            codes(packet),
-            {("nonconforming", "$.header.source"), ("nonconforming", "$.header.path")},
-        )
-        internet = a.parse_packet(raw)
-        assert isinstance(internet, a.Packet)
-        self.assertEqual(internet.diagnostics, ())
-
-    def test_extensions_leave_the_comment(self) -> None:
-        raw = b"N0CALL>APRS:!4903.50N/07201.75W>088/036/A=001234 hi"
-        packet = a.parse_packet(raw)
-        assert isinstance(packet, a.Packet)
-        assert isinstance(packet.payload, a.Position)
-        self.assertEqual(packet.payload.comment, " hi")
-        self.assertEqual(packet.payload.extensions.motion, a.Motion(88, 36))
-        altitude = packet.payload.extensions.altitude
-        assert altitude is not None
-        self.assertEqual(altitude.measurement, a.Measurement(1234, "feet"))
-        self.assertEqual(a.serialize_packet(packet), raw)
-
     def test_invalid_extension_text_stays_comment_with_a_finding(self) -> None:
         raw = b"N0CALL>APRS:!4903.50N/07201.75W>999/999Hello"
         packet = a.parse_packet(raw, unsupported="raise")
@@ -91,19 +29,6 @@ class LenientDecodingTests(unittest.TestCase):
         self.assertEqual(codes(packet), {("nonconforming", "$.payload.comment")})
         with self.assertRaises(a.ConformanceError):
             a.serialize_packet(packet)
-
-    def test_recognized_extensions_decode(self) -> None:
-        for information in (
-            b"!4903.50N/07201.75W>hi !W12!",
-            b"!4903.50N/07201.75W>|!!!!|",
-            b"!4903.50N/07201.75W_090/005g010t068",
-            b"!4903.50N\\07201.75WlT01/C02",
-        ):
-            with self.subTest(information=information):
-                packet = a.parse_packet(b"N0CALL>APRS:" + information)
-                assert isinstance(packet, a.Packet)
-                self.assertIsInstance(packet.payload, a.Position)
-                self.assertEqual(a.parse_packet(a.serialize_packet(packet)), packet)
 
     def test_invalid_df_bearing_is_inspectable_but_not_sendable(self) -> None:
         raw = b"N0CALL>APRS:!4903.50N/07201.75W\\088/036/999/729"
@@ -150,11 +75,6 @@ class MalformedTests(unittest.TestCase):
             a.serialize_packet(packet),
             "N0CALL>APRS,WIDE1-1*:!4903.50N/07200.00W>tailÿ".encode(),
         )
-
-    def test_header_is_typed_when_intact(self) -> None:
-        result = a.parse_packet(b"N0CALL>APRS,WIDE1-1:!4903.50N/19000.00W-")
-        assert isinstance(result, a.Malformed)
-        self.assertEqual(result.header, a.Header("N0CALL", "APRS", (a.Hop("WIDE1-1"),)))
 
     def test_partial_timestamp_and_missing_coordinate_are_not_invented(self) -> None:
         result = a.parse_packet(b"N0CALL>APRS:@001230z4903.50N")

@@ -231,10 +231,12 @@ def write(
         direction = _number(
             w.wind_direction.value, 3, path=f"{path}.wind_direction.value"
         )
-        # 000/000 reads back as unavailable, so a measured north wind is 360.
-        if direction == b"000":
+        speed_field = _number(value, 3, path=f"{path}.wind_speed.value")
+        # 000/000 reads back as unavailable, so a measured calm north wind is
+        # 360/000; any other 000 direction is sent as received.
+        if direction == speed_field == b"000":
             direction = b"360"
-        raw += direction + b"/" + _number(value, 3, path=f"{path}.wind_speed.value")
+        raw += direction + b"/" + speed_field
     for tag, (name, unit, width, scale) in _FIELDS.items():
         if tag == "l" or positioned and tag in "cs":
             continue

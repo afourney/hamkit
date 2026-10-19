@@ -190,7 +190,6 @@ accepted with `expected_type=EnvelopePolicy`. `dataclasses.asdict` plus ordinary
 JSON also works; the direct constructor accepts the resulting extension list.
 Packet JSON remains a structural model representation, independent of wire policy.
 
-Every corpus row uses this complete configuration (without the optional type
-tag). Its separate `legacy_positions` field and source profile/options remain
-provenance; runners use only `row["policy"]` to choose interpretation. See the
-[vector runner](../tests/vectors/README.md#runner-configuration).
+Every case vector stores this complete configuration, with its type tag, and
+the runner uses only `row["policy"]` to choose the interpretation. See the
+[case vectors](../tests/cases/README.md).
