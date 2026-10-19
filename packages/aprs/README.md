@@ -13,7 +13,7 @@
 Pure Python · MIT license · Python 3.11+ · no runtime dependencies.
 
 ```console
-pip install hamkit-uls
+pip install hamkit-aprs
 ```
 
 ### Parse a packet
